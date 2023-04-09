@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
-#import <pal/spi/cocoa/IOSurfaceSPI.h>
+#import <wtf/spi/cocoa/IOSurfaceSPI.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 
@@ -48,12 +48,36 @@
 #import <QuartzCore/CARenderCG.h>
 #endif
 
+#if PLATFORM(IOS_FAMILY)
+#import <QuartzCore/CADisplayLinkPrivate.h>
+#endif
+
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+#import <QuartzCore/CAFenceHandle.h>
+#endif
+
 #endif // __OBJC__
 
 #else
 
 #ifdef __OBJC__
 typedef struct _CARenderContext CARenderContext;
+
+#if PLATFORM(IOS_FAMILY)
+@interface CADisplayLink ()
+@property (readonly, nonatomic) CFTimeInterval maximumRefreshRate;
+@end
+#endif
+
+#if ENABLE(ARKIT_INLINE_PREVIEW)
+@interface CAFenceHandle : NSObject
+@end
+
+@interface CAFenceHandle ()
+- (mach_port_t)copyPort;
+- (void)invalidate;
+@end
+#endif
 
 @interface CAContext : NSObject
 @end
@@ -87,6 +111,11 @@ typedef struct _CARenderContext CARenderContext;
 @property (strong) CALayer *layer;
 @property CGColorSpaceRef colorSpace;
 @property (readonly) CARenderContext* renderContext;
+
+#if ENABLE(ARKIT_INLINE_PREVIEW_IOS)
+-(BOOL)addFence:(CAFenceHandle *)handle;
+#endif
+
 @end
 
 @interface CALayer ()
@@ -101,9 +130,14 @@ typedef struct _CARenderContext CARenderContext;
 @property BOOL canDrawConcurrently;
 @property BOOL contentsOpaque;
 @property BOOL hitTestsAsOpaque;
+@property BOOL inheritsTiming;
 @property BOOL needsLayoutOnGeometryChange;
 @property BOOL shadowPathIsBounds;
 @property BOOL continuousCorners;
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+@property (getter=isSeparated) BOOL separated;
+#endif
+@property BOOL toneMapToStandardDynamicRange;
 @end
 
 #if ENABLE(FILTERS_LEVEL_2)
@@ -141,13 +175,16 @@ typedef enum {
 
 @interface CATransaction ()
 + (void)addCommitHandler:(void(^)(void))block forPhase:(CATransactionPhase)phase;
++ (void)activate;
 + (CATransactionPhase)currentPhase;
 + (void)synchronize;
++ (uint32_t)currentState;
 @end
 
 @interface CALayerHost : CALayer
 @property uint32_t contextId;
 @property BOOL inheritsSecurity;
+@property BOOL preservesFlip;
 @end
 
 @interface CASpringAnimation (Private)
@@ -158,9 +195,21 @@ typedef enum {
 - (float)_solveForInput:(float)t;
 @end
 
+@interface CAPortalLayer : CALayer
+@property (weak) CALayer *sourceLayer;
+@property BOOL matchesPosition;
+@property BOOL matchesTransform;
+@end
+
 #endif // __OBJC__
 
 #endif
+
+@interface CALayer ()
+#if HAVE(CALAYER_USES_WEBKIT_BEHAVIOR)
+@property BOOL usesWebKitBehavior;
+#endif
+@end
 
 WTF_EXTERN_C_BEGIN
 
@@ -224,8 +273,4 @@ extern NSString * const kCAContextPortNumber;
 #if PLATFORM(IOS_FAMILY)
 extern NSString * const kCAContextSecure;
 extern NSString * const kCAContentsFormatRGBA10XR;
-#endif
-
-#if PLATFORM(MAC)
-extern NSString * const kCAContentsFormatRGBA8ColorRGBA8LinearGlyphMask;
 #endif

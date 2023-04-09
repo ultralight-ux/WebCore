@@ -39,7 +39,7 @@ class AccessiblePopupMenu;
 
 class PopupMenuWin : public PopupMenu, private ScrollableArea {
 public:
-    PopupMenuWin(PopupMenuClient*);
+    WEBCORE_EXPORT PopupMenuWin(PopupMenuClient*);
     ~PopupMenuWin();
 
     void show(const IntRect&, FrameView*, int index) override;
@@ -47,7 +47,7 @@ public:
     void updateFromElement() override;
     void disconnectClient() override;
 
-    static LPCWSTR popupClassName();
+    WEBCORE_EXPORT static LPCWSTR popupClassName();
 
     String debugDescription() const final;
 
@@ -104,7 +104,7 @@ private:
     IntSize contentsSize() const override;
     IntRect scrollableAreaBoundingBox(bool* = nullptr) const override;
     bool forceUpdateScrollbarsOnMainThreadForPerformanceTesting() const override { return false; }
-    bool shouldPlaceBlockDirectionScrollbarOnLeft() const final { return false; }
+    bool shouldPlaceVerticalScrollbarOnLeft() const final { return false; }
 
     // NOTE: This should only be called by the overriden setScrollOffset from ScrollableArea.
     void scrollTo(int offset);

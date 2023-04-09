@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,28 +33,31 @@
 
 namespace JSC {
 
-typedef enum { StrictJSON, NonStrictJSON, JSONP } ParserMode;
+enum ParserMode : uint8_t { StrictJSON, NonStrictJSON, JSONP };
 
-enum JSONPPathEntryType {
+enum JSONPPathEntryType : uint8_t {
     JSONPPathEntryTypeDeclareVar, // var pathEntryName = JSON
     JSONPPathEntryTypeDot, // <prior entries>.pathEntryName = JSON
     JSONPPathEntryTypeLookup, // <prior entries>[pathIndex] = JSON
     JSONPPathEntryTypeCall // <prior entries>(JSON)
 };
 
-enum ParserState { StartParseObject, StartParseArray, StartParseExpression, 
-                   StartParseStatement, StartParseStatementEndStatement, 
-                   DoParseObjectStartExpression, DoParseObjectEndExpression,
-                   DoParseArrayStartExpression, DoParseArrayEndExpression };
-enum TokenType { TokLBracket, TokRBracket, TokLBrace, TokRBrace, 
-                 TokString, TokIdentifier, TokNumber, TokColon, 
-                 TokLParen, TokRParen, TokComma, TokTrue, TokFalse,
-                 TokNull, TokEnd, TokDot, TokAssign, TokSemi, TokError };
-    
+enum ParserState : uint8_t {
+    StartParseObject, StartParseArray, StartParseExpression,
+    StartParseStatement, StartParseStatementEndStatement,
+    DoParseObjectStartExpression, DoParseObjectEndExpression,
+    DoParseArrayStartExpression, DoParseArrayEndExpression };
+
+enum TokenType : uint8_t {
+    TokLBracket, TokRBracket, TokLBrace, TokRBrace,
+    TokString, TokIdentifier, TokNumber, TokColon,
+    TokLParen, TokRParen, TokComma, TokTrue, TokFalse,
+    TokNull, TokEnd, TokDot, TokAssign, TokSemi, TokError, TokErrorSpace };
+
 struct JSONPPathEntry {
-    JSONPPathEntryType m_type;
     Identifier m_pathEntryName;
     int m_pathIndex;
+    JSONPPathEntryType m_type;
 };
 
 struct JSONPData {
@@ -65,7 +68,7 @@ struct JSONPData {
 template <typename CharType>
 struct LiteralParserToken {
 private:
-WTF_MAKE_NONCOPYABLE(LiteralParserToken<CharType>);
+WTF_MAKE_NONCOPYABLE(LiteralParserToken);
 
 public:
     LiteralParserToken() = default;
@@ -135,7 +138,7 @@ private:
         TokenType next();
         
 #if !ASSERT_ENABLED
-        typedef const LiteralParserToken<CharType>* LiteralParserTokenPtr;
+        using LiteralParserTokenPtr = const LiteralParserToken<CharType>*;
 
         LiteralParserTokenPtr currentToken()
         {
@@ -172,12 +175,13 @@ private:
         String getErrorMessage() { return m_lexErrorMessage; }
         
     private:
-        String m_lexErrorMessage;
         TokenType lex(LiteralParserToken<CharType>&);
         ALWAYS_INLINE TokenType lexIdentifier(LiteralParserToken<CharType>&);
         ALWAYS_INLINE TokenType lexString(LiteralParserToken<CharType>&, CharType terminator);
         TokenType lexStringSlow(LiteralParserToken<CharType>&, const CharType* runStart, CharType terminator);
         ALWAYS_INLINE TokenType lexNumber(LiteralParserToken<CharType>&);
+
+        String m_lexErrorMessage;
         LiteralParserToken<CharType> m_currentToken;
         ParserMode m_mode;
         const CharType* m_ptr;
@@ -191,16 +195,18 @@ private:
     class StackGuard;
     JSValue parse(ParserState);
 
-    JSGlobalObject* m_globalObject;
-    CodeBlock* m_nullOrCodeBlock;
+    JSValue parsePrimitiveValue(VM&);
+
+    ALWAYS_INLINE Identifier makeIdentifier(VM&, typename Lexer::LiteralParserTokenPtr);
+    ALWAYS_INLINE JSString* makeJSString(VM&, typename Lexer::LiteralParserTokenPtr);
+
+    void setErrorMessageForToken(TokenType);
+
+    JSGlobalObject* const m_globalObject;
+    CodeBlock* const m_nullOrCodeBlock;
     typename LiteralParser<CharType>::Lexer m_lexer;
-    ParserMode m_mode;
+    const ParserMode m_mode;
     String m_parseErrorMessage;
-    static unsigned const MaximumCachableCharacter = 128;
-    std::array<Identifier, MaximumCachableCharacter> m_shortIdentifiers;
-    std::array<Identifier, MaximumCachableCharacter> m_recentIdentifiers;
-    ALWAYS_INLINE const Identifier makeIdentifier(const LChar* characters, size_t length);
-    ALWAYS_INLINE const Identifier makeIdentifier(const UChar* characters, size_t length);
 };
 
 } // namespace JSC

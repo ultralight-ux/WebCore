@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2009, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,13 +38,14 @@
 namespace WebCore {
 using namespace JSC;
 
-// https://heycam.github.io/webidl/#call-a-user-objects-operation
+// https://webidl.spec.whatwg.org/#call-a-user-objects-operation
 JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject* callback, JSValue thisValue, MarkedArgumentBuffer& args, CallbackType method, PropertyName functionName, NakedPtr<JSC::Exception>& returnedException)
 {
     ASSERT(callback);
 
     JSGlobalObject* lexicalGlobalObject = &globalObject;
     VM& vm = lexicalGlobalObject->vm();
+
     auto scope = DECLARE_CATCH_SCOPE(vm);
 
     JSValue function;
@@ -52,7 +53,7 @@ JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject
 
     if (method != CallbackType::Object) {
         function = callback;
-        callData = getCallData(vm, callback);
+        callData = JSC::getCallData(callback);
     }
     if (callData.type == CallData::Type::None) {
         if (method == CallbackType::Function) {
@@ -68,7 +69,7 @@ JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject
             return JSValue();
         }
 
-        callData = getCallData(vm, function);
+        callData = JSC::getCallData(function);
         if (callData.type == CallData::Type::None) {
             returnedException = JSC::Exception::create(vm, createTypeError(lexicalGlobalObject, makeString("'", String(functionName.uid()), "' property of callback interface should be callable")));
             return JSValue();
@@ -95,12 +96,16 @@ JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject
     return result;
 }
 
-void JSCallbackDataWeak::visitJSFunction(JSC::SlotVisitor& vistor)
+template<typename Visitor>
+void JSCallbackDataWeak::visitJSFunction(Visitor& visitor)
 {
-    vistor.append(m_callback);
+    visitor.append(m_callback);
 }
 
-bool JSCallbackDataWeak::WeakOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, SlotVisitor& visitor, const char** reason)
+template void JSCallbackDataWeak::visitJSFunction(JSC::AbstractSlotVisitor&);
+template void JSCallbackDataWeak::visitJSFunction(JSC::SlotVisitor&);
+
+bool JSCallbackDataWeak::WeakOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, AbstractSlotVisitor& visitor, const char** reason)
 {
     if (UNLIKELY(reason))
         *reason = "Context is opaque root"; // FIXME: what is the context.

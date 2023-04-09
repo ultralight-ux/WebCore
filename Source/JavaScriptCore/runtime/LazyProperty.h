@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -90,6 +90,8 @@ public:
         return bitwise_cast<ElementType*>(pointer);
     }
 
+    bool isInitialized() const { return !(m_pointer & lazyTag); }
+
     ElementType* getInitializedOnMainThread(const OwnerType* owner) const
     {
         if (UNLIKELY(m_pointer & lazyTag)) {
@@ -103,7 +105,7 @@ public:
     void setMayBeNull(VM&, const OwnerType* owner, ElementType*);
     void set(VM&, const OwnerType* owner, ElementType*);
     
-    void visit(SlotVisitor&);
+    template<typename Visitor> void visit(Visitor&);
     
     void dump(PrintStream&) const;
     

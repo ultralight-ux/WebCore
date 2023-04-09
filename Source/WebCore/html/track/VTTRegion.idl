@@ -27,8 +27,9 @@
 [
     Conditional=VIDEO,
     JSGenerateToNativeObject,
+    Exposed=Window
 ] interface VTTRegion {
-    [CallWith=ScriptExecutionContext] constructor();
+    [CallWith=CurrentScriptExecutionContext] constructor();
 
     readonly attribute TextTrack track;
 
@@ -39,5 +40,5 @@
     attribute double regionAnchorY;
     attribute double viewportAnchorX;
     attribute double viewportAnchorY;
-    attribute DOMString scroll;
+    attribute [AtomString] DOMString scroll;
 };

@@ -30,13 +30,14 @@
 
 namespace WebCore {
 
+#if USE(SOUP2)
 URL soupURIToURL(SoupURI* soupURI)
 {
     if (!soupURI)
         return URL();
 
     GUniquePtr<gchar> urlString(soup_uri_to_string(soupURI, FALSE));
-    URL url(URL(), String::fromUTF8(urlString.get()));
+    URL url { String::fromUTF8(urlString.get()) };
     if (url.isValid()) {
         // Motivated by https://bugs.webkit.org/show_bug.cgi?id=38956. libsoup
         // does not add the password to the URL when calling
@@ -57,5 +58,18 @@ GUniquePtr<SoupURI> urlToSoupURI(const URL& url)
 
     return GUniquePtr<SoupURI>(soup_uri_new(url.string().utf8().data()));
 }
+
+#else // !USE(SOUP2)
+
+URL soupURIToURL(GUri* uri)
+{
+    return uri;
+}
+
+GRefPtr<GUri> urlToSoupURI(const URL& url)
+{
+    return url.createGUri();
+}
+#endif // USE(SOUP2)
 
 } // namespace WebCore

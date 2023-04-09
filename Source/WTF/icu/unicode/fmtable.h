@@ -19,6 +19,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 /**
  * \file
  * \brief C++ API: Formattable is a thin wrapper for primitive types used for formatting and parsing
@@ -658,7 +660,7 @@ public:
     /**
      *  Adopt, and set value from, a DecimalQuantity
      *     Internal Function, do not use.
-     *  @param dl the DecimalQuantity to be adopted
+     *  @param dq the DecimalQuantity to be adopted
      *  @internal
      */
     void adoptDecimalQuantity(number::impl::DecimalQuantity *dq);
@@ -750,6 +752,8 @@ inline const Formattable* Formattable::fromUFormattable(const UFormattable *fmt)
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif //_FMTABLE
 //eof

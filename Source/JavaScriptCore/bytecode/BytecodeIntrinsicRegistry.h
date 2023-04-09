@@ -28,6 +28,7 @@
 
 #include "Identifier.h"
 #include <wtf/Noncopyable.h>
+#include <wtf/RobinHoodHashMap.h>
 
 namespace JSC {
 
@@ -40,12 +41,15 @@ enum class LinkTimeConstant : int32_t;
 #define JSC_COMMON_BYTECODE_INTRINSIC_FUNCTIONS_EACH_NAME(macro) \
     macro(argument) \
     macro(argumentCount) \
+    macro(arrayPush) \
     macro(getByIdDirect) \
     macro(getByIdDirectPrivate) \
+    macro(getByValWithThis) \
     macro(getPrototypeOf) \
     macro(getPromiseInternalField) \
     macro(getGeneratorInternalField) \
     macro(getAsyncGeneratorInternalField) \
+    macro(getAbstractModuleRecordInternalField) \
     macro(getArrayIteratorInternalField) \
     macro(getStringIteratorInternalField) \
     macro(getMapIteratorInternalField) \
@@ -63,6 +67,7 @@ enum class LinkTimeConstant : int32_t;
     macro(isRegExpObject) \
     macro(isMap) \
     macro(isSet) \
+    macro(isShadowRealm) \
     macro(isStringIterator) \
     macro(isArrayIterator) \
     macro(isMapIterator) \
@@ -86,12 +91,13 @@ enum class LinkTimeConstant : int32_t;
     macro(putSetIteratorInternalField) \
     macro(toNumber) \
     macro(toString) \
+    macro(toPropertyKey) \
     macro(toObject) \
     macro(newArrayWithSize) \
+    macro(newArrayWithSpecies) \
     macro(newPromise) \
     macro(createPromise) \
     macro(createArgumentsButterfly) \
-    macro(defineEnumerableWritableConfigurableDataProperty) \
 
 #define JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_EACH_NAME(macro) \
     JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_SIMPLE_EACH_NAME(macro) \
@@ -126,6 +132,7 @@ enum class LinkTimeConstant : int32_t;
     macro(generatorFieldNext) \
     macro(generatorFieldThis) \
     macro(generatorFieldFrame) \
+    macro(generatorFieldContext) \
     macro(GeneratorResumeModeNormal) \
     macro(GeneratorResumeModeThrow) \
     macro(GeneratorResumeModeReturn) \
@@ -151,6 +158,7 @@ enum class LinkTimeConstant : int32_t;
     macro(AsyncGeneratorSuspendReasonYield) \
     macro(AsyncGeneratorSuspendReasonAwait) \
     macro(AsyncGeneratorSuspendReasonNone) \
+    macro(abstractModuleRecordFieldState) \
 
 #define JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_CUSTOM_EACH_NAME(macro) \
     macro(sentinelMapBucket) \
@@ -201,7 +209,7 @@ public:
         Type m_type;
     };
 
-    Optional<Entry> lookup(const Identifier&) const;
+    std::optional<Entry> lookup(const Identifier&) const;
 
 #define JSC_DECLARE_BYTECODE_INTRINSIC_CONSTANT_GENERATORS(name) JSValue name##Value(BytecodeGenerator&);
     JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_EACH_NAME(JSC_DECLARE_BYTECODE_INTRINSIC_CONSTANT_GENERATORS)
@@ -209,7 +217,7 @@ public:
 
 private:
     VM& m_vm;
-    HashMap<RefPtr<UniquedStringImpl>, Entry, IdentifierRepHash> m_bytecodeIntrinsicMap;
+    MemoryCompactLookupOnlyRobinHoodHashMap<RefPtr<UniquedStringImpl>, Entry, IdentifierRepHash> m_bytecodeIntrinsicMap;
 
 #define JSC_DECLARE_BYTECODE_INTRINSIC_CONSTANT_GENERATORS(name) Strong<Unknown> m_##name;
     JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_SIMPLE_EACH_NAME(JSC_DECLARE_BYTECODE_INTRINSIC_CONSTANT_GENERATORS)

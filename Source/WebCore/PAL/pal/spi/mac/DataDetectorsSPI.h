@@ -39,7 +39,19 @@
 #import <DataDetectors/DDActionsManager.h>
 #import <DataDetectors/DDHighlightDrawing.h>
 
+#if HAVE(DATA_DETECTORS_MAC_ACTION)
+#import <DataDetectors/DDMacAction.h>
+#endif
+
 #else // !USE(APPLE_INTERNAL_SDK)
+
+#if HAVE(DATA_DETECTORS_MAC_ACTION)
+@interface DDAction : NSObject
+@property (readonly) NSString *actionUTI;
+@end
+@interface DDMacAction : DDAction
+@end
+#endif
 
 @interface DDActionContext : NSObject <NSCopying, NSSecureCoding>
 
@@ -87,41 +99,22 @@ enum {
 
 #endif // !USE(APPLE_INTERNAL_SDK)
 
-#if PLATFORM(MAC)
-
 WTF_EXTERN_C_BEGIN
 CFTypeID DDResultGetCFTypeID(void);
 WTF_EXTERN_C_END
 
-#endif
-
 typedef struct __DDHighlight *DDHighlightRef;
 typedef NSUInteger DDHighlightStyle;
 
+#if !HAVE(DATA_DETECTORS_MAC_ACTION)
+
 @interface DDAction : NSObject
-
 @property (readonly) NSString *actionUTI;
-
 @end
 
-SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(DataDetectors)
-SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(DataDetectorsCore)
+#endif // !HAVE(DATA_DETECTORS_MAC_ACTION)
 
-SOFT_LINK_CLASS_OPTIONAL(DataDetectors, DDAction)
-SOFT_LINK_CLASS_OPTIONAL(DataDetectors, DDActionContext)
-SOFT_LINK_CLASS_OPTIONAL(DataDetectors, DDActionsManager)
+#endif // PLATFORM(MAC)
 
-SOFT_LINK_CONSTANT(DataDetectorsCore, DDBinderPhoneNumberKey, CFStringRef)
-#if HAVE(DD_HIGHLIGHT_CREATE_WITH_SCALE)
-SOFT_LINK(DataDetectors, DDHighlightCreateWithRectsInVisibleRectWithStyleScaleAndDirection, DDHighlightRef, (CFAllocatorRef allocator, CGRect* rects, CFIndex count, CGRect globalVisibleRect, DDHighlightStyle style, Boolean withButton, NSWritingDirection writingDirection, Boolean endsWithEOL, Boolean flipped, CGFloat scale), (allocator, rects, count, globalVisibleRect, style, withButton, writingDirection, endsWithEOL, flipped, scale))
-#else
-SOFT_LINK(DataDetectors, DDHighlightCreateWithRectsInVisibleRectWithStyleAndDirection, DDHighlightRef, (CFAllocatorRef allocator, CGRect* rects, CFIndex count, CGRect globalVisibleRect, DDHighlightStyle style, Boolean withArrow, NSWritingDirection writingDirection, Boolean endsWithEOL, Boolean flipped), (allocator, rects, count, globalVisibleRect, style, withArrow, writingDirection, endsWithEOL, flipped))
-#endif
-SOFT_LINK(DataDetectors, DDHighlightGetLayerWithContext, CGLayerRef, (DDHighlightRef highlight, CGContextRef context), (highlight, context))
-SOFT_LINK(DataDetectors, DDHighlightGetBoundingRect, CGRect, (DDHighlightRef highlight), (highlight))
-SOFT_LINK(DataDetectors, DDHighlightPointIsOnHighlight, Boolean, (DDHighlightRef highlight, CGPoint point, Boolean* onButton), (highlight, point, onButton))
-
-#endif
-
-#endif
+#endif // ENABLE(DATA_DETECTION)
 

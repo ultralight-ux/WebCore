@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,8 @@
 #if JSC_OBJC_API_ENABLED
 
 #import "APICast.h"
-#import "DFGWorklist.h"
+#import "IntegrityInlines.h"
+#import "JITWorklist.h"
 #import "JSManagedValueInternal.h"
 #import "JSVirtualMachineInternal.h"
 #import "JSVirtualMachinePrivate.h"
@@ -38,7 +39,6 @@
 #import "SigillCrashAnalyzer.h"
 #import "SlotVisitorInlines.h"
 #import <mutex>
-#import <wtf/BlockPtr.h>
 #import <wtf/Lock.h>
 #import <wtf/RetainPtr.h>
 
@@ -54,7 +54,7 @@ static void initWrapperCache()
     globalWrapperCache = [[NSMapTable alloc] initWithKeyOptions:keyOptions valueOptions:valueOptions capacity:0];
 }
 
-static NSMapTable *wrapperCache()
+static NSMapTable *wrapperCache() WTF_REQUIRES_LOCK(wrapperCacheMutex)
 {
     if (!globalWrapperCache)
         initWrapperCache();
@@ -70,13 +70,13 @@ static NSMapTable *wrapperCache()
 
 + (void)addWrapper:(JSVirtualMachine *)wrapper forJSContextGroupRef:(JSContextGroupRef)group
 {
-    auto locker = holdLock(wrapperCacheMutex);
+    Locker locker { wrapperCacheMutex };
     NSMapInsert(wrapperCache(), group, (__bridge void*)wrapper);
 }
 
 + (JSVirtualMachine *)wrapperForJSContextGroupRef:(JSContextGroupRef)group
 {
-    auto locker = holdLock(wrapperCacheMutex);
+    Locker locker { wrapperCacheMutex };
     return (__bridge JSVirtualMachine *)NSMapGet(wrapperCache(), group);
 }
 
@@ -85,9 +85,9 @@ static NSMapTable *wrapperCache()
 @implementation JSVirtualMachine {
     JSContextGroupRef m_group;
     Lock m_externalDataMutex;
-    NSMapTable *m_contextCache;
-    NSMapTable *m_externalObjectGraph;
-    NSMapTable *m_externalRememberedSet;
+    RetainPtr<NSMapTable> m_contextCache;
+    RetainPtr<NSMapTable> m_externalObjectGraph;
+    RetainPtr<NSMapTable> m_externalRememberedSet;
 }
 
 - (instancetype)init
@@ -109,14 +109,14 @@ static NSMapTable *wrapperCache()
     
     NSPointerFunctionsOptions keyOptions = NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality;
     NSPointerFunctionsOptions valueOptions = NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPersonality;
-    m_contextCache = [[NSMapTable alloc] initWithKeyOptions:keyOptions valueOptions:valueOptions capacity:0];
+    m_contextCache = adoptNS([[NSMapTable alloc] initWithKeyOptions:keyOptions valueOptions:valueOptions capacity:0]);
     
     NSPointerFunctionsOptions weakIDOptions = NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPersonality;
     NSPointerFunctionsOptions strongIDOptions = NSPointerFunctionsStrongMemory | NSPointerFunctionsObjectPersonality;
-    m_externalObjectGraph = [[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:strongIDOptions capacity:0];
+    m_externalObjectGraph = adoptNS([[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:strongIDOptions capacity:0]);
 
     NSPointerFunctionsOptions integerOptions = NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality;
-    m_externalRememberedSet = [[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:integerOptions capacity:0];
+    m_externalRememberedSet = adoptNS([[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:integerOptions capacity:0]);
    
     [JSVMWrapperCache addWrapper:self forJSContextGroupRef:group];
  
@@ -126,9 +126,6 @@ static NSMapTable *wrapperCache()
 - (void)dealloc
 {
     JSContextGroupRelease(m_group);
-    [m_contextCache release];
-    [m_externalObjectGraph release];
-    [m_externalRememberedSet release];
     [super dealloc];
 }
 
@@ -160,70 +157,74 @@ static id getInternalObjcObject(id object)
 
 - (void)addExternalRememberedObject:(id)object
 {
-    auto locker = holdLock(m_externalDataMutex);
+    Locker locker { m_externalDataMutex };
     ASSERT([self isOldExternalObject:object]);
     [m_externalRememberedSet setObject:@YES forKey:object];
 }
 
 - (void)addManagedReference:(id)object withOwner:(id)owner
-{    
-    if ([object isKindOfClass:[JSManagedValue class]])
-        [object didAddOwner:owner];
-        
-    object = getInternalObjcObject(object);
-    owner = getInternalObjcObject(owner);
-    
-    if (!object || !owner)
-        return;
-    
-    JSC::JSLockHolder locker(toJS(m_group));
-    if ([self isOldExternalObject:owner] && ![self isOldExternalObject:object])
-        [self addExternalRememberedObject:owner];
- 
-    auto externalDataMutexLocker = holdLock(m_externalDataMutex);
-    RetainPtr<NSMapTable> ownedObjects = [m_externalObjectGraph objectForKey:owner];
-    if (!ownedObjects) {
-        NSPointerFunctionsOptions weakIDOptions = NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPersonality;
-        NSPointerFunctionsOptions integerOptions = NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality;
-        ownedObjects = adoptNS([[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:integerOptions capacity:1]);
+{
+    @autoreleasepool {
+        if ([object isKindOfClass:[JSManagedValue class]])
+            [object didAddOwner:owner];
 
-        [m_externalObjectGraph setObject:ownedObjects.get() forKey:owner];
+        object = getInternalObjcObject(object);
+        owner = getInternalObjcObject(owner);
+
+        if (!object || !owner)
+            return;
+
+        JSC::JSLockHolder locker(toJS(m_group));
+        if ([self isOldExternalObject:owner] && ![self isOldExternalObject:object])
+            [self addExternalRememberedObject:owner];
+
+        Locker externalDataMutexLocker { m_externalDataMutex };
+        RetainPtr<NSMapTable> ownedObjects = [m_externalObjectGraph objectForKey:owner];
+        if (!ownedObjects) {
+            NSPointerFunctionsOptions weakIDOptions = NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPersonality;
+            NSPointerFunctionsOptions integerOptions = NSPointerFunctionsOpaqueMemory | NSPointerFunctionsIntegerPersonality;
+            ownedObjects = adoptNS([[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:integerOptions capacity:1]);
+
+            [m_externalObjectGraph setObject:ownedObjects.get() forKey:owner];
+        }
+
+        size_t count = reinterpret_cast<size_t>(NSMapGet(ownedObjects.get(), (__bridge void*)object));
+        NSMapInsert(ownedObjects.get(), (__bridge void*)object, reinterpret_cast<void*>(count + 1));
     }
-
-    size_t count = reinterpret_cast<size_t>(NSMapGet(ownedObjects.get(), (__bridge void*)object));
-    NSMapInsert(ownedObjects.get(), (__bridge void*)object, reinterpret_cast<void*>(count + 1));
 }
 
 - (void)removeManagedReference:(id)object withOwner:(id)owner
 {
-    if ([object isKindOfClass:[JSManagedValue class]])
-        [object didRemoveOwner:owner];
+    @autoreleasepool {
+        if ([object isKindOfClass:[JSManagedValue class]])
+            [object didRemoveOwner:owner];
 
-    object = getInternalObjcObject(object);
-    owner = getInternalObjcObject(owner);
-    
-    if (!object || !owner)
-        return;
-    
-    JSC::JSLockHolder locker(toJS(m_group));
-    
-    auto externalDataMutexLocker = holdLock(m_externalDataMutex);
-    NSMapTable *ownedObjects = [m_externalObjectGraph objectForKey:owner];
-    if (!ownedObjects)
-        return;
-   
-    size_t count = reinterpret_cast<size_t>(NSMapGet(ownedObjects, (__bridge void*)object));
-    if (count > 1) {
-        NSMapInsert(ownedObjects, (__bridge void*)object, reinterpret_cast<void*>(count - 1));
-        return;
-    }
-    
-    if (count == 1)
-        NSMapRemove(ownedObjects, (__bridge void*)object);
+        object = getInternalObjcObject(object);
+        owner = getInternalObjcObject(owner);
 
-    if (![ownedObjects count]) {
-        [m_externalObjectGraph removeObjectForKey:owner];
-        [m_externalRememberedSet removeObjectForKey:owner];
+        if (!object || !owner)
+            return;
+
+        JSC::JSLockHolder locker(toJS(m_group));
+
+        Locker externalDataMutexLocker { m_externalDataMutex };
+        NSMapTable *ownedObjects = [m_externalObjectGraph objectForKey:owner];
+        if (!ownedObjects)
+            return;
+
+        size_t count = reinterpret_cast<size_t>(NSMapGet(ownedObjects, (__bridge void*)object));
+        if (count > 1) {
+            NSMapInsert(ownedObjects, (__bridge void*)object, reinterpret_cast<void*>(count - 1));
+            return;
+        }
+
+        if (count == 1)
+            NSMapRemove(ownedObjects, (__bridge void*)object);
+
+        if (![ownedObjects count]) {
+            [m_externalObjectGraph removeObjectForKey:owner];
+            [m_externalRememberedSet removeObjectForKey:owner];
+        }
     }
 }
 
@@ -238,20 +239,20 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
 
 + (JSVirtualMachine *)virtualMachineWithContextGroupRef:(JSContextGroupRef)group
 {
-    JSVirtualMachine *virtualMachine = [JSVMWrapperCache wrapperForJSContextGroupRef:group];
+    auto virtualMachine = retainPtr([JSVMWrapperCache wrapperForJSContextGroupRef:group]);
     if (!virtualMachine)
-        virtualMachine = [[[JSVirtualMachine alloc] initWithContextGroupRef:group] autorelease];
-    return virtualMachine;
+        virtualMachine = adoptNS([[JSVirtualMachine alloc] initWithContextGroupRef:group]);
+    return virtualMachine.autorelease();
 }
 
 - (JSContext *)contextForGlobalContextRef:(JSGlobalContextRef)globalContext
 {
-    return (__bridge JSContext *)NSMapGet(m_contextCache, globalContext);
+    return (__bridge JSContext *)NSMapGet(m_contextCache.get(), globalContext);
 }
 
 - (void)addContext:(JSContext *)wrapper forGlobalContextRef:(JSGlobalContextRef)globalContext
 {
-    NSMapInsert(m_contextCache, globalContext, (__bridge void*)wrapper);
+    NSMapInsert(m_contextCache.get(), globalContext, (__bridge void*)wrapper);
 }
 
 - (Lock&)externalDataMutex
@@ -261,12 +262,12 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
 
 - (NSMapTable *)externalObjectGraph
 {
-    return m_externalObjectGraph;
+    return m_externalObjectGraph.get();
 }
 
 - (NSMapTable *)externalRememberedSet
 {
-    return m_externalRememberedSet;
+    return m_externalRememberedSet.get();
 }
 
 - (void)shrinkFootprintWhenIdle
@@ -276,27 +277,23 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
     vm->shrinkFootprintWhenIdle();
 }
 
-#if ENABLE(DFG_JIT)
-
 + (NSUInteger)setNumberOfDFGCompilerThreads:(NSUInteger)numberOfThreads
 {
-    JSC::DFG::Worklist* worklist = JSC::DFG::existingGlobalDFGWorklistOrNull();
-    if (worklist)
-        return worklist->setNumberOfThreads(numberOfThreads, JSC::Options::priorityDeltaOfDFGCompilerThreads());
-    else
-        return JSC::DFG::setNumberOfDFGCompilerThreads(numberOfThreads);
+#if ENABLE(DFG_JIT)
+    return JSC::JITWorklist::ensureGlobalWorklist().setMaximumNumberOfConcurrentDFGCompilations(numberOfThreads);
+#else
+    return 0;
+#endif // ENABLE(DFG_JIT)
 }
 
 + (NSUInteger)setNumberOfFTLCompilerThreads:(NSUInteger)numberOfThreads
 {
-    JSC::DFG::Worklist* worklist = JSC::DFG::existingGlobalFTLWorklistOrNull();
-    if (worklist)
-        return worklist->setNumberOfThreads(numberOfThreads, JSC::Options::priorityDeltaOfFTLCompilerThreads());
-    else
-        return JSC::DFG::setNumberOfFTLCompilerThreads(numberOfThreads);
-}
-
+#if ENABLE(DFG_JIT)
+    return JSC::JITWorklist::ensureGlobalWorklist().setMaximumNumberOfConcurrentFTLCompilations(numberOfThreads);
+#else
+    return 0;
 #endif // ENABLE(DFG_JIT)
+}
 
 - (JSContextGroupRef)JSContextGroupRef
 {
@@ -316,7 +313,7 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
 
 @end
 
-static void scanExternalObjectGraph(JSC::VM& vm, JSC::SlotVisitor& visitor, void* root, bool lockAcquired)
+static void scanExternalObjectGraph(JSC::VM& vm, JSC::AbstractSlotVisitor& visitor, void* root, bool lockAcquired)
 {
     @autoreleasepool {
         JSVirtualMachine *virtualMachine = [JSVMWrapperCache wrapperForJSContextGroupRef:toRef(&vm)];
@@ -341,27 +338,27 @@ static void scanExternalObjectGraph(JSC::VM& vm, JSC::SlotVisitor& visitor, void
             if (lockAcquired)
                 appendOwnedObjects();
             else {
-                auto locker = holdLock(externalDataMutex);
+                Locker locker { externalDataMutex };
                 appendOwnedObjects();
             }
         }
     }
 }
 
-void scanExternalObjectGraph(JSC::VM& vm, JSC::SlotVisitor& visitor, void* root)
+void scanExternalObjectGraph(JSC::VM& vm, JSC::AbstractSlotVisitor& visitor, void* root)
 {
     bool lockAcquired = false;
     scanExternalObjectGraph(vm, visitor, root, lockAcquired);
 }
 
-void scanExternalRememberedSet(JSC::VM& vm, JSC::SlotVisitor& visitor)
+void scanExternalRememberedSet(JSC::VM& vm, JSC::AbstractSlotVisitor& visitor)
 {
     @autoreleasepool {
         JSVirtualMachine *virtualMachine = [JSVMWrapperCache wrapperForJSContextGroupRef:toRef(&vm)];
         if (!virtualMachine)
             return;
         Lock& externalDataMutex = [virtualMachine externalDataMutex];
-        auto locker = holdLock(externalDataMutex);
+        Locker locker { externalDataMutex };
         NSMapTable *externalObjectGraph = [virtualMachine externalObjectGraph];
         NSMapTable *externalRememberedSet = [virtualMachine externalRememberedSet];
         for (id key in externalRememberedSet) {

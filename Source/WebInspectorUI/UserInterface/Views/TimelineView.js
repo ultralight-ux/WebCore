@@ -32,6 +32,7 @@ WI.TimelineView = class TimelineView extends WI.ContentView
 
         // This class should not be instantiated directly. Create a concrete subclass instead.
         console.assert(this.constructor !== WI.TimelineView && this instanceof WI.TimelineView);
+        console.assert(this.constructor.ReferencePage, this);
 
         this.element.classList.add("timeline-view");
 
@@ -230,15 +231,6 @@ WI.TimelineView = class TimelineView extends WI.ContentView
         return true;
     }
 
-    needsLayout()
-    {
-        // FIXME: needsLayout can be removed once <https://webkit.org/b/150741> is fixed.
-        if (!this.visible)
-            return;
-
-        super.needsLayout();
-    }
-
     // DataGrid filter delegate
 
     dataGridMatchNodeAgainstCustomFilters(node)
@@ -301,6 +293,13 @@ WI.TimelineView = class TimelineView extends WI.ContentView
 
     // Protected
 
+    initialLayout()
+    {
+        super.initialLayout();
+
+        this.element.appendChild(this.constructor.ReferencePage.createLinkElement());
+    }
+
     filterDidChange()
     {
         // Implemented by sub-classes if needed.
@@ -346,4 +345,5 @@ WI.TimelineView.Event = {
     ScannerShow: "timeline-view-scanner-show",
     ScannerHide: "timeline-view-scanner-hide",
     NeedsEntireSelectedRange: "timeline-view-needs-entire-selected-range",
+    NeedsFiltersCleared: "timeline-view-needs-filters-cleared",
 };

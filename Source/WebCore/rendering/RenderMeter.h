@@ -20,8 +20,6 @@
 
 #pragma once
 
-#if ENABLE(METER_ELEMENT)
-
 #include "RenderBlockFlow.h"
 
 namespace WebCore {
@@ -41,12 +39,10 @@ private:
     void updateLogicalWidth() override;
     LogicalExtentComputedValues computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop) const override;
 
-    const char* renderName() const override { return "RenderMeter"; }
+    ASCIILiteral renderName() const override { return "RenderMeter"_s; }
     bool isMeter() const override { return true; }
 };
 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderMeter, isMeter())
-
-#endif // ENABLE(METER_ELEMENT)

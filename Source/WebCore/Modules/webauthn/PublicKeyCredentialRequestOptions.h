@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,65 +26,26 @@
 #pragma once
 
 #if ENABLE(WEB_AUTHN)
-
 #include "AuthenticationExtensionsClientInputs.h"
+#include "AuthenticatorAttachment.h"
 #include "BufferSource.h"
 #include "PublicKeyCredentialDescriptor.h"
 #include "UserVerificationRequirement.h"
 #include <wtf/Forward.h>
+#endif // ENABLE(WEB_AUTHN)
 
 namespace WebCore {
 
 struct PublicKeyCredentialRequestOptions {
+#if ENABLE(WEB_AUTHN)
     BufferSource challenge;
-    Optional<unsigned> timeout;
+    std::optional<unsigned> timeout;
     mutable String rpId;
     Vector<PublicKeyCredentialDescriptor> allowCredentials;
     UserVerificationRequirement userVerification { UserVerificationRequirement::Preferred };
-    mutable Optional<AuthenticationExtensionsClientInputs> extensions;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<PublicKeyCredentialRequestOptions> decode(Decoder&);
+    mutable std::optional<AuthenticationExtensionsClientInputs> extensions;
+    std::optional<AuthenticatorAttachment> authenticatorAttachment { }; // Not serialized over IPC.
+#endif // ENABLE(WEB_AUTHN)
 };
 
-// Not every member is encoded.
-template<class Encoder>
-void PublicKeyCredentialRequestOptions::encode(Encoder& encoder) const
-{
-    encoder << timeout << rpId << allowCredentials << userVerification << extensions;
-}
-
-template<class Decoder>
-Optional<PublicKeyCredentialRequestOptions> PublicKeyCredentialRequestOptions::decode(Decoder& decoder)
-{
-    PublicKeyCredentialRequestOptions result;
-
-    Optional<Optional<unsigned>> timeout;
-    decoder >> timeout;
-    if (!timeout)
-        return WTF::nullopt;
-    result.timeout = WTFMove(*timeout);
-
-    if (!decoder.decode(result.rpId))
-        return WTF::nullopt;
-    if (!decoder.decode(result.allowCredentials))
-        return WTF::nullopt;
-
-    Optional<UserVerificationRequirement> userVerification;
-    decoder >> userVerification;
-    if (!userVerification)
-        return WTF::nullopt;
-    result.userVerification = WTFMove(*userVerification);
-
-    Optional<Optional<AuthenticationExtensionsClientInputs>> extensions;
-    decoder >> extensions;
-    if (!extensions)
-        return WTF::nullopt;
-    result.extensions = WTFMove(*extensions);
-
-    return result;
-}
-
 } // namespace WebCore
-
-#endif // ENABLE(WEB_AUTHN)

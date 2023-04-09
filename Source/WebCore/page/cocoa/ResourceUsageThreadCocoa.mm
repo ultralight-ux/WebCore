@@ -117,11 +117,11 @@ static Vector<ThreadInfo> threadInfos()
             usage = threadBasicInfo->cpu_usage / static_cast<float>(TH_USAGE_SCALE) * 100.0;
 
         // FIXME: dispatch_queue_t can be destroyed concurrently while we are accessing to it here. We should not use it.
-        String threadName = String(threadExtendedInfo.pth_name);
+        auto threadName = String::fromLatin1(threadExtendedInfo.pth_name);
         String dispatchQueueName;
         if (threadIdentifierInfo.dispatch_qaddr) {
             dispatch_queue_t queue = *reinterpret_cast<dispatch_queue_t*>(threadIdentifierInfo.dispatch_qaddr);
-            dispatchQueueName = String(dispatch_queue_get_label(queue));
+            dispatchQueueName = String::fromLatin1(dispatch_queue_get_label(queue));
         }
 
         infos.append(ThreadInfo { WTFMove(sendRight), usage, threadName, dispatchQueueName });
@@ -136,7 +136,12 @@ static Vector<ThreadInfo> threadInfos()
 void ResourceUsageThread::platformSaveStateBeforeStarting()
 {
 #if ENABLE(SAMPLING_PROFILER)
-    m_samplingProfilerMachThread = m_vm->samplingProfiler() ? m_vm->samplingProfiler()->machThread() : MACH_PORT_NULL;
+    m_samplingProfilerMachThread = MACH_PORT_NULL;
+
+    if (auto* profiler = m_vm->samplingProfiler()) {
+        if (auto* thread = profiler->thread())
+            m_samplingProfilerMachThread = thread->machThread();
+    }
 #endif
 }
 
@@ -149,31 +154,31 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
     }
 
     // Main thread is always first.
-    ASSERT(threads[0].dispatchQueueName == "com.apple.main-thread");
+    ASSERT(threads[0].dispatchQueueName == "com.apple.main-thread"_s);
 
     mach_port_t resourceUsageMachThread = mach_thread_self();
     mach_port_t mainThreadMachThread = threads[0].sendRight.sendRight();
 
     HashSet<mach_port_t> knownWebKitThreads;
     {
-        auto locker = holdLock(Thread::allThreadsMutex());
-        for (auto* thread : Thread::allThreads(locker)) {
+        Locker locker { Thread::allThreadsLock() };
+        for (auto* thread : Thread::allThreads()) {
             mach_port_t machThread = thread->machThread();
-            if (machThread != MACH_PORT_NULL)
+            if (MACH_PORT_VALID(machThread))
                 knownWebKitThreads.add(machThread);
         }
     }
 
     HashMap<mach_port_t, String> knownWorkerThreads;
     {
-        LockHolder lock(WorkerThread::workerThreadsMutex());
-        for (auto* thread : WorkerThread::workerThreads(lock)) {
+        Locker locker { WorkerOrWorkletThread::workerOrWorkletThreadsLock() };
+        for (auto* thread : WorkerOrWorkletThread::workerOrWorkletThreads()) {
             // Ignore worker threads that have not been fully started yet.
             if (!thread->thread())
                 continue;
             mach_port_t machThread = thread->thread()->machThread();
-            if (machThread != MACH_PORT_NULL)
-                knownWorkerThreads.set(machThread, thread->identifier().isolatedCopy());
+            if (MACH_PORT_VALID(machThread))
+                knownWorkerThreads.set(machThread, thread->inspectorIdentifier().isolatedCopy());
         }
     }
 
@@ -194,13 +199,13 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
             return true;
 
         // The bmalloc scavenger thread is below WTF. Detect it by its name.
-        if (thread.threadName == "JavaScriptCore bmalloc scavenger")
+        if (thread.threadName == "JavaScriptCore bmalloc scavenger"_s)
             return true;
 
         // WebKit uses many WorkQueues with common prefixes.
-        if (thread.dispatchQueueName.startsWith("com.apple.IPC.")
-            || thread.dispatchQueueName.startsWith("com.apple.WebKit.")
-            || thread.dispatchQueueName.startsWith("org.webkit."))
+        if (thread.dispatchQueueName.startsWith("com.apple.IPC."_s)
+            || thread.dispatchQueueName.startsWith("com.apple.WebKit."_s)
+            || thread.dispatchQueueName.startsWith("org.webkit."_s))
             return true;
 
         return false;
@@ -267,8 +272,8 @@ void ResourceUsageThread::platformCollectMemoryData(JSC::VM* vm, ResourceUsageDa
 
     data.totalExternalSize = currentGCOwnedExternal;
 
-    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
-    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
 }
 
 }

@@ -40,7 +40,8 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
         this._showsImplicitProperties = false;
         this._alwaysShowPropertyNames = new Set;
-        this._propertyVisibilityMode = WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.ShowAll;
+        this._propertyVisibilityMode = WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideUnusedInheritedVariables;
+        this._hiddenUnusedVariables = new Set;
         this._hideFilterNonMatchingProperties = false;
         this._sortPropertiesByName = false;
 
@@ -69,6 +70,8 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         }, true);
 
         this.element.addEventListener("keydown", this._handleKeyDown.bind(this));
+        this.element.addEventListener("cut", this._handleCut.bind(this));
+        this.element.addEventListener("copy", this._handleCopy.bind(this));
     }
 
     layout()
@@ -86,7 +89,6 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
             this._style.updatePropertiesModifiedState();
 
         let properties = this.propertiesToRender;
-        this.element.classList.toggle("no-properties", !properties.length);
 
         // FIXME: Only re-layout properties that have been modified and preserve focus whenever possible.
         this._propertyViews = [];
@@ -94,13 +96,33 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         let propertyViewPendingStartEditing = null;
         for (let index = 0; index < properties.length; index++) {
             let property = properties[index];
-            let propertyView = new WI.SpreadsheetStyleProperty(this, property);
+            let propertyView = new WI.SpreadsheetStyleProperty(this, property, {selectable: true});
             propertyView.index = index;
             this.element.append(propertyView.element);
             this._propertyViews.push(propertyView);
 
             if (property === this._propertyPendingStartEditing)
                 propertyViewPendingStartEditing = propertyView;
+        }
+
+        if (this._hiddenUnusedVariables.size) {
+            let showHiddenVariablesButtonElement = this.element.appendChild(document.createElement("button"));
+            showHiddenVariablesButtonElement.classList.add("hidden-variables-button");
+            showHiddenVariablesButtonElement.title = WI.UIString("Option-click to show unused CSS variables from all rules", "Option-click to show unused CSS variables from all rules @ Styles Sidebar Panel Tooltip", "Tooltip with instructions on how to show all hidden CSS variables");
+
+            const labelSingular = WI.UIString("Show %d unused CSS variable", "Show %d unused CSS variable (singular) @ Styles Sidebar Panel", "Text label for button to reveal one unused CSS variable");
+            const labelPlural = WI.UIString("Show %d unused CSS variables", "Show %d unused CSS variables (plural) @ Styles Sidebar Panel", "Text label for button to reveal multiple unused CSS variables");
+            let label = this._hiddenUnusedVariables.size > 1 ? labelPlural : labelSingular;
+
+            showHiddenVariablesButtonElement.textContent = label.format(this._hiddenUnusedVariables.size);
+            showHiddenVariablesButtonElement.addEventListener("click", (event) => {
+                if (event.altKey) {
+                    this._setAllPropertyVisibilityMode(WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.ShowAll);
+                    return;
+                }
+
+                this.propertyVisibilityMode = WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.ShowAll;
+            });
         }
 
         if (propertyViewPendingStartEditing) {
@@ -116,6 +138,11 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         else if (this.hasSelectedProperties())
             this.selectProperties(this._anchorIndex, this._focusIndex);
 
+        if (this._pendingPropertyToHighlight) {
+            this.highlightProperty(this._pendingPropertyToHighlight);
+            this._pendingPropertyToHighlight = null;
+        }
+
         this._updateDebugLockStatus();
     }
 
@@ -126,12 +153,8 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
         for (let propertyView of this._propertyViews)
             propertyView.detached();
-    }
 
-    hidden()
-    {
-        for (let propertyView of this._propertyViews)
-            propertyView.hidden();
+        super.detached();
     }
 
     get style()
@@ -229,15 +252,29 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         else
             properties = this._style.properties;
 
+        if (this._style.inherited)
+            properties = properties.filter((property) => property.inherited || property.isNewProperty);
+
         if (this._sortPropertiesByName)
-            properties.sort((a, b) => a.name.extendedLocaleCompare(b.name));
+            properties.sort((a, b) => WI.CSSProperty.sortPreferringNonPrefixed(a.name, b.name));
+
+        let hideVariables = this._propertyVisibilityMode === SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideVariables;
+        let hideNonVariables = this._propertyVisibilityMode === SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideNonVariables;
+        let hideUnusedInheritedVariables = this._propertyVisibilityMode === SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideUnusedInheritedVariables;
+
+        this._hiddenUnusedVariables = new Set;
 
         return properties.filter((property) => {
-            if (!property.variable && this._propertyVisibilityMode === WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideNonVariables)
+            if (!property.isVariable && hideNonVariables)
                 return false;
 
-            if (property.variable && this._propertyVisibilityMode === WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideVariables)
+            if (property.isVariable && hideVariables)
                 return false;
+
+            if (property.isVariable && hideUnusedInheritedVariables && this._style.inherited && !this._style.nodeStyles.usedCSSVariables.has(property.name)) {
+                this._hiddenUnusedVariables.add(property);
+                return false;
+            }
 
             return !property.implicit || this._showsImplicitProperties || this._alwaysShowPropertyNames.has(property.canonicalName);
         });
@@ -274,16 +311,22 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
     highlightProperty(property)
     {
-        let propertiesMatch = (cssProperty) => {
+        if (!property.overridden && this._hiddenUnusedVariables.find(propertiesMatch)) {
+            this._pendingPropertyToHighlight = property;
+            this.propertyVisibilityMode = WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.ShowAll;
+            return true;
+        }
+
+        function propertiesMatch(cssProperty) {
             if (cssProperty.attached && !cssProperty.overridden) {
                 if (cssProperty.canonicalName === property.canonicalName || hasMatchingLonghandProperty(cssProperty))
                     return true;
             }
 
             return false;
-        };
+        }
 
-        let hasMatchingLonghandProperty = (cssProperty) => {
+        function hasMatchingLonghandProperty(cssProperty) {
             let cssProperties = cssProperty.relatedLonghandProperties;
 
             if (!cssProperties.length)
@@ -295,7 +338,7 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
             }
 
             return false;
-        };
+        }
 
         for (let i = 0; i < this._propertyViews.length; ++i) {
             if (propertiesMatch(this._propertyViews[i].property)) {
@@ -360,12 +403,23 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
     deselectProperties()
     {
-        for (let propertyView  of this._propertyViews)
+        for (let propertyView of this._propertyViews)
             propertyView.selected = false;
 
         this._focused = false;
         this._anchorIndex = NaN;
         this._focusIndex = NaN;
+    }
+
+    placeTextCaretInFocusedProperty()
+    {
+        if (isNaN(this._focusIndex))
+            return;
+
+        let focusedProperty = this._propertyViews[this._focusIndex];
+        let selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.setBaseAndExtent(focusedProperty.element, 0, focusedProperty.element, 0);
     }
 
     applyFilter(filterText)
@@ -471,22 +525,6 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         this._pendingAddBlankPropertyIndexOffset = this._propertyViews.length - index;
     }
 
-    spreadsheetStylePropertyCopy(event)
-    {
-        if (!this.hasSelectedProperties())
-            return;
-
-        let formattedProperties = [];
-        let [startIndex, endIndex] = this.selectionRange;
-        for (let i = startIndex; i <= endIndex; ++i) {
-            let propertyView = this._propertyViews[i];
-            formattedProperties.push(propertyView.property.formattedText);
-        }
-
-        event.clipboardData.setData("text/plain", formattedProperties.join("\n"));
-        event.stop();
-    }
-
     spreadsheetStylePropertyWillRemove(propertyView)
     {
         this._propertyViews.remove(propertyView);
@@ -550,27 +588,13 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
                 property.startEditingName();
             }
         } else if (event.key === "Backspace" || event.key === "Delete") {
-            if (!this.style.editable)
+            if (!this.style.editable) {
+                InspectorFrontendHost.beep();
                 return;
+            }
 
-            let [startIndex, endIndex] = this.selectionRange;
-
-            let propertyIndexToSelect = NaN;
-            if (endIndex + 1 !== this._propertyViews.length)
-                propertyIndexToSelect = startIndex;
-            else if (startIndex > 0)
-                propertyIndexToSelect = startIndex - 1;
-
-            this.deselectProperties();
-
-            for (let i = endIndex; i >= startIndex; i--)
-                this._propertyViews[i].remove();
-
-            if (!isNaN(propertyIndexToSelect))
-                this.selectProperties(propertyIndexToSelect, propertyIndexToSelect);
-
+            this._removeSelectedProperties();
             event.stop();
-
         } else if ((event.code === "Space" && !event.shiftKey && !event.metaKey && !event.ctrlKey) || (event.key === "/" && event.commandOrControlKey && !event.shiftKey)) {
             if (!this.style.editable)
                 return;
@@ -595,6 +619,56 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
         } else if (event.key === "Esc")
             this.deselectProperties();
+    }
+
+    _handleCopy(event)
+    {
+        if (!this.hasSelectedProperties())
+            return;
+
+        this._copySelectedProperties(event);
+    }
+
+    _handleCut(event)
+    {
+        if (!this.style.editable) {
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        if (!this.hasSelectedProperties())
+            return;
+
+        this._copySelectedProperties(event);
+        this._removeSelectedProperties();
+    }
+
+    _copySelectedProperties(event)
+    {
+        let [startIndex, endIndex] = this.selectionRange;
+        let formattedProperties = this._propertyViews.slice(startIndex, endIndex + 1).map((propertyView) => propertyView.property.formattedText);
+        event.clipboardData.setData("text/plain", formattedProperties.join("\n"));
+        event.stop();
+    }
+
+    _removeSelectedProperties()
+    {
+        console.assert(this.style.editable);
+        let [startIndex, endIndex] = this.selectionRange;
+
+        let propertyIndexToSelect = NaN;
+        if (endIndex + 1 !== this._propertyViews.length)
+            propertyIndexToSelect = startIndex;
+        else if (startIndex > 0)
+            propertyIndexToSelect = startIndex - 1;
+
+        this.deselectProperties();
+
+        for (let i = endIndex; i >= startIndex; i--)
+            this._propertyViews[i].remove();
+
+        if (!isNaN(propertyIndexToSelect))
+            this.selectProperties(propertyIndexToSelect, propertyIndexToSelect);
     }
 
     _editablePropertyAfter(propertyIndex)
@@ -644,10 +718,15 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
     _updateDebugLockStatus()
     {
-        if (!this._style || !WI.settings.enableStyleEditingDebugMode.value)
+        if (!this._style || !WI.settings.debugEnableStyleEditingDebugMode.value)
             return;
 
         this.element.classList.toggle("debug-style-locked", this._style.locked);
+    }
+
+    _setAllPropertyVisibilityMode(propertyVisibilityMode)
+    {
+        this._delegate?.spreadsheetCSSStyleDeclarationEditorSetAllPropertyVisibilityMode?.(this, propertyVisibilityMode);
     }
 };
 
@@ -661,4 +740,5 @@ WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode = {
     ShowAll: Symbol("variable-visibility-show-all"),
     HideVariables: Symbol("variable-visibility-hide-variables"),
     HideNonVariables: Symbol("variable-visibility-hide-non-variables"),
+    HideUnusedInheritedVariables: Symbol("variable-visibility-hide-unused-inherited-variables"),
 };

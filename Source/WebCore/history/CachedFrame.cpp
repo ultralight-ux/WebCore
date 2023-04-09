@@ -27,13 +27,11 @@
 #include "CachedFrame.h"
 
 #include "BackForwardCache.h"
-#include "CSSAnimationController.h"
 #include "CachedFramePlatformData.h"
 #include "CachedPage.h"
 #include "DOMWindow.h"
 #include "Document.h"
 #include "DocumentLoader.h"
-#include "DocumentTimeline.h"
 #include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
@@ -94,13 +92,15 @@ void CachedFrameBase::restore()
     if (m_isMainFrame)
         m_view->setParentVisible(true);
 
-    auto frame = makeRef(m_view->frame());
+    RefPtr frame = dynamicDowncast<LocalFrame>(m_view->frame());
+    if (!frame)
+        return;
     {
         Style::PostResolutionCallbackDisabler disabler(*m_document);
         WidgetHierarchyUpdatesSuspensionScope suspendWidgetHierarchyUpdates;
         NavigationDisabler disableNavigation { nullptr }; // Disable navigation globally.
 
-        m_cachedFrameScriptData->restore(frame.get());
+        m_cachedFrameScriptData->restore(*frame);
 
         if (m_document->svgExtensions())
             m_document->accessSVGExtensions().unpauseAnimations();
@@ -132,7 +132,7 @@ void CachedFrameBase::restore()
             // FIXME: Add SCROLL_LISTENER to the list of event types on Document, and use m_document->hasListenerType(). See <rdar://problem/9615482>.
             // FIXME: Can use Document::hasListenerType() now.
             if (domWindow->scrollEventListenerCount() && frame->page())
-                frame->page()->chrome().client().setNeedsScrollNotifications(frame, true);
+                frame->page()->chrome().client().setNeedsScrollNotifications(*frame, true);
         }
     }
 #endif
@@ -151,20 +151,15 @@ CachedFrame::CachedFrame(Frame& frame)
     ASSERT(m_view);
     ASSERT(m_document->backForwardCacheState() == Document::InBackForwardCache);
 
-    RELEASE_ASSERT(m_document->domWindow());
-    RELEASE_ASSERT(m_document->frame());
-    RELEASE_ASSERT(m_document->domWindow()->frame());
-
-    // FIXME: We have evidence that constructing CachedFrames for descendant frames may detach the document from its frame (rdar://problem/49877867).
-    // This sets the flag to help find the guilty code.
-    m_document->setMayBeDetachedFromFrame(false);
-
     // Create the CachedFrames for all Frames in the FrameTree.
-    for (Frame* child = frame.tree().firstChild(); child; child = child->tree().nextSibling())
-        m_childFrames.append(makeUniqueRef<CachedFrame>(*child));
+    for (auto* child = frame.tree().firstChild(); child; child = child->tree().nextSibling()) {
+        auto* localChild = downcast<LocalFrame>(child);
+        if (!localChild)
+            continue;
+        m_childFrames.append(makeUniqueRef<CachedFrame>(*localChild));
+    }
 
     RELEASE_ASSERT(m_document->domWindow());
-    RELEASE_ASSERT(m_document->frame());
     RELEASE_ASSERT(m_document->domWindow()->frame());
 
     // Active DOM objects must be suspended before we cache the frame script data.
@@ -210,7 +205,6 @@ CachedFrame::CachedFrame(Frame& frame)
     }
 #endif
 
-    m_document->setMayBeDetachedFromFrame(true);
     m_document->detachFromCachedFrame(*this);
 
     ASSERT_WITH_SECURITY_IMPLICATION(!m_documentLoader->isLoading());
@@ -221,7 +215,8 @@ void CachedFrame::open()
     ASSERT(m_view);
     ASSERT(m_document);
 
-    m_view->frame().loader().open(*this);
+    if (auto* localFrame = dynamicDowncast<LocalFrame>(m_view->frame()))
+        localFrame->loader().open(*this);
 }
 
 void CachedFrame::clear()
@@ -260,9 +255,10 @@ void CachedFrame::destroy()
 
     m_document->domWindow()->willDestroyCachedFrame();
 
-    if (!m_isMainFrame && m_view->frame().page()) {
-        m_view->frame().loader().detachViewsAndDocumentLoader();
-        m_view->frame().detachFromPage();
+    auto* localFrame = dynamicDowncast<LocalFrame>(m_view->frame());
+    if (!m_isMainFrame && m_view->frame().page() && localFrame) {
+        localFrame->loader().detachViewsAndDocumentLoader();
+        localFrame->detachFromPage();
     }
     
     for (int i = m_childFrames.size() - 1; i >= 0; --i)
@@ -272,8 +268,6 @@ void CachedFrame::destroy()
         m_cachedFramePlatformData->clear();
 
     Frame::clearTimers(m_view.get(), m_document.get());
-
-    m_view->frame().legacyAnimation().detachFromDocument(m_document.get());
 
     // FIXME: Why do we need to call removeAllEventListeners here? When the document is in back/forward cache, this method won't work
     // fully anyway, because the document won't be able to access its DOMWindow object (due to being frameless).
@@ -324,13 +318,27 @@ HasInsecureContent CachedFrame::hasInsecureContent() const
         if (!document->isSecureContext() || !document->foundMixedContent().isEmpty())
             return HasInsecureContent::Yes;
     }
-    
+
     for (const auto& cachedFrame : m_childFrames) {
         if (cachedFrame->hasInsecureContent() == HasInsecureContent::Yes)
             return HasInsecureContent::Yes;
     }
-    
+
     return HasInsecureContent::No;
+}
+
+WasPrivateRelayed CachedFrame::wasPrivateRelayed() const
+{
+    if (auto* document = this->document()) {
+        if (document->wasPrivateRelayed())
+            return WasPrivateRelayed::Yes;
+    }
+
+    bool allFramesRelayed { false };
+    for (const auto& cachedFrame : m_childFrames)
+        allFramesRelayed |= cachedFrame->wasPrivateRelayed() == WasPrivateRelayed::Yes;
+
+    return allFramesRelayed ? WasPrivateRelayed::Yes : WasPrivateRelayed::No;
 }
 
 } // namespace WebCore

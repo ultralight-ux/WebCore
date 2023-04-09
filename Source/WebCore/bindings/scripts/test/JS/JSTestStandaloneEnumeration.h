@@ -30,7 +30,8 @@ namespace WebCore {
 String convertEnumerationToString(TestStandaloneEnumeration);
 template<> JSC::JSString* convertEnumerationToJS(JSC::JSGlobalObject&, TestStandaloneEnumeration);
 
-template<> Optional<TestStandaloneEnumeration> parseEnumeration<TestStandaloneEnumeration>(JSC::JSGlobalObject&, JSC::JSValue);
+template<> std::optional<TestStandaloneEnumeration> parseEnumerationFromString<TestStandaloneEnumeration>(const String&);
+template<> std::optional<TestStandaloneEnumeration> parseEnumeration<TestStandaloneEnumeration>(JSC::JSGlobalObject&, JSC::JSValue);
 template<> const char* expectedEnumerationValues<TestStandaloneEnumeration>();
 
 } // namespace WebCore

@@ -66,27 +66,15 @@ WI.ClusterContentView = class ClusterContentView extends WI.ContentView
         return true;
     }
 
-    shown()
-    {
-        super.shown();
-
-        this._contentViewContainer.shown();
-    }
-
-    hidden()
-    {
-        super.hidden();
-
-        this._contentViewContainer.hidden();
-    }
-
     closed()
     {
         super.closed();
 
         this._contentViewContainer.closeAllContentViews();
 
-        WI.ContentView.removeEventListener(null, null, this);
+        WI.ContentView.removeEventListener(WI.ContentView.Event.SelectionPathComponentsDidChange, this._contentViewSelectionPathComponentDidChange, this);
+        WI.ContentView.removeEventListener(WI.ContentView.Event.SupplementalRepresentedObjectsDidChange, this._contentViewSupplementalRepresentedObjectsDidChange, this);
+        WI.ContentView.removeEventListener(WI.ContentView.Event.NumberOfSearchResultsDidChange, this._contentViewNumberOfSearchResultsDidChange, this);
     }
 
     canGoBack()
@@ -138,14 +126,19 @@ WI.ClusterContentView = class ClusterContentView extends WI.ContentView
 
     get supportsSave()
     {
-        var currentContentView = this._contentViewContainer.currentContentView;
-        return currentContentView && currentContentView.supportsSave;
+        return !!this._contentViewContainer.currentContentView?.supportsSave;
+    }
+
+    get saveMode()
+    {
+        console.assert(this.supportsSave);
+        return this._contentViewContainer.currentContentView?.saveMode;
     }
 
     get saveData()
     {
-        var currentContentView = this._contentViewContainer.currentContentView;
-        return currentContentView && currentContentView.saveData || null;
+        console.assert(this.supportsSave);
+        return this._contentViewContainer.currentContentView?.saveData;
     }
 
     get supportsSearch()

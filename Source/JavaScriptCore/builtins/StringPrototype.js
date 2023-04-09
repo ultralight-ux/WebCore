@@ -64,7 +64,7 @@ function matchAll(arg)
     return regExp.@@matchAll(string);
 }
 
-@globalPrivate
+@linkTimeConstant
 function repeatSlowPath(string, count)
 {
     "use strict";
@@ -94,7 +94,7 @@ function repeatSlowPath(string, count)
     }
 }
 
-@globalPrivate
+@linkTimeConstant
 function repeatCharactersSlowPath(string, count)
 {
     "use strict";
@@ -113,7 +113,7 @@ function repeatCharactersSlowPath(string, count)
         operand += operand;
     }
     if (remainingCharacters)
-        result += @stringSubstringInternal.@call(string, 0, remainingCharacters);
+        result += @stringSubstring.@call(string, 0, remainingCharacters);
     return result;
 }
 
@@ -126,7 +126,7 @@ function repeat(count)
         @throwTypeError("String.prototype.repeat requires that |this| not be null or undefined");
 
     var string = @toString(this);
-    count = @toInteger(count);
+    count = @toIntegerOrInfinity(count);
 
     if (count < 0 || count === @Infinity)
         @throwRangeError("String.prototype.repeat argument must be greater than or equal to 0 and not be Infinity");
@@ -211,7 +211,7 @@ function padEnd(maxLength/*, fillString*/)
     return string + truncatedStringFiller;
 }
 
-@globalPrivate
+@linkTimeConstant
 function hasObservableSideEffectsForStringReplace(regexp, replacer)
 {
     "use strict";
@@ -317,7 +317,7 @@ function split(separator, limit)
     return @stringSplitFast.@call(this, separator, limit);
 }
 
-@globalPrivate
+@linkTimeConstant
 function stringConcatSlowPath()
 {
     "use strict";
@@ -340,7 +340,26 @@ function concat(arg /* ... */)
     return @tailCallForwardArguments(@stringConcatSlowPath, this);
 }
 
-@globalPrivate
+// FIXME: This is extremely similar to charAt, so we should optimize it accordingly.    
+//        https://bugs.webkit.org/show_bug.cgi?id=217139    
+function at(index)    
+{   
+    "use strict";   
+
+    if (@isUndefinedOrNull(this))   
+        @throwTypeError("String.prototype.at requires that |this| not be null or undefined"); 
+
+    var string = @toString(this);   
+    var length = string.length; 
+
+    var k = @toIntegerOrInfinity(index);  
+    if (k < 0)  
+        k += length;    
+
+    return (k >= 0 && k < length) ? string[k] : @undefined; 
+}
+
+@linkTimeConstant
 function createHTML(func, string, tag, attribute, value)
 {
     "use strict";

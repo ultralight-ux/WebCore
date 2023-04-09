@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,15 +42,16 @@ namespace JSC {
 class CodeBlock;
 class Identifier;
 class JSCell;
-class SlotVisitor;
 
 class CacheableIdentifier {
 public:
     CacheableIdentifier() = default;
 
     static inline CacheableIdentifier createFromCell(JSCell* identifier);
-    static inline CacheableIdentifier createFromIdentifierOwnedByCodeBlock(CodeBlock*, const Identifier&);
-    static inline CacheableIdentifier createFromIdentifierOwnedByCodeBlock(CodeBlock*, UniquedStringImpl*);
+    template <typename CodeBlockType>
+    static inline CacheableIdentifier createFromIdentifierOwnedByCodeBlock(CodeBlockType*, const Identifier&);
+    template <typename CodeBlockType>
+    static inline CacheableIdentifier createFromIdentifierOwnedByCodeBlock(CodeBlockType*, UniquedStringImpl*);
     static inline CacheableIdentifier createFromImmortalIdentifier(UniquedStringImpl*);
     static constexpr CacheableIdentifier createFromRawBits(uintptr_t rawBits) { return CacheableIdentifier(rawBits); }
 
@@ -87,7 +88,7 @@ public:
 
     uintptr_t rawBits() const { return m_bits; }
 
-    inline void visitAggregate(SlotVisitor&) const;
+    template<typename Visitor> inline void visitAggregate(Visitor&) const;
 
     JS_EXPORT_PRIVATE void dump(PrintStream&) const;
 

@@ -30,11 +30,12 @@ WI.DirectBackendTarget = class DirectBackendTarget extends WI.Target
 {
     constructor()
     {
+        const parentTarget = null;
+        const targetId = "direct";
         let {type, displayName} = DirectBackendTarget.connectionInfoForDebuggable();
+        super(parentTarget, targetId, displayName, type, InspectorBackend.backendConnection);
 
-        super("direct", displayName, type, InspectorBackend.backendConnection);
-
-        this._executionContext = new WI.ExecutionContext(this, WI.RuntimeManager.TopLevelContextExecutionIdentifier, displayName, true, null);
+        this._executionContext = new WI.ExecutionContext(this, WI.RuntimeManager.TopLevelContextExecutionIdentifier, WI.ExecutionContext.Type.Normal, displayName);
         this._mainResource = null;
     }
 
@@ -43,25 +44,35 @@ WI.DirectBackendTarget = class DirectBackendTarget extends WI.Target
     static connectionInfoForDebuggable()
     {
         switch (WI.sharedApp.debuggableType) {
+        case WI.DebuggableType.ITML:
+            return {
+                type: WI.TargetType.ITML,
+                displayName: WI.UIString("ITML Context"),
+            };
         case WI.DebuggableType.JavaScript:
             return {
-                type: WI.Target.Type.JSContext,
+                type: WI.TargetType.JavaScript,
                 displayName: WI.UIString("JavaScript Context"),
+            };
+        case WI.DebuggableType.Page:
+            return {
+                type: WI.TargetType.Page,
+                displayName: WI.UIString("Page"),
             };
         case WI.DebuggableType.ServiceWorker:
             return {
-                type: WI.Target.Type.ServiceWorker,
+                type: WI.TargetType.ServiceWorker,
                 displayName: WI.UIString("ServiceWorker"),
             };
-        case WI.DebuggableType.Web:
+        case WI.DebuggableType.WebPage:
             return {
-                type: WI.Target.Type.Page,
+                type: WI.TargetType.WebPage,
                 displayName: WI.UIString("Page"),
             };
         default:
             console.error("Unexpected debuggable type: ", WI.sharedApp.debuggableType);
             return {
-                type: WI.Target.Type.JSContext,
+                type: WI.TargetType.JavaScript,
                 displayName: WI.UIString("JavaScript Context"),
             };
         }

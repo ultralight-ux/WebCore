@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,13 +26,9 @@
 #include "config.h"
 #include "FloatingState.h"
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
-#include "FormattingContext.h"
-#include "LayoutBox.h"
-#include "LayoutContainerBox.h"
+#include "LayoutContainingBlockChainIterator.h"
+#include "LayoutInitialContainingBlock.h"
 #include "LayoutState.h"
-#include "RuntimeEnabledFeatures.h"
 #include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
@@ -40,110 +36,84 @@ namespace Layout {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(FloatingState);
 
-FloatingState::FloatItem::FloatItem(const Box& layoutBox, Display::Box absoluteDisplayBox)
-    : m_layoutBox(makeWeakPtr(layoutBox))
-    , m_position(layoutBox.isLeftFloatingPositioned() ? Position::Left : Position::Right)
-    , m_absoluteDisplayBox(absoluteDisplayBox)
+FloatingState::FloatItem::FloatItem(const Box& layoutBox, Position position, BoxGeometry absoluteBoxGeometry)
+    : m_layoutBox(layoutBox)
+    , m_position(position)
+    , m_absoluteBoxGeometry(absoluteBoxGeometry)
 {
 }
 
-FloatingState::FloatItem::FloatItem(Position position, Display::Box absoluteDisplayBox)
+FloatingState::FloatItem::FloatItem(Position position, BoxGeometry absoluteBoxGeometry)
     : m_position(position)
-    , m_absoluteDisplayBox(absoluteDisplayBox)
+    , m_absoluteBoxGeometry(absoluteBoxGeometry)
 {
 }
 
-FloatingState::FloatingState(LayoutState& layoutState, const ContainerBox& formattingContextRoot)
+FloatingState::FloatingState(LayoutState& layoutState, const ElementBox& blockFormattingContextRoot)
     : m_layoutState(layoutState)
-    , m_formattingContextRoot(makeWeakPtr(formattingContextRoot))
+    , m_blockFormattingContextRoot(blockFormattingContextRoot)
+    , m_isLeftToRightDirection(blockFormattingContextRoot.style().isLeftToRightDirection())
 {
+    ASSERT(blockFormattingContextRoot.establishesBlockFormattingContext());
 }
 
-void FloatingState::append(FloatItem floatItem)
+void FloatingState::append(FloatItem newFloatItem)
 {
-    ASSERT(is<ContainerBox>(*m_formattingContextRoot));
-#if ASSERT_ENABLED
-    if (!RuntimeEnabledFeatures::sharedFeatures().layoutFormattingContextIntegrationEnabled()) {
-        // The integration codepath does not construct a layout box for the float item.
-        ASSERT(m_floats.findMatching([&] (auto& entry) {
-            return entry.floatBox() == floatItem.floatBox();
-        }) == notFound);
-    }
-#endif
+    auto isLeftPositioned = newFloatItem.isLeftPositioned();
+    m_positionTypes.add(isLeftPositioned ? PositionType::Left : PositionType::Right);
 
     if (m_floats.isEmpty())
-        return m_floats.append(floatItem);
+        return m_floats.append(newFloatItem);
 
-    auto isLeftPositioned = floatItem.isLeftPositioned();
+    // The integration codepath does not construct a layout box for the float item.
+    ASSERT_IMPLIES(newFloatItem.floatBox(), m_floats.findIf([&] (auto& entry) {
+        return entry.floatBox() == newFloatItem.floatBox();
+    }) == notFound);
+
     // When adding a new float item to the list, we have to ensure that it is definitely the left(right)-most item.
     // Normally it is, but negative horizontal margins can push the float box beyond another float box.
     // Float items in m_floats list should stay in horizontal position order (left/right edge) on the same vertical position.
-    auto horizontalMargin = floatItem.horizontalMargin();
+    auto horizontalMargin = newFloatItem.horizontalMargin();
     auto hasNegativeHorizontalMargin = (isLeftPositioned && horizontalMargin.start < 0) || (!isLeftPositioned && horizontalMargin.end < 0);
     if (!hasNegativeHorizontalMargin)
-        return m_floats.append(floatItem);
+        return m_floats.append(newFloatItem);
 
-    for (int i = m_floats.size() - 1; i >= 0; --i) {
+    for (size_t i = m_floats.size(); i--;) {
         auto& floatItem = m_floats[i];
         if (isLeftPositioned != floatItem.isLeftPositioned())
             continue;
-        if (floatItem.rectWithMargin().top() < floatItem.rectWithMargin().bottom())
-            continue;
-        if ((isLeftPositioned && floatItem.rectWithMargin().right() >= floatItem.rectWithMargin().right())
-            || (!isLeftPositioned && floatItem.rectWithMargin().left() <= floatItem.rectWithMargin().left()))
-            return m_floats.insert(i + 1, floatItem);
+
+        auto isHorizontallyOrdered = [&] {
+            if (newFloatItem.rectWithMargin().top() > floatItem.rectWithMargin().top()) {
+                // There's no more floats on this vertical position.
+                return true;
+            }
+            return (isLeftPositioned && newFloatItem.rectWithMargin().right() >= floatItem.rectWithMargin().right())
+                || (!isLeftPositioned && newFloatItem.rectWithMargin().left() <= floatItem.rectWithMargin().left());
+        };
+        if (isHorizontallyOrdered())
+            return m_floats.insert(i + 1, newFloatItem);
     }
-    return m_floats.insert(0, floatItem);
+    m_floats.insert(0, newFloatItem);
 }
 
-Optional<PositionInContextRoot> FloatingState::bottom(const ContainerBox& formattingContextRoot, Clear type) const
+bool FloatingState::FloatItem::isInFormattingContextOf(const ElementBox& formattingContextRoot) const
 {
-    if (m_floats.isEmpty())
-        return { };
-
-    // TODO: Currently this is only called once for each formatting context root with floats per layout.
-    // Cache the value if we end up calling it more frequently (and update it at append/remove).
-    Optional<PositionInContextRoot> bottom;
-    for (auto& floatItem : m_floats) {
-        // Ignore floats from ancestor formatting contexts when the floating state is inherited.
-        if (!floatItem.isInFormattingContextOf(formattingContextRoot))
-            continue;
-
-        if ((type == Clear::Left && !floatItem.isLeftPositioned())
-            || (type == Clear::Right && floatItem.isLeftPositioned()))
-            continue;
-
-        auto floatsBottom = floatItem.rectWithMargin().bottom();
-        if (bottom) {
-            bottom = std::max<PositionInContextRoot>(*bottom, { floatsBottom });
-            continue;
-        }
-        bottom = PositionInContextRoot { floatsBottom };
+    ASSERT(formattingContextRoot.establishesFormattingContext());
+    ASSERT(!is<InitialContainingBlock>(m_layoutBox));
+    for (auto& containingBlock : containingBlockChain(*m_layoutBox)) {
+        if (&containingBlock == &formattingContextRoot)
+            return true;
     }
-    return bottom;
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
-Optional<PositionInContextRoot> FloatingState::top(const ContainerBox& formattingContextRoot) const
+void FloatingState::clear()
 {
-    if (m_floats.isEmpty())
-        return { };
-
-    Optional<PositionInContextRoot> top;
-    for (auto& floatItem : m_floats) {
-        // Ignore floats from ancestor formatting contexts when the floating state is inherited.
-        if (!floatItem.isInFormattingContextOf(formattingContextRoot))
-            continue;
-
-        auto floatTop = floatItem.rectWithMargin().top();
-        if (top) {
-            top = std::min<PositionInContextRoot>(*top, { floatTop });
-            continue;
-        }
-        top = PositionInContextRoot { floatTop };
-    }
-    return top;
+    m_floats.clear();
+    m_positionTypes = { };
 }
 
 }
 }
-#endif

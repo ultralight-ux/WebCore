@@ -27,6 +27,7 @@
 
 #include "IDLTypes.h"
 #include "JSDOMConvertBase.h"
+#include "JSDOMGlobalObject.h"
 
 namespace WebCore {
 
@@ -40,11 +41,11 @@ template<typename T> struct Converter<IDLCallbackFunction<T>> : DefaultConverter
         JSC::VM& vm = JSC::getVM(&lexicalGlobalObject);
         auto scope = DECLARE_THROW_SCOPE(vm);
 
-        if (!value.isCallable(vm)) {
+        if (!value.isCallable()) {
             exceptionThrower(lexicalGlobalObject, scope);
             return nullptr;
         }
-        
+
         return T::create(JSC::asObject(value), &globalObject);
     }
 };

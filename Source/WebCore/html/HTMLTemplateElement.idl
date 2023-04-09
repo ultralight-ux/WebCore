@@ -30,6 +30,8 @@
 
 [
     JSCustomMarkFunction,
+    Exposed=Window
 ] interface HTMLTemplateElement : HTMLElement {
     readonly attribute DocumentFragment content;
+    [CEReactions=NotNeeded, EnabledBySetting=DeclarativeShadowDOMEnabled] attribute [AtomString] DOMString? shadowRootMode;
 };

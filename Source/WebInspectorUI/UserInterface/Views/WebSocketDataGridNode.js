@@ -53,9 +53,7 @@ WI.WebSocketDataGridNode = class WebSocketDataGridNode extends WI.DataGridNode
             console.assert(!wasThrown);
 
             const title = WI.UIString("Selected Frame");
-            const addSpecialUserLogClass = true;
-            const shouldRevealConsole = true;
-            WI.consoleLogViewController.appendImmediateExecutionWithResult(title, result, addSpecialUserLogClass, shouldRevealConsole);
+            WI.consoleLogViewController.appendImmediateExecutionWithResult(title, result, {addSpecialUserLogClass: true, shouldRevealConsole: true});
         };
 
         if (this._data.isText) {
@@ -66,11 +64,7 @@ WI.WebSocketDataGridNode = class WebSocketDataGridNode extends WI.DataGridNode
                 });
             });
 
-            try {
-                // The result of this is unnecessary, as we just need the string to evaluate.
-                // We still need to execute this, however, in order to try-catch if it fails.
-                JSON.parse(this._data.data);
-
+            if (this._data.data.isJSON()) {
                 contextMenu.appendItem(WI.UIString("Log Frame Value"), () => {
                     const options = {
                         objectGroup: WI.RuntimeManager.ConsoleObjectGroup,
@@ -82,7 +76,7 @@ WI.WebSocketDataGridNode = class WebSocketDataGridNode extends WI.DataGridNode
                     let expression = "(" + this._data.data + ")";
                     WI.runtimeManager.evaluateInInspectedWindow(expression, options, logResult);
                 });
-            } catch { }
+            }
 
             contextMenu.appendSeparator();
         }

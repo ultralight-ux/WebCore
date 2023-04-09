@@ -114,6 +114,8 @@ inline Element* TreeScopeOrderedMap::get(const AtomStringImpl& key, const TreeSc
 
     // We know there's at least one node that matches; iterate to find the first one.
     for (auto& element : descendantsOfType<Element>(scope.rootNode())) {
+        if (!element.isInTreeScope())
+            continue;
         if (!keyMatches(key, element))
             continue;
         entry.element = &element;
@@ -123,7 +125,7 @@ inline Element* TreeScopeOrderedMap::get(const AtomStringImpl& key, const TreeSc
     }
 
 #if ASSERT_ENABLED
-    // FormAssociatedElement may call getElementById to find its owner form in the middle of a tree removal.
+    // FormListedElement may call getElementById to find its owner form in the middle of a tree removal.
     if (auto* currentScope = ContainerChildRemovalScope::currentScope()) {
         ASSERT(&scope.rootNode() == &currentScope->parentOfRemovedTree().rootNode());
         Node& removedTree = currentScope->removedChild();
@@ -214,6 +216,13 @@ const Vector<Element*>* TreeScopeOrderedMap::getAllElementsById(const AtomString
     }
 
     return &entry.orderedList;
+}
+
+const Vector<AtomString> TreeScopeOrderedMap::keys() const
+{
+    return WTF::map(m_map, [](auto& entry) -> AtomString {
+        return const_cast<AtomStringImpl*>(entry.key);
+    });
 }
 
 } // namespace WebCore

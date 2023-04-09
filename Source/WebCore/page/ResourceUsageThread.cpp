@@ -65,7 +65,7 @@ void ResourceUsageThread::addObserver(void* key, ResourceUsageCollectionMode mod
     resourceUsageThread.createThreadIfNeeded();
 
     {
-        LockHolder locker(resourceUsageThread.m_lock);
+        Locker locker { resourceUsageThread.m_observersLock };
         bool wasEmpty = resourceUsageThread.m_observers.isEmpty();
         resourceUsageThread.m_observers.set(key, std::make_pair(mode, function));
 
@@ -83,7 +83,7 @@ void ResourceUsageThread::removeObserver(void* key)
     auto& resourceUsageThread = ResourceUsageThread::singleton();
 
     {
-        LockHolder locker(resourceUsageThread.m_lock);
+        Locker locker { resourceUsageThread.m_observersLock };
         resourceUsageThread.m_observers.remove(key);
 
         resourceUsageThread.recomputeCollectionMode();
@@ -92,12 +92,12 @@ void ResourceUsageThread::removeObserver(void* key)
 
 void ResourceUsageThread::waitUntilObservers()
 {
-    LockHolder locker(m_lock);
+    Locker locker { m_observersLock };
     while (m_observers.isEmpty()) {
-        m_condition.wait(m_lock);
+        m_condition.wait(m_observersLock);
 
         // Wait a bit after waking up for the first time.
-        WTF::sleep(10_ms);
+        sleep(10_ms);
     }
 }
 
@@ -108,7 +108,7 @@ void ResourceUsageThread::notifyObservers(ResourceUsageData&& data)
 
         {
             auto& resourceUsageThread = ResourceUsageThread::singleton();
-            LockHolder locker(resourceUsageThread.m_lock);
+            Locker locker { resourceUsageThread.m_observersLock };
             pairs = copyToVector(resourceUsageThread.m_observers.values());
         }
 
@@ -139,7 +139,7 @@ void ResourceUsageThread::createThreadIfNeeded()
 void ResourceUsageThread::threadBody()
 {
     // Wait a bit after waking up for the first time.
-    WTF::sleep(10_ms);
+    sleep(10_ms);
     
     while (true) {
         // Only do work if we have observers.
@@ -160,7 +160,7 @@ void ResourceUsageThread::threadBody()
         // so if this interval changes Web Inspector may need to change.
         auto duration = WallTime::now() - start;
         auto difference = 500_ms - duration;
-        WTF::sleep(difference);
+        sleep(difference);
     }
 }
 

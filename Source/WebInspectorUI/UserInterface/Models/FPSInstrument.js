@@ -25,21 +25,6 @@
 
 WI.FPSInstrument = class FPSInstrument extends WI.Instrument
 {
-    constructor()
-    {
-        super();
-
-        console.assert(WI.FPSInstrument.supported());
-    }
-
-    // Static
-
-    static supported()
-    {
-        // COMPATIBILITY (iOS 8): TimelineAgent.EventType.RenderingFrame did not exist.
-        return window.TimelineAgent && TimelineAgent.EventType.RenderingFrame;
-    }
-
     // Protected
 
     get timelineRecordType()

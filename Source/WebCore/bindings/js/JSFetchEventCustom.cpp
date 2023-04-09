@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +28,20 @@
 
 #if ENABLE(SERVICE_WORKER)
 
+#include "FetchRequest.h"
+#include "WebCoreOpaqueRoot.h"
+#include "WebCoreOpaqueRoot.h"
+
 namespace WebCore {
 
-void JSFetchEvent::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSFetchEvent::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(&wrapped().request());
+    addWebCoreOpaqueRoot(visitor, wrapped().request());
 }
 
-}
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSFetchEvent);
+
+} // namespace WebCore
 
 #endif

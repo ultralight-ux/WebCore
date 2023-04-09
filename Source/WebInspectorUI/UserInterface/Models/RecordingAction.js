@@ -25,19 +25,19 @@
 
 WI.RecordingAction = class RecordingAction extends WI.Object
 {
-    constructor(name, parameters, swizzleTypes, trace, snapshot)
+    constructor(name, parameters, swizzleTypes, stackTrace, snapshot)
     {
         super();
 
         this._payloadName = name;
         this._payloadParameters = parameters;
         this._payloadSwizzleTypes = swizzleTypes;
-        this._payloadTrace = trace;
-        this._payloadSnapshot = snapshot || -1;
+        this._payloadStackTrace = stackTrace;
+        this._payloadSnapshot = snapshot ?? -1;
 
         this._name = "";
         this._parameters = [];
-        this._trace = [];
+        this._stackTrace = null;
         this._snapshot = "";
 
         this._valid = true;
@@ -57,7 +57,7 @@ WI.RecordingAction = class RecordingAction extends WI.Object
 
     // Static
 
-    // Payload format: (name, parameters, swizzleTypes, [trace, [snapshot]])
+    // Payload format: (name, parameters, swizzleTypes, [stackTrace, [snapshot]])
     static fromPayload(payload)
     {
         if (!Array.isArray(payload))
@@ -85,10 +85,10 @@ WI.RecordingAction = class RecordingAction extends WI.Object
         }
 
         if (typeof payload[3] !== "number" || isNaN(payload[3]) || (!payload[3] && payload[3] !== 0)) {
-            // COMPATIBILITY (iOS 12.1): "trace" was sent as an array of call frames instead of a single call stack
+            // COMPATIBILITY (iOS 12.1): "stackTrace" was sent as an array of call frames instead of a single call stack
             if (!Array.isArray(payload[3])) {
                 if (payload.length > 3)
-                    WI.Recording.synthesizeWarning(WI.UIString("non-number %s").format(WI.unlocalizedString("trace")));
+                    WI.Recording.synthesizeWarning(WI.UIString("non-number %s").format(WI.unlocalizedString("stackTrace")));
 
                 payload[3] = [];
             }
@@ -115,6 +115,53 @@ WI.RecordingAction = class RecordingAction extends WI.Object
         return typeof propertyDescriptor.value === "function";
     }
 
+    static bitfieldNamesForParameter(type, name, value, index, count)
+    {
+        if (!value)
+            return null;
+
+        let prototype = WI.RecordingAction._prototypeForType(type);
+        if (!prototype)
+            return null;
+
+        function testAndClearBit(name) {
+            let bit = prototype[name];
+            if (!bit)
+                return;
+
+            if (value & bit)
+                names.push(name);
+
+            value = value & ~bit;
+        }
+
+        function hexString(value) {
+            return "0x" + value.toString(16);
+        }
+
+        let names = [];
+
+        if ((name === "clear" && index === 0 && (type === WI.Recording.Type.CanvasWebGL || type === WI.Recording.Type.CanvasWebGL2)) ||
+            (name === "blitFramebuffer" && index === 8 && type === WI.Recording.Type.CanvasWebGL2)) {
+            testAndClearBit("COLOR_BUFFER_BIT");
+            testAndClearBit("DEPTH_BUFFER_BIT");
+            testAndClearBit("STENCIL_BUFFER_BIT");
+            if (value)
+                names.push(hexString(value));
+        }
+
+        if (name === "clientWaitSync" && index === 1 && type === WI.Recording.Type.CanvasWebGL2) {
+            testAndClearBit("SYNC_FLUSH_COMMANDS_BIT");
+            if (value)
+                names.push(hexString(value));
+        }
+
+        if (!names.length)
+            return null;
+
+        return names;
+    }
+
     static constantNameForParameter(type, name, value, index, count)
     {
         let indexesForType = WI.RecordingAction._constantIndexes[type];
@@ -125,10 +172,10 @@ WI.RecordingAction = class RecordingAction extends WI.Object
         if (!indexesForAction)
             return null;
 
-        if (Array.isArray(indexesForAction) && !indexesForAction.includes(index))
-            return null;
-
-        if (typeof indexesForAction === "object") {
+        if (Array.isArray(indexesForAction)) {
+            if (!indexesForAction.includes(index))
+                return null;
+        } else if (typeof indexesForAction === "object") {
             let indexesForActionVariant = indexesForAction[count];
             if (!indexesForActionVariant)
                 return null;
@@ -188,7 +235,7 @@ WI.RecordingAction = class RecordingAction extends WI.Object
     get name() { return this._name; }
     get parameters() { return this._parameters; }
     get swizzleTypes() { return this._payloadSwizzleTypes; }
-    get trace() { return this._trace; }
+    get stackTrace() { return this._stackTrace; }
     get snapshot() { return this._snapshot; }
     get valid() { return this._valid; }
     get isFunction() { return this._isFunction; }
@@ -273,16 +320,14 @@ WI.RecordingAction = class RecordingAction extends WI.Object
                 }
             }
 
-            if (WI.ImageUtilities.supportsCanvasPathDebugging()) {
-                let currentX = currentState.get("currentX");
-                let invalidX = (currentX < 0 || currentX >= context.canvas.width) && (!lastState || currentX !== lastState.get("currentX"));
+            let currentX = currentState.get("currentX");
+            let invalidX = (currentX < 0 || currentX >= context.canvas.width) && (!lastState || currentX !== lastState.get("currentX"));
 
-                let currentY = currentState.get("currentY");
-                let invalidY = (currentY < 0 || currentY >= context.canvas.height) && (!lastState || currentY !== lastState.get("currentY"));
+            let currentY = currentState.get("currentY");
+            let invalidY = (currentY < 0 || currentY >= context.canvas.height) && (!lastState || currentY !== lastState.get("currentY"));
 
-                if (invalidX || invalidY)
-                    this._warning = WI.UIString("This action moves the path outside the visible area");
-            }
+            if (invalidX || invalidY)
+                this._warning = WI.UIString("This action moves the path outside the visible area");
         }
     }
 
@@ -304,20 +349,22 @@ WI.RecordingAction = class RecordingAction extends WI.Object
             Promise.all(this._payloadParameters.map(swizzleParameter)),
         ];
 
-        if (!isNaN(this._payloadTrace))
-            swizzlePromises.push(recording.swizzle(this._payloadTrace, WI.Recording.Swizzle.CallStack))
+        if (!isNaN(this._payloadStackTrace))
+            swizzlePromises.push(recording.swizzle(this._payloadStackTrace, WI.Recording.Swizzle.CallStack));
         else {
-            // COMPATIBILITY (iOS 12.1): "trace" was sent as an array of call frames instead of a single call stack
-            swizzlePromises.push(Promise.all(this._payloadTrace.map((item) => recording.swizzle(item, WI.Recording.Swizzle.CallFrame))));
+            // COMPATIBILITY (iOS 12.1): "stackTrace" was sent as an array of call frames instead of a single call stack
+            let stackTracePromise = Promise.all(this._payloadStackTrace.map((item) => recording.swizzle(item, WI.Recording.Swizzle.CallFrame)))
+                .then((callFrames) => WI.StackTrace.fromPayload(WI.assumingMainTarget(), callFrames));
+            swizzlePromises.push(stackTracePromise);
         }
 
         if (this._payloadSnapshot >= 0)
             swizzlePromises.push(recording.swizzle(this._payloadSnapshot, WI.Recording.Swizzle.String));
 
-        let [name, parameters, callFrames, snapshot] = await Promise.all(swizzlePromises);
+        let [name, parameters, stackTrace, snapshot] = await Promise.all(swizzlePromises);
         this._name = name;
         this._parameters = parameters;
-        this._trace = callFrames;
+        this._stackTrace = stackTrace;
         if (this._payloadSnapshot >= 0)
             this._snapshot = snapshot;
 
@@ -464,7 +511,7 @@ WI.RecordingAction = class RecordingAction extends WI.Object
 
     toJSON()
     {
-        let json = [this._payloadName, this._payloadParameters, this._payloadSwizzleTypes, this._payloadTrace];
+        let json = [this._payloadName, this._payloadParameters, this._payloadSwizzleTypes, this._payloadStackTrace];
         if (this._payloadSnapshot >= 0)
             json.push(this._payloadSnapshot);
         return json;

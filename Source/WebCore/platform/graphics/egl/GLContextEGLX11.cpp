@@ -20,18 +20,25 @@
 #include "GLContextEGL.h"
 
 #if USE(EGL) && PLATFORM(X11)
+
 #include "PlatformDisplayX11.h"
 #include "XErrorTrapper.h"
 #include "XUniquePtr.h"
-#include <EGL/egl.h>
 #include <X11/Xlib.h>
+
+#if USE(LIBEPOXY)
+#include <epoxy/egl.h>
+#else
+#include <EGL/egl.h>
+#endif
 
 namespace WebCore {
 
-GLContextEGL::GLContextEGL(PlatformDisplay& display, EGLContext context, EGLSurface surface, XUniquePixmap&& pixmap)
+GLContextEGL::GLContextEGL(PlatformDisplay& display, EGLContext context, EGLSurface surface, EGLConfig config, XUniquePixmap&& pixmap)
     : GLContext(display)
     , m_context(context)
     , m_surface(surface)
+    , m_config(config)
     , m_type(PixmapSurface)
     , m_pixmap(WTFMove(pixmap))
 {
@@ -90,7 +97,7 @@ std::unique_ptr<GLContextEGL> GLContextEGL::createPixmapContext(PlatformDisplay&
         return nullptr;
     }
 
-    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, WTFMove(pixmap)));
+    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, config, WTFMove(pixmap)));
 }
 
 } // namespace WebCore

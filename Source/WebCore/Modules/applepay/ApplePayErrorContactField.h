@@ -27,11 +27,25 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "ApplePaySessionPaymentRequest.h"
+#include <wtf/Forward.h>
 
 namespace WebCore {
 
-using ApplePayErrorContactField = PaymentError::ContactField;
+enum class ApplePayErrorContactField : uint8_t {
+    PhoneNumber,
+    EmailAddress,
+    Name,
+    PhoneticName,
+    PostalAddress,
+    AddressLines,
+    SubLocality,
+    Locality,
+    PostalCode,
+    SubAdministrativeArea,
+    AdministrativeArea,
+    Country,
+    CountryCode,
+};
 
 } // namespace WebCore
 

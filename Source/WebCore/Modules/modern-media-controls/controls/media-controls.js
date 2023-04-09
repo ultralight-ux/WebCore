@@ -26,28 +26,28 @@
 class MediaControls extends LayoutNode
 {
 
-    constructor({ width = 300, height = 150, layoutTraits = LayoutTraits.Unknown } = {})
+    constructor({ width = 300, height = 150, layoutTraits = null } = {})
     {
         super(`<div class="media-controls"></div>`);
 
+        if (layoutTraits?.inheritsBorderRadius())
+            this.element.classList.add("inherits-border-radius");
+
         this._scaleFactor = 1;
-        this._shouldCenterControlsVertically = false;
 
         this.width = width;
         this.height = height;
         this.layoutTraits = layoutTraits;
 
         this.playPauseButton = new PlayPauseButton(this);
-        this.airplayButton = new AirplayButton(this);
         this.pipButton = new PiPButton(this);
         this.fullscreenButton = new FullscreenButton(this);
         this.muteButton = new MuteButton(this);
         this.tracksButton = new TracksButton(this);
+        this.overflowButton = new OverflowButton(this);
 
         this.statusLabel = new StatusLabel(this);
         this.timeControl = new TimeControl(this);
-
-        this.tracksPanel = new TracksPanel;
 
         this.bottomControlsBar = new ControlsBar("bottom");
 
@@ -56,9 +56,21 @@ class MediaControls extends LayoutNode
         this.autoHideController.hasSecondaryUIAttached = false;
 
         this._placard = null;
-        this.airplayPlacard = new AirplayPlacard(this);
         this.invalidPlacard = new InvalidPlacard(this);
-        this.pipPlacard = new PiPPlacard(this);
+
+        // FIXME: Adwaita layout doesn't have an icon for pip-placard.
+        if (this.layoutTraits?.supportsPiP())
+            this.pipPlacard = new PiPPlacard(this);
+        else
+            this.pipPlacard = null;
+
+        if (this.layoutTraits?.supportsAirPlay()) {
+            this.airplayButton = new AirplayButton(this);
+            this.airplayPlacard = new AirplayPlacard(this);
+        } else {
+            this.airplayButton = null;
+            this.airplayPlacard = null;
+        }
 
         this.element.addEventListener("focusin", this);
         window.addEventListener("dragstart", this, true);
@@ -118,6 +130,8 @@ class MediaControls extends LayoutNode
     {
         this.needsLayout = this.usesLTRUserInterfaceLayoutDirection !== flag;
         this.element.classList.toggle("uses-ltr-user-interface-layout-direction", flag);
+
+        this.muteButton.usesLTRUserInterfaceLayoutDirection = this.usesLTRUserInterfaceLayoutDirection;
     }
 
     get scaleFactor()
@@ -131,20 +145,6 @@ class MediaControls extends LayoutNode
             return;
 
         this._scaleFactor = scaleFactor;
-        this.markDirtyProperty("scaleFactor");
-    }
-
-    get shouldCenterControlsVertically()
-    {
-        return this._shouldCenterControlsVertically;
-    }
-
-    set shouldCenterControlsVertically(flag)
-    {
-        if (this._shouldCenterControlsVertically === flag)
-            return;
-
-        this._shouldCenterControlsVertically = flag;
         this.markDirtyProperty("scaleFactor");
     }
 
@@ -165,38 +165,6 @@ class MediaControls extends LayoutNode
     placardPreventsControlsBarDisplay()
     {
         return this._placard && this._placard !== this.airplayPlacard;
-    }
-
-    showTracksPanel()
-    {
-        this.element.classList.add("shows-tracks-panel");
-
-        this.tracksButton.on = true;
-        this.tracksButton.element.blur();
-        this.autoHideController.hasSecondaryUIAttached = true;
-        this.tracksPanel.presentInParent(this);
-
-        const controlsBounds = this.element.getBoundingClientRect();
-        const controlsBarBounds = this.bottomControlsBar.element.getBoundingClientRect();
-        const tracksButtonBounds = this.tracksButton.element.getBoundingClientRect();
-        this.tracksPanel.rightX = this.width - (tracksButtonBounds.right - controlsBounds.left);
-        this.tracksPanel.bottomY = this.height - (controlsBarBounds.top - controlsBounds.top) + 1;
-        this.tracksPanel.maxHeight = this.height - this.tracksPanel.bottomY - 10;
-    }
-
-    hideTracksPanel()
-    {
-        this.element.classList.remove("shows-tracks-panel");
-
-        let shouldFadeControlsBar = true;
-        if (window.event instanceof MouseEvent)
-            shouldFadeControlsBar = !this.isPointInControls(new DOMPoint(event.clientX, event.clientY), true);
-
-        this.tracksButton.on = false;
-        this.tracksButton.element.focus();
-        this.autoHideController.hasSecondaryUIAttached = false;
-        this.faded = this.autoHideController.fadesWhileIdle && shouldFadeControlsBar;
-        this.tracksPanel.hide();
     }
 
     fadeIn()
@@ -258,12 +226,9 @@ class MediaControls extends LayoutNode
                 this.element.style.zoom = zoom;
                 this.element.style.removeProperty("transform");
             }
-            // We also want to optionally center them vertically compared to their container.
-            this.element.style.top = this._shouldCenterControlsVertically ? `${(this.height / 2) * (zoom - 1)}px` : "auto"; 
         } else if (propertyName === "faded")
             this.element.classList.toggle("faded", this.faded);
         else
             super.commitProperty(propertyName);
     }
-
 }

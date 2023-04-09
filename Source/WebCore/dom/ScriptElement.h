@@ -22,8 +22,11 @@
 #pragma once
 
 #include "ContainerNode.h"
+#include "ContentSecurityPolicy.h"
 #include "LoadableScript.h"
 #include "ReferrerPolicy.h"
+#include "ScriptExecutionContextIdentifier.h"
+#include "ScriptType.h"
 #include "UserGestureIndicator.h"
 #include <wtf/MonotonicTime.h>
 #include <wtf/text/TextPosition.h>
@@ -51,10 +54,14 @@ public:
     WEBCORE_EXPORT String scriptContent() const;
     void executeClassicScript(const ScriptSourceCode&);
     void executeModuleScript(LoadableModuleScript&);
+    void registerImportMap(const ScriptSourceCode&);
 
     void executePendingScript(PendingScript&);
 
     virtual bool hasAsyncAttribute() const = 0;
+    virtual bool hasDeferAttribute() const = 0;
+    virtual bool hasSourceAttribute() const = 0;
+    virtual bool hasNoModuleAttribute() const = 0;
 
     // XML parser calls these
     virtual void dispatchLoadEvent() = 0;
@@ -68,9 +75,7 @@ public:
     bool willExecuteInOrder() const { return m_willExecuteInOrder; }
     LoadableScript* loadableScript() { return m_loadableScript.get(); }
 
-    // https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
-    enum class ScriptType { Classic, Module };
-    ScriptType scriptType() const { return m_isModuleScript ? ScriptType::Module : ScriptType::Classic; }
+    ScriptType scriptType() const { return m_scriptType; }
 
     void ref();
     void deref();
@@ -80,14 +85,14 @@ protected:
 
     void setHaveFiredLoadEvent(bool haveFiredLoad) { m_haveFiredLoad = haveFiredLoad; }
     void setErrorOccurred(bool errorOccurred) { m_errorOccurred = errorOccurred; }
-    bool isParserInserted() const { return m_parserInserted; }
+    ParserInserted isParserInserted() const { return m_parserInserted; }
     bool alreadyStarted() const { return m_alreadyStarted; }
     bool forceAsync() const { return m_forceAsync; }
 
     // Helper functions used by our parent classes.
     Node::InsertedIntoAncestorResult insertedIntoAncestor(Node::InsertionType insertionType, ContainerNode&) const
     {
-        if (insertionType.connectedToDocument && !m_parserInserted)
+        if (insertionType.connectedToDocument && m_parserInserted == ParserInserted::No)
             return Node::InsertedIntoAncestorResult::NeedsPostInsertionCallback;
         return Node::InsertedIntoAncestorResult::Done;
     }
@@ -100,13 +105,14 @@ protected:
 private:
     void executeScriptAndDispatchEvent(LoadableScript&);
 
-    Optional<ScriptType> determineScriptType(LegacyTypeSupport) const;
+    std::optional<ScriptType> determineScriptType(LegacyTypeSupport) const;
     bool ignoresLoadRequest() const;
     bool isScriptForEventSupported() const;
     void dispatchLoadEventRespectingUserGestureIndicator();
 
     bool requestClassicScript(const String& sourceURL);
     bool requestModuleScript(const TextPosition& scriptStartPosition);
+    bool requestImportMap(Frame&, const String& sourceURL);
 
     virtual String sourceAttributeValue() const = 0;
     virtual String charsetAttributeValue() const = 0;
@@ -114,27 +120,27 @@ private:
     virtual String languageAttributeValue() const = 0;
     virtual String forAttributeValue() const = 0;
     virtual String eventAttributeValue() const = 0;
-    virtual bool hasDeferAttribute() const = 0;
-    virtual bool hasSourceAttribute() const = 0;
-    virtual bool hasNoModuleAttribute() const = 0;
     virtual ReferrerPolicy referrerPolicy() const = 0;
 
     Element& m_element;
-    WTF::OrdinalNumber m_startLineNumber;
-    bool m_parserInserted : 1;
-    bool m_isExternalScript : 1;
+    OrdinalNumber m_startLineNumber { OrdinalNumber::beforeFirst() };
+    ParserInserted m_parserInserted : bitWidthOfParserInserted;
+    bool m_isExternalScript : 1 { false };
     bool m_alreadyStarted : 1;
-    bool m_haveFiredLoad : 1;
-    bool m_errorOccurred : 1;
-    bool m_willBeParserExecuted : 1; // Same as "The parser will handle executing the script."
-    bool m_readyToBeParserExecuted : 1;
-    bool m_willExecuteWhenDocumentFinishedParsing : 1;
+    bool m_haveFiredLoad : 1 { false };
+    bool m_errorOccurred : 1 { false };
+    bool m_willBeParserExecuted : 1 { false }; // Same as "The parser will handle executing the script."
+    bool m_readyToBeParserExecuted : 1 { false };
+    bool m_willExecuteWhenDocumentFinishedParsing : 1 { false };
     bool m_forceAsync : 1;
-    bool m_willExecuteInOrder : 1;
-    bool m_isModuleScript : 1;
+    bool m_willExecuteInOrder : 1 { false };
+    ScriptType m_scriptType : bitWidthOfScriptType { ScriptType::Classic };
     String m_characterEncoding;
     String m_fallbackCharacterEncoding;
     RefPtr<LoadableScript> m_loadableScript;
+
+    // https://html.spec.whatwg.org/multipage/scripting.html#preparation-time-document
+    ScriptExecutionContextIdentifier m_preparationTimeDocumentIdentifier;
 
     MonotonicTime m_creationTime;
     RefPtr<UserGestureToken> m_userGestureToken;

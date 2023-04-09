@@ -82,8 +82,7 @@ WI.ScriptProfileTimelineView = class ScriptProfileTimelineView extends WI.Timeli
 
     closed()
     {
-        console.assert(this.representedObject instanceof WI.Timeline);
-        this.representedObject.removeEventListener(null, null, this);
+        this.representedObject.removeEventListener(WI.Timeline.Event.Refreshed, this._scriptTimelineRecordRefreshed, this);
     }
 
     get navigationItems()
@@ -213,3 +212,5 @@ WI.ScriptProfileTimelineView.ProfileViewType = {
     Hierarchy: "hierarchy",
     TopFunctions: "top-functions",
 };
+
+WI.ScriptProfileTimelineView.ReferencePage = WI.ReferencePage.TimelinesTab.JavaScriptAndEventsTimeline;

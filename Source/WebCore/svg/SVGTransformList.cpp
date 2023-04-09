@@ -44,14 +44,14 @@ ExceptionOr<RefPtr<SVGTransform>> SVGTransformList::consolidate()
         return nullptr;
 
     if (m_items.size() == 1)
-        return makeRefPtr(at(0).get());
+        return RefPtr { at(0).ptr() };
 
     auto newItem = SVGTransform::create(concatenate());
     clearItems();
 
     auto item = append(WTFMove(newItem));
     commitChange();
-    return makeRefPtr(item.get());
+    return RefPtr { item.ptr() };
 }
 
 AffineTransform SVGTransformList::concatenate() const
@@ -65,9 +65,10 @@ AffineTransform SVGTransformList::concatenate() const
 template<typename CharacterType> bool SVGTransformList::parseGeneric(StringParsingBuffer<CharacterType>& buffer)
 {
     bool delimParsed = false;
+    skipOptionalSVGSpaces(buffer);
+
     while (buffer.hasCharactersRemaining()) {
         delimParsed = false;
-        skipOptionalSVGSpaces(buffer);
         
         auto parsedTransformType = SVGTransformable::parseTransformType(buffer);
         if (!parsedTransformType)
@@ -77,7 +78,7 @@ template<typename CharacterType> bool SVGTransformList::parseGeneric(StringParsi
         if (!parsedTransformValue)
             return false;
 
-        append(SVGTransform::create(*parsedTransformValue));
+        append(SVGTransform::create(WTFMove(*parsedTransformValue)));
 
         skipOptionalSVGSpaces(buffer);
 

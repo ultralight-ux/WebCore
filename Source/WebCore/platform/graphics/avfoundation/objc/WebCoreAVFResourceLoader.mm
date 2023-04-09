@@ -31,7 +31,9 @@
 #import "CachedRawResource.h"
 #import "CachedResourceLoader.h"
 #import "CachedResourceRequest.h"
+#import "DataURLDecoder.h"
 #import "MediaPlayerPrivateAVFoundationObjC.h"
+#import "PlatformMediaResourceLoader.h"
 #import "ResourceLoaderOptions.h"
 #import "SharedBuffer.h"
 #import "UTIUtilities.h"
@@ -59,7 +61,7 @@ private:
 
     // CachedRawResourceClient
     void responseReceived(CachedResource&, const ResourceResponse&, CompletionHandler<void()>&&) final;
-    void dataReceived(CachedResource&, const char*, int) final;
+    void dataReceived(CachedResource&, const SharedBuffer&) final;
     void notifyFinished(CachedResource&, const NetworkLoadMetrics&) final;
 
     void fulfillRequestWithResource(CachedResource&);
@@ -72,7 +74,7 @@ std::unique_ptr<CachedResourceMediaLoader> CachedResourceMediaLoader::create(Web
 {
     // FIXME: Skip Content Security Policy check if the element that inititated this request
     // is in a user-agent shadow tree. See <https://bugs.webkit.org/show_bug.cgi?id=173498>.
-    CachedResourceRequest request(WTFMove(resourceRequest), ResourceLoaderOptions(
+    ResourceLoaderOptions loaderOptions(
         SendCallbackPolicy::SendCallbacks,
         ContentSniffingPolicy::DoNotSniffContent,
         DataBufferingPolicy::BufferData,
@@ -84,7 +86,10 @@ std::unique_ptr<CachedResourceMediaLoader> CachedResourceMediaLoader::create(Web
         CertificateInfoPolicy::DoNotIncludeCertificateInfo,
         ContentSecurityPolicyImposition::DoPolicyCheck,
         DefersLoadingPolicy::AllowDefersLoading,
-        CachingPolicy::DisallowCaching));
+        CachingPolicy::DisallowCaching
+    );
+    loaderOptions.destination = FetchOptions::Destination::Video;
+    CachedResourceRequest request(WTFMove(resourceRequest), loaderOptions);
 
     auto resource = loader.requestMedia(WTFMove(request)).value_or(nullptr);
     if (!resource)
@@ -125,7 +130,7 @@ void CachedResourceMediaLoader::notifyFinished(CachedResource& resource, const N
     m_parent.loadFinished();
 }
 
-void CachedResourceMediaLoader::dataReceived(CachedResource& resource, const char*, int)
+void CachedResourceMediaLoader::dataReceived(CachedResource& resource, const SharedBuffer&)
 {
     ASSERT(&resource == m_resource);
     if (auto* data = resource.resourceBuffer())
@@ -151,14 +156,14 @@ private:
     void redirectReceived(PlatformMediaResource&, ResourceRequest&& request, const ResourceResponse&, CompletionHandler<void(ResourceRequest&&)>&& completionHandler) final { completionHandler(WTFMove(request)); }
     bool shouldCacheResponse(PlatformMediaResource&, const ResourceResponse&) final { return false; }
     void dataSent(PlatformMediaResource&, unsigned long long, unsigned long long) final { }
-    void dataReceived(PlatformMediaResource&, const char*, int) final;
+    void dataReceived(PlatformMediaResource&, const SharedBuffer&) final;
     void accessControlCheckFailed(PlatformMediaResource&, const ResourceError& error) final { loadFailed(error); }
     void loadFailed(PlatformMediaResource&, const ResourceError& error) final { loadFailed(error); }
     void loadFinished(PlatformMediaResource&, const NetworkLoadMetrics&) final { loadFinished(); }
 
     WebCoreAVFResourceLoader& m_parent;
     RefPtr<PlatformMediaResource> m_resource;
-    RefPtr<SharedBuffer> m_buffer;
+    SharedBufferBuilder m_buffer;
 };
 
 WeakPtr<PlatformResourceMediaLoader> PlatformResourceMediaLoader::create(WebCoreAVFResourceLoader& parent, PlatformMediaResourceLoader& loader, ResourceRequest&& request)
@@ -167,8 +172,8 @@ WeakPtr<PlatformResourceMediaLoader> PlatformResourceMediaLoader::create(WebCore
     if (!resource)
         return nullptr;
     auto* resourcePointer = resource.get();
-    auto client = std::unique_ptr<PlatformResourceMediaLoader>(new PlatformResourceMediaLoader { parent, resource.releaseNonNull() });
-    auto result = makeWeakPtr(client.get());
+    auto client = adoptRef(*new PlatformResourceMediaLoader { parent, resource.releaseNonNull() });
+    WeakPtr result = client;
 
     resourcePointer->setClient(WTFMove(client));
     return result;
@@ -206,13 +211,51 @@ void PlatformResourceMediaLoader::loadFinished()
     m_parent.loadFinished();
 }
 
-void PlatformResourceMediaLoader::dataReceived(PlatformMediaResource&, const char* data, int size)
+void PlatformResourceMediaLoader::dataReceived(PlatformMediaResource&, const SharedBuffer& buffer)
 {
-    if (!m_buffer)
-        m_buffer = SharedBuffer::create(data, size);
-    else
-        m_buffer->append(data, size);
-    m_parent.newDataStoredInSharedBuffer(*m_buffer);
+    m_buffer.append(buffer);
+    m_parent.newDataStoredInSharedBuffer(*m_buffer.get());
+}
+
+class DataURLResourceMediaLoader : public CanMakeWeakPtr<DataURLResourceMediaLoader> {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    DataURLResourceMediaLoader(WebCoreAVFResourceLoader&, ResourceRequest&&);
+
+private:
+    WebCoreAVFResourceLoader& m_parent;
+    ResourceResponse m_response;
+    RefPtr<SharedBuffer> m_buffer;
+};
+
+DataURLResourceMediaLoader::DataURLResourceMediaLoader(WebCoreAVFResourceLoader& parent, ResourceRequest&& request)
+    : m_parent(parent)
+{
+    RELEASE_ASSERT(request.url().protocolIsData());
+
+    if (auto result = DataURLDecoder::decode(request.url(), DataURLDecoder::Mode::ForgivingBase64)) {
+        m_response = ResourceResponse::dataURLResponse(request.url(), *result);
+        m_buffer = SharedBuffer::create(WTFMove(result->data));
+    }
+
+    callOnMainThread([this, weakThis = WeakPtr { *this }] {
+        if (!weakThis)
+            return;
+
+        if (!m_buffer || m_response.isNull()) {
+            m_parent.loadFailed(ResourceError(ResourceError::Type::General));
+            return;
+        }
+        m_parent.responseReceived(m_response);
+        if (!weakThis)
+            return;
+
+        m_parent.newDataStoredInSharedBuffer(*m_buffer);
+        if (!weakThis)
+            return;
+
+        m_parent.loadFinished();
+    });
 }
 
 Ref<WebCoreAVFResourceLoader> WebCoreAVFResourceLoader::create(MediaPlayerPrivateAVFoundationObjC* parent, AVAssetResourceLoadingRequest *avRequest)
@@ -235,16 +278,27 @@ WebCoreAVFResourceLoader::~WebCoreAVFResourceLoader()
 
 void WebCoreAVFResourceLoader::startLoading()
 {
-    if (m_resourceMediaLoader || m_platformMediaLoader || !m_parent)
+    if (m_dataURLMediaLoader || m_resourceMediaLoader || m_platformMediaLoader || !m_parent)
         return;
 
-    NSURLRequest *nsRequest = [m_avRequest.get() request];
+    NSURLRequest *nsRequest = [m_avRequest request];
 
     ResourceRequest request(nsRequest);
     request.setPriority(ResourceLoadPriority::Low);
 
+    if (AVAssetResourceLoadingDataRequest *dataRequest = [m_avRequest dataRequest]; dataRequest.requestedLength
+        && !request.hasHTTPHeaderField(HTTPHeaderName::Range)) {
+        String rangeEnd = dataRequest.requestsAllDataToEndOfResource ? emptyString() : makeString(dataRequest.requestedOffset + dataRequest.requestedLength - 1);
+        request.addHTTPHeaderField(HTTPHeaderName::Range, makeString("bytes=", dataRequest.requestedOffset, '-', rangeEnd));
+    }
+
+    if (request.url().protocolIsData()) {
+        m_dataURLMediaLoader = WTF::makeUnique<DataURLResourceMediaLoader>(*this, WTFMove(request));
+        return;
+    }
+
     if (auto* loader = m_parent->player()->cachedResourceLoader()) {
-        m_resourceMediaLoader = CachedResourceMediaLoader::create(*this, *loader, WTFMove(request));
+        m_resourceMediaLoader = CachedResourceMediaLoader::create(*this, *loader, ResourceRequest(request));
         if (m_resourceMediaLoader)
             return;
     }
@@ -256,11 +310,12 @@ void WebCoreAVFResourceLoader::startLoading()
     }
 
     LOG_ERROR("Failed to start load for media at url %s", [[[nsRequest URL] absoluteString] UTF8String]);
-    [m_avRequest.get() finishLoadingWithError:0];
+    [m_avRequest finishLoadingWithError:0];
 }
 
 void WebCoreAVFResourceLoader::stopLoading()
 {
+    m_dataURLMediaLoader = nullptr;
     m_resourceMediaLoader = nullptr;
 
     if (m_platformMediaLoader) {
@@ -278,7 +333,7 @@ void WebCoreAVFResourceLoader::invalidate()
 
     m_parent = nullptr;
 
-    callOnMainThread([protectedThis = makeRef(*this)] () mutable {
+    callOnMainThread([protectedThis = Ref { *this }] () mutable {
         protectedThis->stopLoading();
     });
 }
@@ -287,7 +342,7 @@ void WebCoreAVFResourceLoader::responseReceived(const ResourceResponse& response
 {
     int status = response.httpStatusCode();
     if (status && (status < 200 || status > 299)) {
-        [m_avRequest.get() finishLoadingWithError:0];
+        [m_avRequest finishLoadingWithError:0];
         return;
     }
 
@@ -295,19 +350,23 @@ void WebCoreAVFResourceLoader::responseReceived(const ResourceResponse& response
     if (contentRange.isValid())
         m_responseOffset = static_cast<NSUInteger>(contentRange.firstBytePosition());
 
-    if (AVAssetResourceLoadingContentInformationRequest* contentInfo = [m_avRequest.get() contentInformationRequest]) {
+    if (AVAssetResourceLoadingContentInformationRequest* contentInfo = [m_avRequest contentInformationRequest]) {
         String uti = UTIFromMIMEType(response.mimeType());
 
         [contentInfo setContentType:uti];
 
         [contentInfo setContentLength:contentRange.isValid() ? contentRange.instanceLength() : response.expectedContentLength()];
         [contentInfo setByteRangeAccessSupported:YES];
-        
-        if ([contentInfo respondsToSelector:@selector(setEntireLengthAvailableOnDemand:)])
+
+        // Do not set "EntireLengthAvailableOnDemand" to YES when the loader is DataURLResourceMediaLoader.
+        // When the property is YES, AVAssetResourceLoader will request small data ranges over and over again
+        // during the playback. For DataURLResourceMediaLoader, that means it needs to decode the URL repeatedly,
+        // which is very inefficient for long URLs.
+        if (!m_dataURLMediaLoader && [contentInfo respondsToSelector:@selector(setEntireLengthAvailableOnDemand:)])
             [contentInfo setEntireLengthAvailableOnDemand:YES];
 
         if (![m_avRequest dataRequest]) {
-            [m_avRequest.get() finishLoading];
+            [m_avRequest finishLoading];
             stopLoading();
         }
     }
@@ -317,20 +376,20 @@ void WebCoreAVFResourceLoader::loadFailed(const ResourceError& error)
 {
     // <rdar://problem/13987417> Set the contentType of the contentInformationRequest to an empty
     // string to trigger AVAsset's playable value to complete loading.
-    if ([m_avRequest.get() contentInformationRequest] && ![[m_avRequest.get() contentInformationRequest] contentType])
-        [[m_avRequest.get() contentInformationRequest] setContentType:@""];
+    if ([m_avRequest contentInformationRequest] && ![[m_avRequest contentInformationRequest] contentType])
+        [[m_avRequest contentInformationRequest] setContentType:@""];
 
-    [m_avRequest.get() finishLoadingWithError:error.nsError()];
+    [m_avRequest finishLoadingWithError:error.nsError()];
     stopLoading();
 }
 
 void WebCoreAVFResourceLoader::loadFinished()
 {
-    [m_avRequest.get() finishLoading];
+    [m_avRequest finishLoading];
     stopLoading();
 }
 
-void WebCoreAVFResourceLoader::newDataStoredInSharedBuffer(SharedBuffer& data)
+void WebCoreAVFResourceLoader::newDataStoredInSharedBuffer(const FragmentedSharedBuffer& data)
 {
     AVAssetResourceLoadingDataRequest* dataRequest = [m_avRequest dataRequest];
     if (!dataRequest)
@@ -371,7 +430,7 @@ void WebCoreAVFResourceLoader::newDataStoredInSharedBuffer(SharedBuffer& data)
         return;
 
     if (dataRequest.currentOffset + dataRequest.requestedLength >= dataRequest.requestedOffset) {
-        [m_avRequest.get() finishLoading];
+        [m_avRequest finishLoading];
         stopLoading();
     }
 }

@@ -29,6 +29,7 @@
 #include "Document.h"
 #include "ElementIterator.h"
 #include "Page.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGSMILElement.h"
 #include "SVGSVGElement.h"
 #include "ScopedEventQueue.h"
@@ -113,7 +114,13 @@ bool SMILTimeContainer::isStarted() const
 
 void SMILTimeContainer::begin()
 {
-    ASSERT(!m_beginTime);
+    if (isStarted())
+        return;
+
+    ASSERT(Page::nonUtilityPageCount());
+    if (!Page::nonUtilityPageCount())
+        return;
+
     MonotonicTime now = MonotonicTime::now();
 
     // If 'm_presetStartTime' is set, the timeline was modified via setElapsed() before the document began.
@@ -142,6 +149,9 @@ void SMILTimeContainer::pause()
 void SMILTimeContainer::resume()
 {
     ASSERT(isPaused());
+    ASSERT(Page::nonUtilityPageCount());
+    if (!Page::nonUtilityPageCount())
+        return;
 
     m_resumeTime = MonotonicTime::now();
     m_pauseTime = MonotonicTime();
@@ -150,7 +160,11 @@ void SMILTimeContainer::resume()
 
 void SMILTimeContainer::setElapsed(SMILTime time)
 {
-    // If the documment didn't begin yet, record a new start time, we'll seek to once its possible.
+    ASSERT(Page::nonUtilityPageCount());
+    if (!Page::nonUtilityPageCount())
+        return;
+
+    // If the document didn't begin yet, record a new start time, we'll seek to once its possible.
     if (!m_beginTime) {
         m_presetStartTime = Seconds(time.value());
         return;
@@ -181,6 +195,10 @@ void SMILTimeContainer::startTimer(SMILTime elapsed, SMILTime fireTime, SMILTime
         return;
 
     if (!fireTime.isFinite())
+        return;
+
+    ASSERT(Page::nonUtilityPageCount());
+    if (!Page::nonUtilityPageCount())
         return;
 
     SMILTime delay = std::max(fireTime - elapsed, minimumDelay);
@@ -238,6 +256,10 @@ void SMILTimeContainer::processScheduledAnimations(const Function<void(SVGSMILEl
 
 void SMILTimeContainer::updateAnimations(SMILTime elapsed, bool seekToTime)
 {
+    ASSERT(Page::nonUtilityPageCount());
+    if (!Page::nonUtilityPageCount())
+        return;
+
     // Don't mutate the DOM while updating the animations.
     EventQueueScope scope;
 

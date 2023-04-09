@@ -35,7 +35,6 @@ class EventTarget;
 class InstrumentingAgents;
 class RegisteredEventListener;
 class TimerBase;
-typedef String ErrorString;
 
 class WebDebuggerAgent : public Inspector::InspectorDebuggerAgent {
     WTF_MAKE_NONCOPYABLE(WebDebuggerAgent);
@@ -48,6 +47,7 @@ public:
     void didAddEventListener(EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     void willRemoveEventListener(EventTarget&, const AtomString& eventType, EventListener&, bool capture);
     void willHandleEvent(const RegisteredEventListener&);
+    void didHandleEvent(const RegisteredEventListener&);
     int willPostMessage();
     void didPostMessage(int postMessageIdentifier, JSC::JSGlobalObject&);
     void didFailPostMessage(int postMessageIdentifier);
@@ -56,8 +56,8 @@ public:
 
 protected:
     WebDebuggerAgent(WebAgentContext&);
-    void enable() override;
-    void disable(bool isBeingDestroyed) override;
+    void internalEnable() override;
+    void internalDisable(bool isBeingDestroyed) override;
 
     void didClearAsyncStackTraceData() final;
 
@@ -65,6 +65,7 @@ protected:
 
 private:
     HashMap<const RegisteredEventListener*, int> m_registeredEventListeners;
+    HashMap<const RegisteredEventListener*, int> m_dispatchedEventListeners;
     HashSet<int> m_postMessageTasks;
     int m_nextEventListenerIdentifier { 1 };
     int m_nextPostMessageIdentifier { 1 };

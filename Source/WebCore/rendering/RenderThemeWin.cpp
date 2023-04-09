@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Kenneth Rohde Christiansen
  *
  * This library is free software; you can redistribute it and/or
@@ -271,12 +271,12 @@ void RenderThemeWin::themeChanged()
 
 String RenderThemeWin::extraDefaultStyleSheet()
 {
-    return String(themeWinUserAgentStyleSheet, sizeof(themeWinUserAgentStyleSheet));
+    return StringImpl::createWithoutCopying(themeWinUserAgentStyleSheet, sizeof(themeWinUserAgentStyleSheet));
 }
 
 String RenderThemeWin::extraQuirksStyleSheet()
 {
-    return String(themeWinQuirksUserAgentStyleSheet, sizeof(themeWinQuirksUserAgentStyleSheet));
+    return StringImpl::createWithoutCopying(themeWinQuirksUserAgentStyleSheet, sizeof(themeWinQuirksUserAgentStyleSheet));
 }
 
 bool RenderThemeWin::supportsHover(const RenderStyle&) const
@@ -285,146 +285,89 @@ bool RenderThemeWin::supportsHover(const RenderStyle&) const
     return haveTheme;
 }
 
-Color RenderThemeWin::platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
+Color RenderThemeWin::platformActiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const
 {
     COLORREF color = GetSysColor(COLOR_HIGHLIGHT);
     return SRGBA<uint8_t> { GetRValue(color), GetGValue(color), GetBValue(color) };
 }
 
-Color RenderThemeWin::platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
+Color RenderThemeWin::platformInactiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const
 {
     // This color matches Firefox.
     return SRGBA<uint8_t> { 176, 176, 176 };
 }
 
-Color RenderThemeWin::platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const
+Color RenderThemeWin::platformActiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const
 {
     COLORREF color = GetSysColor(COLOR_HIGHLIGHTTEXT);
     return SRGBA<uint8_t> { GetRValue(color), GetGValue(color), GetBValue(color) };
 }
 
-Color RenderThemeWin::platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options> options) const
+Color RenderThemeWin::platformInactiveSelectionForegroundColor(OptionSet<StyleColorOptions> options) const
 {
     return platformActiveSelectionForegroundColor(options);
 }
 
-static void fillFontDescription(FontCascadeDescription& fontDescription, LOGFONT& logFont, float fontSize)
-{    
-    fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setOneFamily(logFont.lfFaceName);
-    fontDescription.setSpecifiedSize(fontSize);
-    fontDescription.setWeight(logFont.lfWeight >= 700 ? boldWeightValue() : normalWeightValue()); // FIXME: Use real weight.
-    fontDescription.setIsItalic(logFont.lfItalic);
-}
-
-void RenderThemeWin::updateCachedSystemFontDescription(CSSValueID valueID, FontCascadeDescription& fontDescription) const
-{
-    static bool initialized;
-    static NONCLIENTMETRICS ncm;
-
-    if (!initialized) {
-        initialized = true;
-        ncm.cbSize = sizeof(NONCLIENTMETRICS);
-        ::SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-    }
- 
-    LOGFONT logFont;
-    bool shouldUseDefaultControlFontPixelSize = false;
-    switch (valueID) {
-    case CSSValueIcon:
-        ::SystemParametersInfo(SPI_GETICONTITLELOGFONT, sizeof(logFont), &logFont, 0);
-        break;
-    case CSSValueMenu:
-        logFont = ncm.lfMenuFont;
-        break;
-    case CSSValueMessageBox:
-        logFont = ncm.lfMessageFont;
-        break;
-    case CSSValueStatusBar:
-        logFont = ncm.lfStatusFont;
-        break;
-    case CSSValueCaption:
-        logFont = ncm.lfCaptionFont;
-        break;
-    case CSSValueSmallCaption:
-        logFont = ncm.lfSmCaptionFont;
-        break;
-    case CSSValueWebkitSmallControl:
-    case CSSValueWebkitMiniControl: // Just map to small.
-    case CSSValueWebkitControl: // Just map to small.
-        shouldUseDefaultControlFontPixelSize = true;
-        FALLTHROUGH;
-    default: { // Everything else uses the stock GUI font.
-        HGDIOBJ hGDI = ::GetStockObject(DEFAULT_GUI_FONT);
-        if (!hGDI)
-            return;
-        if (::GetObject(hGDI, sizeof(logFont), &logFont) <= 0)
-            return;
-    }
-    }
-    fillFontDescription(fontDescription, logFont, shouldUseDefaultControlFontPixelSize ? defaultControlFontPixelSize : abs(logFont.lfHeight));
-}
-
-bool RenderThemeWin::supportsFocus(ControlPart appearance) const
+bool RenderThemeWin::supportsFocus(StyleAppearance appearance) const
 {
     switch (appearance) {
-        case PushButtonPart:
-        case ButtonPart:
-        case DefaultButtonPart:
-            return true;
-        default:
-            return false;
+    case StyleAppearance::PushButton:
+    case StyleAppearance::Button:
+    case StyleAppearance::DefaultButton:
+        return true;
+    default:
+        return false;
     }
 }
 
 bool RenderThemeWin::supportsFocusRing(const RenderStyle& style) const
 {
-    return supportsFocus(style.appearance());
+    return supportsFocus(style.effectiveAppearance());
 }
 
 unsigned RenderThemeWin::determineClassicState(const RenderObject& o, ControlSubPart subPart)
 {
     unsigned state = 0;
-    switch (o.style().appearance()) {
-        case PushButtonPart:
-        case ButtonPart:
-        case DefaultButtonPart:
-            state = DFCS_BUTTONPUSH;
-            if (!isEnabled(o))
-                state |= DFCS_INACTIVE;
-            else if (isPressed(o))
-                state |= DFCS_PUSHED;
-            break;
-        case RadioPart:
-        case CheckboxPart:
-            state = (o.style().appearance() == RadioPart) ? DFCS_BUTTONRADIO : DFCS_BUTTONCHECK;
-            if (isChecked(o))
-                state |= DFCS_CHECKED;
-            if (!isEnabled(o))
-                state |= DFCS_INACTIVE;
-            else if (isPressed(o))
-                state |= DFCS_PUSHED;
-            break;
-        case MenulistPart:
-            state = DFCS_SCROLLCOMBOBOX;
-            if (!isEnabled(o))
-                state |= DFCS_INACTIVE;
-            else if (isPressed(o))
-                state |= DFCS_PUSHED;
-            break;
-        case InnerSpinButtonPart: {
-            bool isUpButton = subPart == SpinButtonUp;
-            state = isUpButton ? DFCS_SCROLLUP : DFCS_SCROLLDOWN;
-            if (!isEnabled(o) || isReadOnlyControl(o))
-                state |= DFCS_INACTIVE;
-            else if (isPressed(o) && isUpButton == isSpinUpButtonPartPressed(o))
-                state |= DFCS_PUSHED;
-            else if (isHovered(o) && isUpButton == isSpinUpButtonPartHovered(o))
-                state |= DFCS_HOT;
-            break;
-        }
-        default:
-            break;
+    switch (o.style().effectiveAppearance()) {
+    case StyleAppearance::PushButton:
+    case StyleAppearance::Button:
+    case StyleAppearance::DefaultButton:
+        state = DFCS_BUTTONPUSH;
+        if (!isEnabled(o))
+            state |= DFCS_INACTIVE;
+        else if (isPressed(o))
+            state |= DFCS_PUSHED;
+        break;
+    case StyleAppearance::Radio:
+    case StyleAppearance::Checkbox:
+        state = (o.style().effectiveAppearance() == StyleAppearance::Radio) ? DFCS_BUTTONRADIO : DFCS_BUTTONCHECK;
+        if (isChecked(o))
+            state |= DFCS_CHECKED;
+        if (!isEnabled(o))
+            state |= DFCS_INACTIVE;
+        else if (isPressed(o))
+            state |= DFCS_PUSHED;
+        break;
+    case StyleAppearance::Menulist:
+        state = DFCS_SCROLLCOMBOBOX;
+        if (!isEnabled(o))
+            state |= DFCS_INACTIVE;
+        else if (isPressed(o))
+            state |= DFCS_PUSHED;
+        break;
+    case StyleAppearance::InnerSpinButton: {
+        bool isUpButton = subPart == SpinButtonUp;
+        state = isUpButton ? DFCS_SCROLLUP : DFCS_SCROLLDOWN;
+        if (!isEnabled(o) || isReadOnlyControl(o))
+            state |= DFCS_INACTIVE;
+        else if (isPressed(o) && isUpButton == isSpinUpButtonPartPressed(o))
+            state |= DFCS_PUSHED;
+        else if (isHovered(o) && isUpButton == isSpinUpButtonPartHovered(o))
+            state |= DFCS_HOT;
+        break;
+    }
+    default:
+        break;
     }
     return state;
 }
@@ -432,10 +375,10 @@ unsigned RenderThemeWin::determineClassicState(const RenderObject& o, ControlSub
 unsigned RenderThemeWin::determineState(const RenderObject& o)
 {
     unsigned result = TS_NORMAL;
-    ControlPart appearance = o.style().appearance();
+    auto appearance = o.style().effectiveAppearance();
     if (!isEnabled(o))
         result = TS_DISABLED;
-    else if (isReadOnlyControl(o) && (TextFieldPart == appearance || TextAreaPart == appearance || SearchFieldPart == appearance))
+    else if (isReadOnlyControl(o) && (StyleAppearance::TextField == appearance || StyleAppearance::TextArea == appearance || StyleAppearance::SearchField == appearance))
         result = TFS_READONLY; // Readonly is supported on textfields.
     else if (isPressed(o)) // Active overrides hover and focused.
         result = TS_ACTIVE;
@@ -443,10 +386,10 @@ unsigned RenderThemeWin::determineState(const RenderObject& o)
         result = TS_FOCUSED;
     else if (isHovered(o))
         result = TS_HOVER;
-    if (isChecked(o))
-        result += 4; // 4 unchecked states, 4 checked states.
-    else if (isIndeterminate(o) && appearance == CheckboxPart)
+    if (isIndeterminate(o) && appearance == StyleAppearance::Checkbox)
         result += 8;
+    else if (isChecked(o))
+        result += 4; // 4 unchecked states, 4 checked states.
     return result;
 }
 
@@ -455,7 +398,7 @@ unsigned RenderThemeWin::determineSliderThumbState(const RenderObject& o)
     unsigned result = TUS_NORMAL;
     if (!isEnabled(o))
         result = TUS_DISABLED;
-    else if (supportsFocus(o.style().appearance()) && isFocused(o))
+    else if (supportsFocus(o.style().effectiveAppearance()) && isFocused(o))
         result = TUS_FOCUSED;
     else if (isPressed(o))
         result = TUS_PRESSED;
@@ -471,7 +414,7 @@ unsigned RenderThemeWin::determineButtonState(const RenderObject& o)
         result = PBS_DISABLED;
     else if (isPressed(o))
         result = PBS_PRESSED;
-    else if (supportsFocus(o.style().appearance()) && isFocused(o))
+    else if (supportsFocus(o.style().effectiveAppearance()) && isFocused(o))
         result = PBS_DEFAULTED;
     else if (isHovered(o))
         result = PBS_HOT;
@@ -496,51 +439,51 @@ unsigned RenderThemeWin::determineSpinButtonState(const RenderObject& o, Control
 ThemeData RenderThemeWin::getClassicThemeData(const RenderObject& o, ControlSubPart subPart)
 {
     ThemeData result;
-    switch (o.style().appearance()) {
-        case PushButtonPart:
-        case ButtonPart:
-        case DefaultButtonPart:
-        case CheckboxPart:
-        case RadioPart:
-            result.m_part = DFC_BUTTON;
-            result.m_state = determineClassicState(o);
-            break;
-        case MenulistPart:
-            result.m_part = DFC_SCROLL;
-            result.m_state = determineClassicState(o);
-            break;
-        case MeterPart:
-            result.m_part = PP_BAR;
-            result.m_state = determineState(o);
-            break;
-        case SearchFieldPart:
-        case TextFieldPart:
-        case TextAreaPart:
-            result.m_part = TFP_TEXTFIELD;
-            result.m_state = determineState(o);
-            break;
-        case SliderHorizontalPart:
-            result.m_part = TKP_TRACK;
-            result.m_state = TS_NORMAL;
-            break;
-        case SliderVerticalPart:
-            result.m_part = TKP_TRACKVERT;
-            result.m_state = TS_NORMAL;
-            break;
-        case SliderThumbHorizontalPart:
-            result.m_part = TKP_THUMBBOTTOM;
-            result.m_state = determineSliderThumbState(o);
-            break;
-        case SliderThumbVerticalPart:
-            result.m_part = TKP_THUMBRIGHT;
-            result.m_state = determineSliderThumbState(o);
-            break;
-        case InnerSpinButtonPart:
-            result.m_part = DFC_SCROLL;
-            result.m_state = determineClassicState(o, subPart);
-            break;
-        default:
-            break;
+    switch (o.style().effectiveAppearance()) {
+    case StyleAppearance::PushButton:
+    case StyleAppearance::Button:
+    case StyleAppearance::DefaultButton:
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
+        result.m_part = DFC_BUTTON;
+        result.m_state = determineClassicState(o);
+        break;
+    case StyleAppearance::Menulist:
+        result.m_part = DFC_SCROLL;
+        result.m_state = determineClassicState(o);
+        break;
+    case StyleAppearance::Meter:
+        result.m_part = PP_BAR;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::SearchField:
+    case StyleAppearance::TextField:
+    case StyleAppearance::TextArea:
+        result.m_part = TFP_TEXTFIELD;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::SliderHorizontal:
+        result.m_part = TKP_TRACK;
+        result.m_state = TS_NORMAL;
+        break;
+    case StyleAppearance::SliderVertical:
+        result.m_part = TKP_TRACKVERT;
+        result.m_state = TS_NORMAL;
+        break;
+    case StyleAppearance::SliderThumbHorizontal:
+        result.m_part = TKP_THUMBBOTTOM;
+        result.m_state = determineSliderThumbState(o);
+        break;
+    case StyleAppearance::SliderThumbVertical:
+        result.m_part = TKP_THUMBRIGHT;
+        result.m_state = determineSliderThumbState(o);
+        break;
+    case StyleAppearance::InnerSpinButton:
+        result.m_part = DFC_SCROLL;
+        result.m_state = determineClassicState(o, subPart);
+        break;
+    default:
+        break;
     }
     return result;
 }
@@ -551,63 +494,63 @@ ThemeData RenderThemeWin::getThemeData(const RenderObject& o, ControlSubPart sub
         return getClassicThemeData(o, subPart);
 
     ThemeData result;
-    switch (o.style().appearance()) {
-        case PushButtonPart:
-        case ButtonPart:
-        case DefaultButtonPart:
-            result.m_part = BP_BUTTON;
-            result.m_state = determineButtonState(o);
-            break;
-        case CheckboxPart:
-            result.m_part = BP_CHECKBOX;
-            result.m_state = determineState(o);
-            break;
-        case MenulistPart:
-        case MenulistButtonPart: {
-            const bool isVistaOrLater = (windowsVersion() >= WindowsVista);
-            result.m_part = isVistaOrLater ? CP_DROPDOWNBUTTONRIGHT : CP_DROPDOWNBUTTON;
-            if (isVistaOrLater) {
-                result.m_state = TS_NORMAL;
-            } else
-                result.m_state = determineState(o);
-            break;
-        }
-        case MeterPart:
-            result.m_part = PP_BAR;
-            result.m_state = determineState(o);
-            break;
-        case RadioPart:
-            result.m_part = BP_RADIO;
-            result.m_state = determineState(o);
-            break;
-        case SearchFieldPart:
-        case TextFieldPart:
-        case TextAreaPart:
-            result.m_part = (windowsVersion() >= WindowsVista) ? EP_EDITBORDER_NOSCROLL : TFP_TEXTFIELD;
-            result.m_state = determineState(o);
-            break;
-        case SliderHorizontalPart:
-            result.m_part = TKP_TRACK;
+    switch (o.style().effectiveAppearance()) {
+    case StyleAppearance::PushButton:
+    case StyleAppearance::Button:
+    case StyleAppearance::DefaultButton:
+        result.m_part = BP_BUTTON;
+        result.m_state = determineButtonState(o);
+        break;
+    case StyleAppearance::Checkbox:
+        result.m_part = BP_CHECKBOX;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::Menulist:
+    case StyleAppearance::MenulistButton: {
+        const bool isVistaOrLater = (windowsVersion() >= WindowsVista);
+        result.m_part = isVistaOrLater ? CP_DROPDOWNBUTTONRIGHT : CP_DROPDOWNBUTTON;
+        if (isVistaOrLater)
             result.m_state = TS_NORMAL;
-            break;
-        case SliderVerticalPart:
-            result.m_part = TKP_TRACKVERT;
-            result.m_state = TS_NORMAL;
-            break;
-        case SliderThumbHorizontalPart:
-            result.m_part = TKP_THUMBBOTTOM;
-            result.m_state = determineSliderThumbState(o);
-            break;
-        case SliderThumbVerticalPart:
-            result.m_part = TKP_THUMBRIGHT;
-            result.m_state = determineSliderThumbState(o);
-            break;
-        case InnerSpinButtonPart:
-            result.m_part = subPart == SpinButtonUp ? SPNP_UP : SPNP_DOWN;
-            result.m_state = determineSpinButtonState(o, subPart);
-            break;
-        default:
-            break;
+        else
+            result.m_state = determineState(o);
+        break;
+    }
+    case StyleAppearance::Meter:
+        result.m_part = PP_BAR;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::Radio:
+        result.m_part = BP_RADIO;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::SearchField:
+    case StyleAppearance::TextField:
+    case StyleAppearance::TextArea:
+        result.m_part = (windowsVersion() >= WindowsVista) ? EP_EDITBORDER_NOSCROLL : TFP_TEXTFIELD;
+        result.m_state = determineState(o);
+        break;
+    case StyleAppearance::SliderHorizontal:
+        result.m_part = TKP_TRACK;
+        result.m_state = TS_NORMAL;
+        break;
+    case StyleAppearance::SliderVertical:
+        result.m_part = TKP_TRACKVERT;
+        result.m_state = TS_NORMAL;
+        break;
+    case StyleAppearance::SliderThumbHorizontal:
+        result.m_part = TKP_THUMBBOTTOM;
+        result.m_state = determineSliderThumbState(o);
+        break;
+    case StyleAppearance::SliderThumbVertical:
+        result.m_part = TKP_THUMBRIGHT;
+        result.m_state = determineSliderThumbState(o);
+        break;
+    case StyleAppearance::InnerSpinButton:
+        result.m_part = subPart == SpinButtonUp ? SPNP_UP : SPNP_DOWN;
+        result.m_state = determineSpinButtonState(o, subPart);
+        break;
+    default:
+        break;
     }
 
     return result;
@@ -633,8 +576,8 @@ static void drawControl(GraphicsContext& context, const RenderObject& o, HANDLE 
         } else if (themeData.m_part == TKP_TRACK || themeData.m_part == TKP_TRACKVERT) {
             ::DrawEdge(hdc, &widgetRect, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
             ::FillRect(hdc, &widgetRect, (HBRUSH)GetStockObject(GRAY_BRUSH));
-        } else if ((o.style().appearance() == SliderThumbHorizontalPart
-        || o.style().appearance() == SliderThumbVerticalPart)
+        } else if ((o.style().effectiveAppearance() == StyleAppearance::SliderThumbHorizontal
+        || o.style().effectiveAppearance() == StyleAppearance::SliderThumbVertical)
         && (themeData.m_part == TKP_THUMBBOTTOM || themeData.m_part == TKP_THUMBTOP
         || themeData.m_part == TKP_THUMBLEFT || themeData.m_part == TKP_THUMBRIGHT)) {
             ::DrawEdge(hdc, &widgetRect, EDGE_RAISED, BF_RECT | BF_SOFT | BF_MIDDLE | BF_ADJUST);
@@ -658,7 +601,7 @@ static void drawControl(GraphicsContext& context, const RenderObject& o, HANDLE 
             }
         } else {
             // Push buttons, buttons, checkboxes and radios, and the dropdown arrow in menulists.
-            if (o.style().appearance() == DefaultButtonPart) {
+            if (o.style().effectiveAppearance() == StyleAppearance::DefaultButton) {
                 HBRUSH brush = ::GetSysColorBrush(COLOR_3DDKSHADOW);
                 ::FrameRect(hdc, &widgetRect, brush);
                 ::InflateRect(&widgetRect, -1, -1);
@@ -683,8 +626,8 @@ void RenderThemeWin::adjustInnerSpinButtonStyle(RenderStyle& style, const Elemen
     int width = ::GetSystemMetrics(SM_CXVSCROLL);
     if (width <= 0)
         width = 17; // Vista's default.
-    style.setWidth(Length(width, Fixed));
-    style.setMinWidth(Length(width, Fixed));
+    style.setWidth(Length(width, LengthType::Fixed));
+    style.setMinWidth(Length(width, LengthType::Fixed));
 }
 
 bool RenderThemeWin::paintInnerSpinButton(const RenderObject& o, const PaintInfo& i, const IntRect& r)
@@ -714,9 +657,9 @@ void RenderThemeWin::setCheckboxSize(RenderStyle& style) const
     // the higher DPI.  Until our entire engine honors a DPI setting other than 96, we can't rely on the theme's
     // metrics.
     if (style.width().isIntrinsicOrAuto())
-        style.setWidth(Length(13, Fixed));
+        style.setWidth(Length(13, LengthType::Fixed));
     if (style.height().isAuto())
-        style.setHeight(Length(13, Fixed));
+        style.setHeight(Length(13, LengthType::Fixed));
 }
 
 bool RenderThemeWin::paintTextField(const RenderObject& o, const PaintInfo& i, const FloatRect& r)
@@ -739,11 +682,14 @@ bool RenderThemeWin::paintMenuList(const RenderObject& renderer, const PaintInfo
 
     drawControl(paintInfo.context(), renderer, theme, ThemeData(part, determineState(renderer)), IntRect(rect));
     
-    return paintMenuListButtonDecorations(downcast<RenderBox>(renderer), paintInfo, FloatRect(rect));
+    paintMenuListButtonDecorations(downcast<RenderBox>(renderer), paintInfo, FloatRect(rect));
+
+    return false;
 }
 
 void RenderThemeWin::adjustMenuListStyle(RenderStyle& style, const Element* e) const
 {
+    RenderTheme::adjustMenuListStyle(style, e);
     style.resetBorder();
     adjustMenuListButtonStyle(style, e);
 }
@@ -759,19 +705,19 @@ void RenderThemeWin::adjustMenuListButtonStyle(RenderStyle& style, const Element
     const int dropDownBoxMinHeight = 12;
     
     // Position the text correctly within the select box and make the box wide enough to fit the dropdown button
-    style.setPaddingTop(Length(dropDownBoxPaddingTop, Fixed));
-    style.setPaddingRight(Length(dropDownBoxPaddingRight, Fixed));
-    style.setPaddingBottom(Length(dropDownBoxPaddingBottom, Fixed));
-    style.setPaddingLeft(Length(dropDownBoxPaddingLeft, Fixed));
+    style.setPaddingTop(Length(dropDownBoxPaddingTop, LengthType::Fixed));
+    style.setPaddingRight(Length(dropDownBoxPaddingRight, LengthType::Fixed));
+    style.setPaddingBottom(Length(dropDownBoxPaddingBottom, LengthType::Fixed));
+    style.setPaddingLeft(Length(dropDownBoxPaddingLeft, LengthType::Fixed));
 
     // Height is locked to auto
-    style.setHeight(Length(Auto));
+    style.setHeight(Length(LengthType::Auto));
 
     // Calculate our min-height
-    int minHeight = style.fontMetrics().height();
+    int minHeight = style.metricsOfPrimaryFont().height();
     minHeight = std::max(minHeight, dropDownBoxMinHeight);
 
-    style.setMinHeight(Length(minHeight, Fixed));
+    style.setMinHeight(Length(minHeight, LengthType::Fixed));
 
     style.setLineHeight(RenderStyle::initialLineHeight());
     
@@ -779,7 +725,7 @@ void RenderThemeWin::adjustMenuListButtonStyle(RenderStyle& style, const Element
     style.setWhiteSpace(WhiteSpace::Pre);
 }
 
-bool RenderThemeWin::paintMenuListButtonDecorations(const RenderBox& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
+void RenderThemeWin::paintMenuListButtonDecorations(const RenderBox& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     // FIXME: Don't make hardcoded assumptions about the thickness of the textfield border.
     int borderThickness = haveTheme ? 1 : 2;
@@ -800,8 +746,6 @@ bool RenderThemeWin::paintMenuListButtonDecorations(const RenderBox& renderer, c
     }
 
     drawControl(paintInfo.context(), renderer, menuListTheme(), getThemeData(renderer), buttonRect);
-
-    return false;
 }
 
 const int trackWidth = 4;
@@ -810,10 +754,10 @@ bool RenderThemeWin::paintSliderTrack(const RenderObject& o, const PaintInfo& i,
 {
     IntRect bounds = r;
     
-    if (o.style().appearance() ==  SliderHorizontalPart) {
+    if (o.style().effectiveAppearance() ==  StyleAppearance::SliderHorizontal) {
         bounds.setHeight(trackWidth);
         bounds.setY(r.y() + r.height() / 2 - trackWidth / 2);
-    } else if (o.style().appearance() == SliderVerticalPart) {
+    } else if (o.style().effectiveAppearance() == StyleAppearance::SliderVertical) {
         bounds.setWidth(trackWidth);
         bounds.setX(r.x() + r.width() / 2 - trackWidth / 2);
     }
@@ -833,13 +777,13 @@ const int sliderThumbHeight = 15;
 
 void RenderThemeWin::adjustSliderThumbSize(RenderStyle& style, const Element*) const
 {
-    ControlPart part = style.appearance();
-    if (part == SliderThumbVerticalPart) {
-        style.setWidth(Length(sliderThumbHeight, Fixed));
-        style.setHeight(Length(sliderThumbWidth, Fixed));
-    } else if (part == SliderThumbHorizontalPart) {
-        style.setWidth(Length(sliderThumbWidth, Fixed));
-        style.setHeight(Length(sliderThumbHeight, Fixed));
+    auto type = style.effectiveAppearance();
+    if (type == StyleAppearance::SliderThumbVertical) {
+        style.setWidth(Length(sliderThumbHeight, LengthType::Fixed));
+        style.setHeight(Length(sliderThumbWidth, LengthType::Fixed));
+    } else if (type == StyleAppearance::SliderThumbHorizontal) {
+        style.setWidth(Length(sliderThumbWidth, LengthType::Fixed));
+        style.setHeight(Length(sliderThumbHeight, LengthType::Fixed));
     }
 }
 
@@ -852,10 +796,10 @@ void RenderThemeWin::adjustSearchFieldStyle(RenderStyle& style, const Element* e
 {
     // Override paddingSize to match AppKit text positioning.
     const int padding = 1;
-    style.setPaddingLeft(Length(padding, Fixed));
-    style.setPaddingRight(Length(padding, Fixed));
-    style.setPaddingTop(Length(padding, Fixed));
-    style.setPaddingBottom(Length(padding, Fixed));
+    style.setPaddingLeft(Length(padding, LengthType::Fixed));
+    style.setPaddingRight(Length(padding, LengthType::Fixed));
+    style.setPaddingTop(Length(padding, LengthType::Fixed));
+    style.setPaddingBottom(Length(padding, LengthType::Fixed));
     if (e && e->focused() && e->document().frame()->selection().isFocusedAndActive())
         style.setOutlineOffset(-2);
 }
@@ -888,15 +832,15 @@ void RenderThemeWin::adjustSearchFieldCancelButtonStyle(RenderStyle& style, cons
     // Scale the button size based on the font size
     float fontScale = style.computedFontPixelSize() / defaultControlFontPixelSize;
     int cancelButtonSize = lroundf(std::min(std::max(minCancelButtonSize, defaultCancelButtonSize * fontScale), maxCancelButtonSize));
-    style.setWidth(Length(cancelButtonSize, Fixed));
-    style.setHeight(Length(cancelButtonSize, Fixed));
+    style.setWidth(Length(cancelButtonSize, LengthType::Fixed));
+    style.setHeight(Length(cancelButtonSize, LengthType::Fixed));
 }
 
 void RenderThemeWin::adjustSearchFieldDecorationPartStyle(RenderStyle& style, const Element*) const
 {
     IntSize emptySize(1, 11);
-    style.setWidth(Length(emptySize.width(), Fixed));
-    style.setHeight(Length(emptySize.height(), Fixed));
+    style.setWidth(Length(emptySize.width(), LengthType::Fixed));
+    style.setHeight(Length(emptySize.height(), LengthType::Fixed));
 }
 
 void RenderThemeWin::adjustSearchFieldResultsDecorationPartStyle(RenderStyle& style, const Element*) const
@@ -905,8 +849,8 @@ void RenderThemeWin::adjustSearchFieldResultsDecorationPartStyle(RenderStyle& st
     float fontScale = style.computedFontPixelSize() / defaultControlFontPixelSize;
     int magnifierSize = lroundf(std::min(std::max(minSearchFieldResultsDecorationSize, defaultSearchFieldResultsDecorationSize * fontScale), 
                                      maxSearchFieldResultsDecorationSize));
-    style.setWidth(Length(magnifierSize, Fixed));
-    style.setHeight(Length(magnifierSize, Fixed));
+    style.setWidth(Length(magnifierSize, LengthType::Fixed));
+    style.setHeight(Length(magnifierSize, LengthType::Fixed));
 }
 
 bool RenderThemeWin::paintSearchFieldResultsDecorationPart(const RenderBox& o, const PaintInfo& paintInfo, const IntRect& r)
@@ -938,8 +882,8 @@ void RenderThemeWin::adjustSearchFieldResultsButtonStyle(RenderStyle& style, con
     int magnifierHeight = lroundf(std::min(std::max(minSearchFieldResultsDecorationSize, defaultSearchFieldResultsDecorationSize * fontScale), 
                                    maxSearchFieldResultsDecorationSize));
     int magnifierWidth = lroundf(magnifierHeight * defaultSearchFieldResultsButtonWidth / defaultSearchFieldResultsDecorationSize);
-    style.setWidth(Length(magnifierWidth, Fixed));
-    style.setHeight(Length(magnifierHeight, Fixed));
+    style.setWidth(Length(magnifierWidth, LengthType::Fixed));
+    style.setHeight(Length(magnifierHeight, LengthType::Fixed));
 }
 
 bool RenderThemeWin::paintSearchFieldResultsButton(const RenderBox& o, const PaintInfo& paintInfo, const IntRect& r)
@@ -1002,8 +946,15 @@ static int cssValueIdToSysColorIndex(CSSValueID cssValueId)
     }
 }
 
-Color RenderThemeWin::systemColor(CSSValueID cssValueId, OptionSet<StyleColor::Options> options) const
+Color RenderThemeWin::systemColor(CSSValueID cssValueId, OptionSet<StyleColorOptions> options) const
 {
+#if HAVE(OS_DARK_MODE_SUPPORT)
+    switch (cssValueId) {
+    case CSSValueWebkitControlBackground:
+        // FIXME: Dark mode isn't supported yet. https://webkit.org/b/230032
+        return Color::white;
+    }
+#endif
     int sysColorIndex = cssValueIdToSysColorIndex(cssValueId);
     if (sysColorIndex == -1)
         return RenderTheme::systemColor(cssValueId, options);
@@ -1013,59 +964,14 @@ Color RenderThemeWin::systemColor(CSSValueID cssValueId, OptionSet<StyleColor::O
 }
 
 #if ENABLE(VIDEO)
-static void fillBufferWithContentsOfFile(FileSystem::PlatformFileHandle file, long long filesize, Vector<char>& buffer)
-{
-    // Load the file content into buffer
-    buffer.resize(filesize + 1);
-
-    int bufferPosition = 0;
-    int bufferReadSize = 4096;
-    int bytesRead = 0;
-    while (filesize > bufferPosition) {
-        if (filesize - bufferPosition < bufferReadSize)
-            bufferReadSize = filesize - bufferPosition;
-
-        bytesRead = FileSystem::readFromFile(file, buffer.data() + bufferPosition, bufferReadSize);
-        if (bytesRead != bufferReadSize) {
-            buffer.clear();
-            return;
-        }
-
-        bufferPosition += bufferReadSize;
-    }
-
-    buffer[filesize] = 0;
-}
-
 String RenderThemeWin::stringWithContentsOfFile(const String& name, const String& type)
 {
-#if USE(CF)
-    RetainPtr<CFURLRef> requestedURLRef = adoptCF(CFBundleCopyResourceURL(webKitBundle(), name.createCFString().get(), type.createCFString().get(), 0));
-    if (!requestedURLRef)
-        return String();
+    auto path = webKitBundlePath(name, type, emptyString());
+    if (!path)
+        return { };
 
-    UInt8 requestedFilePath[MAX_PATH];
-    if (!CFURLGetFileSystemRepresentation(requestedURLRef.get(), false, requestedFilePath, MAX_PATH))
-        return String();
-
-    FileSystem::PlatformFileHandle requestedFileHandle = FileSystem::openFile(requestedFilePath, FileSystem::FileOpenMode::Read);
-    if (!FileSystem::isHandleValid(requestedFileHandle))
-        return String();
-
-    long long filesize = -1;
-    if (!FileSystem::getFileSize(requestedFileHandle, filesize)) {
-        FileSystem::closeFile(requestedFileHandle);
-        return String();
-    }
-
-    Vector<char> fileContents;
-    fillBufferWithContentsOfFile(requestedFileHandle, filesize, fileContents);
-    FileSystem::closeFile(requestedFileHandle);
-
-    return String(fileContents.data(), static_cast<size_t>(filesize));
-#else
-    return emptyString();
-#endif
+    auto contents = FileSystem::readEntireFile(path);
+    return contents ? String::adopt(WTFMove(*contents)) : String();
 }
 
 String RenderThemeWin::mediaControlsStyleSheet()
@@ -1079,7 +985,7 @@ String RenderThemeWin::mediaControlsStyleSheet()
 #endif
 }
 
-String RenderThemeWin::mediaControlsScript()
+Vector<String, 2> RenderThemeWin::mediaControlsScripts()
 {
 #if ENABLE(MEDIA_CONTROLS_SCRIPT)
     if (m_mediaControlsScript.isEmpty()) {
@@ -1088,32 +994,26 @@ String RenderThemeWin::mediaControlsScript()
         scriptBuilder.append(stringWithContentsOfFile("mediaControlsApple"_s, "js"_s));
         m_mediaControlsScript = scriptBuilder.toString();
     }
-    return m_mediaControlsScript;
+    return { m_mediaControlsScript };
 #else
-    return emptyString();
+    return { };
 #endif
 }
 #endif
 
-#if ENABLE(METER_ELEMENT)
 void RenderThemeWin::adjustMeterStyle(RenderStyle& style, const Element*) const
 {
     style.setBoxShadow(nullptr);
 }
 
-bool RenderThemeWin::supportsMeter(ControlPart part) const
+bool RenderThemeWin::supportsMeter(StyleAppearance type, const HTMLMeterElement&) const
 {
-    switch (part) {
-    case MeterPart:
+    switch (type) {
+    case StyleAppearance::Meter:
         return true;
     default:
         return false;
     }
-}
-
-IntSize RenderThemeWin::meterSizeForBounds(const RenderMeter&, const IntRect& bounds) const
-{
-    return bounds.size();
 }
 
 bool RenderThemeWin::paintMeter(const RenderObject& renderObject, const PaintInfo& paintInfo, const IntRect& rect)
@@ -1139,8 +1039,6 @@ bool RenderThemeWin::paintMeter(const RenderObject& renderObject, const PaintInf
 
     return true;
 }
-
-#endif
 
 
 }

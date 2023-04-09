@@ -30,10 +30,12 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
-#elif defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
-#if OS(LINUX)
+#elif USE(SYSTEM_MALLOC)
+#if OS(LINUX) || OS(FREEBSD)
 #include <sys/sysinfo.h>
-#endif // OS(LINUX)
+#elif OS(UNIX)
+#include <unistd.h>
+#endif // OS(LINUX) || OS(FREEBSD) || OS(UNIX)
 #else
 #include <bmalloc/bmalloc.h>
 #endif
@@ -58,6 +60,10 @@ static size_t computeRAMSize()
     struct sysinfo si;
     sysinfo(&si);
     return si.totalram * si.mem_unit;
+#elif OS(UNIX)
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long pageSize = sysconf(_SC_PAGE_SIZE);
+    return pages * pageSize;
 #else
     // Just make a best guess (1GB) if we can't detect.
     return 1024 * MB;

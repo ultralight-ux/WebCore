@@ -20,6 +20,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 /**
  * \file
  * \brief C++ API: PluralRules object
@@ -49,6 +51,10 @@ class PluralRuleParser;
 class PluralKeywordEnumeration;
 class AndConstraint;
 class SharedPluralRules;
+
+namespace number {
+class FormattedNumber;
+}
 
 /**
  * Defines rules for mapping non-negative numeric values onto a small set of
@@ -118,7 +124,6 @@ class SharedPluralRules;
  * Examples are in the following table:
  * </p>
  * <table border='1' style="border-collapse:collapse">
- * <tbody>
  * <tr>
  * <th>n</th>
  * <th>i</th>
@@ -155,7 +160,6 @@ class SharedPluralRules;
  * <td align="right">23</td>
  * <td>2</td>
  * </tr>
- * </tbody>
  * </table>
  * <p>
  * The difference between 'in' and 'within' is that 'in' only includes integers in the specified range, while 'within'
@@ -325,9 +329,9 @@ public:
 #endif  /* U_HIDE_INTERNAL_API */
 
     /**
-     * Given a number, returns the keyword of the first rule that applies to
-     * the number.  This function can be used with isKeyword* functions to
-     * determine the keyword for default plural rules.
+     * Given an integer, returns the keyword of the first rule
+     * that applies to  the number.  This function can be used with
+     * isKeyword* functions to determine the keyword for default plural rules.
      *
      * @param number  The number for which the rule has to be determined.
      * @return        The keyword of the selected rule.
@@ -336,15 +340,34 @@ public:
     UnicodeString select(int32_t number) const;
 
     /**
-     * Given a number, returns the keyword of the first rule that applies to
-     * the number.  This function can be used with isKeyword* functions to
-     * determine the keyword for default plural rules.
+     * Given a floating-point number, returns the keyword of the first rule
+     * that applies to  the number.  This function can be used with
+     * isKeyword* functions to determine the keyword for default plural rules.
      *
      * @param number  The number for which the rule has to be determined.
      * @return        The keyword of the selected rule.
      * @stable ICU 4.0
      */
     UnicodeString select(double number) const;
+
+#ifndef U_HIDE_DRAFT_API
+    /**
+     * Given a formatted number, returns the keyword of the first rule
+     * that applies to  the number.  This function can be used with
+     * isKeyword* functions to determine the keyword for default plural rules.
+     *
+     * A FormattedNumber allows you to specify an exponent or trailing zeros,
+     * which can affect the plural category. To get a FormattedNumber, see
+     * NumberFormatter.
+     *
+     * @param number  The number for which the rule has to be determined.
+     * @param status  Set if an error occurs while selecting plural keyword.
+     *                This could happen if the FormattedNumber is invalid.
+     * @return        The keyword of the selected rule.
+     * @draft ICU 64
+     */
+    UnicodeString select(const number::FormattedNumber& number, UErrorCode& status) const;
+#endif  /* U_HIDE_DRAFT_API */
 
 #ifndef U_HIDE_INTERNAL_API
     /**
@@ -499,12 +522,20 @@ private:
     UnicodeString   getRuleFromResource(const Locale& locale, UPluralType type, UErrorCode& status);
     RuleChain      *rulesForKeyword(const UnicodeString &keyword) const;
 
+    /**
+    * An internal status variable used to indicate that the object is in an 'invalid' state.
+    * Used by copy constructor, the assignment operator and the clone method.
+    */
+    UErrorCode mInternalStatus;
+
     friend class PluralRuleParser;
 };
 
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif // _PLURRULE
 //eof

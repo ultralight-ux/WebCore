@@ -40,26 +40,24 @@
 #include "MediaPlayerPrivateGStreamerMSE.h"
 #include "SourceBufferPrivate.h"
 #include "SourceBufferPrivateClient.h"
+#include "TrackPrivateBaseGStreamer.h"
 #include "WebKitMediaSourceGStreamer.h"
 #include <wtf/LoggerHelper.h>
 
 namespace WebCore {
 
+class AppendPipeline;
 class MediaSourcePrivateGStreamer;
+class MediaSourceTrackGStreamer;
 
-class SourceBufferPrivateGStreamer final : public SourceBufferPrivate
-#if !RELEASE_LOG_DISABLED
-    , private LoggerHelper
-#endif
-{
-
+class SourceBufferPrivateGStreamer final : public SourceBufferPrivate {
 public:
+    static bool isContentTypeSupported(const ContentType&);
     static Ref<SourceBufferPrivateGStreamer> create(MediaSourcePrivateGStreamer*, const ContentType&, MediaPlayerPrivateGStreamerMSE&);
     virtual ~SourceBufferPrivateGStreamer() = default;
 
     void clearMediaSource() { m_mediaSource = nullptr; }
 
-    void setClient(SourceBufferPrivateClient*) final;
     void append(Vector<unsigned char>&&) final;
     void abort() final;
     void resetParserState() final;
@@ -72,15 +70,19 @@ public:
     void allSamplesInTrackEnqueued(const AtomString&) final;
     bool isReadyForMoreSamples(const AtomString&) final;
     void setActive(bool) final;
-    void notifyClientWhenReadyForMoreSamples(const AtomString&) final;
+    bool isActive() const final;
 
-    void setReadyForMoreSamples(bool);
-    void notifyReadyForMoreSamples();
-
-    void didReceiveInitializationSegment(const SourceBufferPrivateClient::InitializationSegment&);
-    void didReceiveSample(MediaSample&);
+    void didReceiveInitializationSegment(SourceBufferPrivateClient::InitializationSegment&&, CompletionHandler<void(SourceBufferPrivateClient::ReceiveResult)>&&);
+    void didReceiveSample(Ref<MediaSample>&&);
     void didReceiveAllPendingSamples();
     void appendParsingFailed();
+
+    bool isSeeking() const final;
+    MediaTime currentMediaTime() const final;
+    MediaTime duration() const final;
+
+    bool hasReceivedInitializationSegment() const { return m_hasReceivedInitializationSegment; }
+    HashMap<AtomString, RefPtr<MediaSourceTrackGStreamer>>::ValuesIteratorRange tracks() { return m_tracks.values(); }
 
     ContentType type() const { return m_type; }
 
@@ -93,17 +95,22 @@ public:
     const void* sourceBufferLogIdentifier() final { return logIdentifier(); }
 #endif
 
+    size_t platformMaximumBufferSize() const override;
+
 private:
     SourceBufferPrivateGStreamer(MediaSourcePrivateGStreamer*, const ContentType&, MediaPlayerPrivateGStreamerMSE&);
 
+    void notifyClientWhenReadyForMoreSamples(const AtomString&) override;
+
     MediaSourcePrivateGStreamer* m_mediaSource;
+    bool m_isActive { false };
+    bool m_hasBeenRemovedFromMediaSource { false };
     ContentType m_type;
     MediaPlayerPrivateGStreamerMSE& m_playerPrivate;
     UniqueRef<AppendPipeline> m_appendPipeline;
-    SourceBufferPrivateClient* m_sourceBufferPrivateClient { nullptr };
-    bool m_isReadyForMoreSamples = true;
-    bool m_notifyWhenReadyForMoreSamples = false;
     AtomString m_trackId;
+    HashMap<AtomString, RefPtr<MediaSourceTrackGStreamer>> m_tracks;
+    bool m_hasReceivedInitializationSegment { false };
 
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;

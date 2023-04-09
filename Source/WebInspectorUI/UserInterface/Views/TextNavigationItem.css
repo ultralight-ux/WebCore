@@ -26,9 +26,17 @@
 .navigation-bar .item.text {
     width: auto;
     padding: 1px 8px 3px;
-    margin: 0 2px;
+    margin: 0 2px; /* WI.TextNavigationItem.prototype.get totalMargin */
 
     line-height: 11px;
     color: hsl(0, 0%, 18%);
     text-align: center;
+}
+
+.navigation-bar .item:first-child.text {
+    padding-inline-start: 2px;
+}
+
+.navigation-bar .item:last-child.text {
+    padding-inline-end: 2px;
 }

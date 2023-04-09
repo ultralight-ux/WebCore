@@ -27,10 +27,9 @@
 #include "DebuggerParseData.h"
 #include "DebuggerPrimitives.h"
 #include "JSCJSValue.h"
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
-#include <wtf/RefPtr.h>
-#include <wtf/text/TextPosition.h>
+#include <wtf/DoublyLinkedList.h>
+#include <wtf/Forward.h>
+#include <wtf/ListHashSet.h>
 
 namespace JSC {
 
@@ -38,58 +37,61 @@ class CallFrame;
 class CodeBlock;
 class Exception;
 class JSGlobalObject;
+class Microtask;
 class SourceProvider;
 class VM;
 
-class JS_EXPORT_PRIVATE Debugger {
+class Debugger : public DoublyLinkedListNode<Debugger> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    Debugger(VM&);
-    virtual ~Debugger();
+    JS_EXPORT_PRIVATE Debugger(VM&);
+    JS_EXPORT_PRIVATE virtual ~Debugger();
 
     VM& vm() { return m_vm; }
 
-    JSC::DebuggerCallFrame& currentDebuggerCallFrame();
-    bool hasHandlerForExceptionCallback() const
-    {
-        ASSERT(m_reasonForPause == PausedForException);
-        return m_hasHandlerForExceptionCallback;
-    }
-    JSValue currentException()
-    {
-        ASSERT(m_reasonForPause == PausedForException);
-        return m_currentException;
-    }
-
-    bool needsExceptionCallbacks() const { return m_breakpointsActivated && m_pauseOnExceptionsState != DontPauseOnExceptions; }
+    bool needsExceptionCallbacks() const { return m_breakpointsActivated && (m_pauseOnAllExceptionsBreakpoint || m_pauseOnUncaughtExceptionsBreakpoint); }
     bool isInteractivelyDebugging() const { return m_breakpointsActivated; }
 
     enum ReasonForDetach {
         TerminatingDebuggingSession,
         GlobalObjectIsDestructing
     };
-    void attach(JSGlobalObject*);
-    void detach(JSGlobalObject*, ReasonForDetach);
-    bool isAttached(JSGlobalObject*);
+    JS_EXPORT_PRIVATE void attach(JSGlobalObject*);
+    JS_EXPORT_PRIVATE void detach(JSGlobalObject*, ReasonForDetach);
+    JS_EXPORT_PRIVATE bool isAttached(JSGlobalObject*);
 
-    void resolveBreakpoint(Breakpoint&, SourceProvider*);
-    BreakpointID setBreakpoint(Breakpoint&, bool& existing);
-    void removeBreakpoint(BreakpointID);
+    void forEachBreakpointLocation(SourceID, SourceProvider*, int startLine, int startColumn, int endLine, int endColumn, Function<void(int, int)>&&);
+
+    bool resolveBreakpoint(Breakpoint&, SourceProvider*);
+    bool setBreakpoint(Breakpoint&);
+    bool removeBreakpoint(Breakpoint&);
     void clearBreakpoints();
 
     void activateBreakpoints() { setBreakpointsActivated(true); }
     void deactivateBreakpoints() { setBreakpointsActivated(false); }
     bool breakpointsActive() const { return m_breakpointsActivated; }
 
-    enum PauseOnExceptionsState {
-        DontPauseOnExceptions,
-        PauseOnAllExceptions,
-        PauseOnUncaughtExceptions
-    };
-    PauseOnExceptionsState pauseOnExceptionsState() const { return m_pauseOnExceptionsState; }
-    void setPauseOnExceptionsState(PauseOnExceptionsState);
+    // Breakpoint "delegate" functionality.
+    bool evaluateBreakpointCondition(Breakpoint&, JSGlobalObject*);
+    void evaluateBreakpointActions(Breakpoint&, JSGlobalObject*);
 
-    void setPauseOnDebuggerStatements(bool enabled) { m_pauseOnDebuggerStatements = enabled; }
+    void setPauseOnDebuggerStatementsBreakpoint(RefPtr<Breakpoint>&& breakpoint) { m_pauseOnDebuggerStatementsBreakpoint = WTFMove(breakpoint); }
+
+    class TemporarilyDisableExceptionBreakpoints {
+    public:
+        TemporarilyDisableExceptionBreakpoints(Debugger&);
+        ~TemporarilyDisableExceptionBreakpoints();
+
+        void replace();
+        void restore();
+
+    private:
+        Debugger& m_debugger;
+        RefPtr<Breakpoint> m_pauseOnAllExceptionsBreakpoint;
+        RefPtr<Breakpoint> m_pauseOnUncaughtExceptionsBreakpoint;
+    };
+    void setPauseOnAllExceptionsBreakpoint(RefPtr<Breakpoint>&& breakpoint) { m_pauseOnAllExceptionsBreakpoint = WTFMove(breakpoint); }
+    void setPauseOnUncaughtExceptionsBreakpoint(RefPtr<Breakpoint>&& breakpoint) { m_pauseOnUncaughtExceptionsBreakpoint = WTFMove(breakpoint); }
 
     enum ReasonForPause {
         NotPaused,
@@ -105,8 +107,11 @@ public:
     ReasonForPause reasonForPause() const { return m_reasonForPause; }
     BreakpointID pausingBreakpointID() const { return m_pausingBreakpointID; }
 
-    void setPauseOnNextStatement(bool);
-    void breakProgram();
+    void schedulePauseAtNextOpportunity();
+    void cancelPauseAtNextOpportunity();
+    bool schedulePauseForSpecialBreakpoint(Breakpoint&);
+    bool cancelPauseForSpecialBreakpoint(Breakpoint&);
+    void breakProgram(RefPtr<Breakpoint>&& specialBreakpoint = nullptr);
     void continueProgram();
     void stepNextExpression();
     void stepIntoStatement();
@@ -114,7 +119,8 @@ public:
     void stepOutOfFunction();
 
     enum class BlackboxType { Deferred, Ignored };
-    void setBlackboxType(SourceID, Optional<BlackboxType>);
+    void setBlackboxType(SourceID, std::optional<BlackboxType>);
+    void setBlackboxBreakpointEvaluations(bool);
     void clearBlackbox();
 
     bool isPaused() const { return m_isPaused; }
@@ -123,9 +129,7 @@ public:
     bool suppressAllPauses() const { return m_suppressAllPauses; }
     void setSuppressAllPauses(bool suppress) { m_suppressAllPauses = suppress; }
 
-    virtual void sourceParsed(JSGlobalObject*, SourceProvider*, int errorLineNumber, const WTF::String& errorMessage) = 0;
-    virtual void willRunMicrotask() { }
-    virtual void didRunMicrotask() { }
+    JS_EXPORT_PRIVATE virtual void sourceParsed(JSGlobalObject*, SourceProvider*, int errorLineNumber, const WTF::String& errorMessage);
 
     void exception(JSGlobalObject*, CallFrame*, JSValue exceptionValue, bool hasCatchHandler);
     void atStatement(CallFrame*);
@@ -137,9 +141,72 @@ public:
     void didExecuteProgram(CallFrame*);
     void didReachDebuggerStatement(CallFrame*);
 
-    virtual void recompileAllJSFunctions();
+    JS_EXPORT_PRIVATE void didQueueMicrotask(JSGlobalObject*, MicrotaskIdentifier);
+    JS_EXPORT_PRIVATE void willRunMicrotask(JSGlobalObject*, MicrotaskIdentifier);
+    JS_EXPORT_PRIVATE void didRunMicrotask(JSGlobalObject*, MicrotaskIdentifier);
 
     void registerCodeBlock(CodeBlock*);
+    void forEachRegisteredCodeBlock(const Function<void(CodeBlock*)>&);
+
+    void didCreateNativeExecutable(NativeExecutable&);
+    void willCallNativeExecutable(CallFrame*);
+
+    class Client {
+    public:
+        virtual ~Client() = default;
+
+        virtual bool isInspectorDebuggerAgent() const { return false; }
+
+        virtual JSObject* debuggerScopeExtensionObject(Debugger&, JSGlobalObject*, DebuggerCallFrame&) { return nullptr; }
+        virtual void debuggerWillEvaluate(Debugger&, JSGlobalObject*, const Breakpoint::Action&) { }
+        virtual void debuggerDidEvaluate(Debugger&, JSGlobalObject*, const Breakpoint::Action&) { }
+    };
+
+    Client* client() const { return m_client; }
+    void setClient(Client*);
+
+    // FIXME: <https://webkit.org/b/162773> Web Inspector: Simplify Debugger::Script to use SourceProvider
+    struct Script {
+        String url;
+        String source;
+        String sourceURL;
+        String sourceMappingURL;
+        RefPtr<SourceProvider> sourceProvider;
+        int startLine { 0 };
+        int startColumn { 0 };
+        int endLine { 0 };
+        int endColumn { 0 };
+        bool isContentScript { false };
+    };
+
+    class Observer {
+    public:
+        virtual ~Observer() { }
+
+        virtual void didParseSource(SourceID, const Debugger::Script&) { }
+        virtual void failedToParseSource(const String& /* url */, const String& /* data */, int /* firstLine */, int /* errorLine */, const String& /* errorMessage */) { }
+
+        virtual void didCreateNativeExecutable(NativeExecutable&) { }
+        virtual void willCallNativeExecutable(CallFrame*) { }
+
+        virtual void willEnter(CallFrame*) { }
+
+        virtual void didQueueMicrotask(JSGlobalObject*, MicrotaskIdentifier) { }
+        virtual void willRunMicrotask(JSGlobalObject*, MicrotaskIdentifier) { }
+        virtual void didRunMicrotask(JSGlobalObject*, MicrotaskIdentifier) { }
+
+        virtual void didPause(JSGlobalObject*, DebuggerCallFrame&, JSValue /* exceptionOrCaughtValue */) { }
+        virtual void didContinue() { }
+
+        virtual void applyBreakpoints(CodeBlock*) { }
+        virtual void breakpointActionLog(JSGlobalObject*, const String& /* data */) { }
+        virtual void breakpointActionSound(BreakpointActionID) { }
+        virtual void breakpointActionProbe(JSGlobalObject*, BreakpointActionID, unsigned /* batchId */, unsigned /* sampleId */, JSValue /* result */) { }
+        virtual void didDeferBreakpointPause(BreakpointID) { }
+    };
+
+    JS_EXPORT_PRIVATE void addObserver(Observer&);
+    JS_EXPORT_PRIVATE void removeObserver(Observer&, bool isBeingDestroyed);
 
     class ProfilingClient {
     public:
@@ -156,16 +223,40 @@ public:
     void didEvaluateScript(Seconds startTime, ProfilingReason);
 
 protected:
-    virtual void handleBreakpointHit(JSGlobalObject*, const Breakpoint&) { }
-    virtual void handleExceptionInBreakpointCondition(JSGlobalObject*, Exception*) const { }
-    virtual void handlePause(JSGlobalObject*, ReasonForPause) { }
-    virtual void notifyDoneProcessingDebuggerEvents() { }
+    JS_EXPORT_PRIVATE JSC::DebuggerCallFrame& currentDebuggerCallFrame();
+
+    bool hasHandlerForExceptionCallback() const
+    {
+        ASSERT(m_reasonForPause == PausedForException);
+        return m_hasHandlerForExceptionCallback;
+    }
+
+    JSValue currentException()
+    {
+        ASSERT(m_reasonForPause == PausedForException);
+        return m_currentException;
+    }
+
+    virtual void attachDebugger() { }
+    virtual void detachDebugger(bool /* isBeingDestroyed */) { }
+    JS_EXPORT_PRIVATE virtual void recompileAllJSFunctions();
+
+    virtual void didPause(JSGlobalObject*) { }
+    JS_EXPORT_PRIVATE virtual void handlePause(JSGlobalObject*, ReasonForPause);
+    virtual void didContinue(JSGlobalObject*) { }
+    virtual void runEventLoopWhilePaused() { }
+
+    virtual bool isContentScript(JSGlobalObject*) const { return false; }
+
+    // NOTE: Currently all exceptions are reported at the API boundary through reportAPIException.
+    // Until a time comes where an exception can be caused outside of the API (e.g. setTimeout
+    // or some other async operation in a pure JSContext) we can ignore exceptions reported here.
+    virtual void reportException(JSGlobalObject*, Exception*) const { }
+
+    bool m_doneProcessingDebuggerEvents { true };
 
 private:
-    typedef HashMap<BreakpointID, Breakpoint*> BreakpointIDToBreakpointMap;
-
-    typedef HashMap<unsigned, RefPtr<BreakpointsList>, WTF::IntHash<int>, WTF::UnsignedWithZeroKeyHashTraits<int>> LineToBreakpointsMap;
-    typedef HashMap<SourceID, LineToBreakpointsMap, WTF::IntHash<SourceID>, WTF::UnsignedWithZeroKeyHashTraits<SourceID>> SourceIDToBreakpointsMap;
+    JSValue exceptionOrCaughtValue(JSGlobalObject*);
 
     class ClearCodeBlockDebuggerRequestsFunctor;
     class ClearDebuggerRequestsFunctor;
@@ -188,7 +279,7 @@ private:
         Debugger& m_debugger;
     };
 
-    bool hasBreakpoint(SourceID, const TextPosition&, Breakpoint* hitBreakpoint);
+    RefPtr<Breakpoint> didHitBreakpoint(SourceID, const TextPosition&);
 
     DebuggerParseData& debuggerParseData(SourceID, SourceProvider*);
 
@@ -215,7 +306,7 @@ private:
         BreakpointDisabled,
         BreakpointEnabled
     };
-    void setBreakpointsActivated(bool);
+    JS_EXPORT_PRIVATE void setBreakpointsActivated(bool);
     void toggleBreakpoint(CodeBlock*, Breakpoint&, BreakpointState);
     void applyBreakpoints(CodeBlock*);
     void toggleBreakpoint(Breakpoint&, BreakpointState);
@@ -223,13 +314,15 @@ private:
     void clearDebuggerRequests(JSGlobalObject*);
     void clearParsedData();
 
+    bool canDispatchFunctionToObservers() const;
+    void dispatchFunctionToObservers(Function<void(Observer&)>);
+
     VM& m_vm;
     HashSet<JSGlobalObject*> m_globalObjects;
     HashMap<SourceID, DebuggerParseData, WTF::IntHash<SourceID>, WTF::UnsignedWithZeroKeyHashTraits<SourceID>> m_parseDataMap;
     HashMap<SourceID, BlackboxType, WTF::IntHash<SourceID>, WTF::UnsignedWithZeroKeyHashTraits<SourceID>> m_blackboxedScripts;
+    bool m_blackboxBreakpointEvaluations : 1;
 
-    PauseOnExceptionsState m_pauseOnExceptionsState;
-    bool m_pauseOnDebuggerStatements : 1;
     bool m_pauseAtNextOpportunity : 1;
     bool m_pauseOnStepNext : 1;
     bool m_pauseOnStepOut : 1;
@@ -248,18 +341,34 @@ private:
     SourceID m_lastExecutedSourceID;
     bool m_afterBlackboxedScript { false };
 
-    BreakpointID m_topBreakpointID;
+    using LineToBreakpointsMap = HashMap<unsigned, BreakpointsVector, WTF::IntHash<int>, WTF::UnsignedWithZeroKeyHashTraits<int>>;
+    HashMap<SourceID, LineToBreakpointsMap, WTF::IntHash<SourceID>, WTF::UnsignedWithZeroKeyHashTraits<SourceID>> m_breakpointsForSourceID;
+    HashSet<Ref<Breakpoint>> m_breakpoints;
+    RefPtr<Breakpoint> m_specialBreakpoint;
+    ListHashSet<Ref<Breakpoint>> m_deferredBreakpoints;
     BreakpointID m_pausingBreakpointID;
-    BreakpointIDToBreakpointMap m_breakpointIDToBreakpoint;
-    SourceIDToBreakpointsMap m_sourceIDToBreakpoints;
+
+    RefPtr<Breakpoint> m_pauseOnAllExceptionsBreakpoint;
+    RefPtr<Breakpoint> m_pauseOnUncaughtExceptionsBreakpoint;
+    RefPtr<Breakpoint> m_pauseOnDebuggerStatementsBreakpoint;
+
+    unsigned m_nextProbeSampleId { 1 };
+    unsigned m_currentProbeBatchId { 0 };
 
     RefPtr<JSC::DebuggerCallFrame> m_currentDebuggerCallFrame;
 
+    HashSet<Observer*> m_observers;
+
+    Client* m_client { nullptr };
     ProfilingClient* m_profilingClient { nullptr };
+
+    Debugger* m_prev; // Required by DoublyLinkedListNode.
+    Debugger* m_next; // Required by DoublyLinkedListNode.
 
     friend class DebuggerPausedScope;
     friend class TemporaryPausedState;
     friend class LLIntOffsetsExtractor;
+    friend class WTF::DoublyLinkedListNode<Debugger>;
 };
 
 } // namespace JSC

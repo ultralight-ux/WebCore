@@ -31,9 +31,10 @@
 #include "CachedApplicationManifest.h"
 #include "CachedResourceLoader.h"
 #include "CachedResourceRequest.h"
-#include "CachedResourceRequestInitiators.h"
+#include "CachedResourceRequestInitiatorTypes.h"
 #include "DocumentLoader.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 
 namespace WebCore {
 
@@ -102,7 +103,7 @@ void ApplicationManifestLoader::stopLoading()
     }
 }
 
-Optional<ApplicationManifest>& ApplicationManifestLoader::processManifest()
+std::optional<ApplicationManifest>& ApplicationManifestLoader::processManifest()
 {
     if (!m_processedManifest && m_resource) {
         auto manifestURL = m_url;

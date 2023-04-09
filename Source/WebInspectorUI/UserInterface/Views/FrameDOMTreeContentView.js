@@ -46,7 +46,7 @@ WI.FrameDOMTreeContentView = class FrameDOMTreeContentView extends WI.DOMTreeCon
 
     closed()
     {
-        this._domTree.removeEventListener(null, null, this);
+        this._domTree.removeEventListener(WI.DOMTree.Event.RootDOMNodeInvalidated, this._rootDOMNodeInvalidated, this);
 
         super.closed();
     }
@@ -62,6 +62,9 @@ WI.FrameDOMTreeContentView = class FrameDOMTreeContentView extends WI.DOMTreeCon
 
     _rootDOMNodeAvailable(rootDOMNode)
     {
+        if (this.isClosed)
+            return;
+
         this.domTreeOutline.rootDOMNode = rootDOMNode;
 
         if (!rootDOMNode) {

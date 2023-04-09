@@ -37,12 +37,11 @@ WI.NavigationItem = class NavigationItem extends WI.Object
         this._visibilityPriority = WI.NavigationItem.VisibilityPriority.Normal;
         this._cachedWidth = NaN;
 
-        if (role)
-            this._element.setAttribute("role", role);
         if (label)
             this._element.setAttribute("aria-label", label);
 
         this._element.classList.add(...this._classNames);
+        this._element.role = role;
         this._element.navigationItem = this;
     }
 
@@ -56,14 +55,14 @@ WI.NavigationItem = class NavigationItem extends WI.Object
     get width()
     {
         if (isNaN(this._cachedWidth))
-            this._cachedWidth = this._element.realOffsetWidth;
+            this._cachedWidth = this._element.realOffsetWidth + this.totalMargin;
         return this._cachedWidth;
     }
 
     get visibilityPriority() { return this._visibilityPriority; }
     set visibilityPriority(priority) { this._visibilityPriority = priority; }
 
-    updateLayout(expandOnly)
+    update(options = {})
     {
         // Implemented by subclasses.
 
@@ -100,6 +99,12 @@ WI.NavigationItem = class NavigationItem extends WI.Object
 
     // Protected
 
+    get totalMargin()
+    {
+        // Implemented by subclasses if needed.
+        return 0;
+    }
+
     didAttach(navigationBar)
     {
         console.assert(navigationBar instanceof WI.NavigationBar);
@@ -119,8 +124,8 @@ WI.NavigationItem = class NavigationItem extends WI.Object
         var classNames = ["item"];
         if (this._identifier)
             classNames.push(this._identifier);
-        if (this.additionalClassNames instanceof Array)
-            classNames = classNames.concat(this.additionalClassNames);
+        if (Array.isArray(this.additionalClassNames))
+            classNames.pushAll(this.additionalClassNames);
         return classNames;
     }
 };

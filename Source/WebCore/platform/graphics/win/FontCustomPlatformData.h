@@ -21,21 +21,28 @@
 #ifndef FontCustomPlatformData_h
 #define FontCustomPlatformData_h
 
+#include "FontPlatformData.h"
 #include "TextFlags.h"
 #include <windows.h>
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/text/WTFString.h>
 
+#if USE(CORE_TEXT)
+#include <pal/spi/win/CoreTextSPIWin.h>
+#endif
+
 typedef struct CGFont* CGFontRef;
 
 namespace WebCore {
 
-class FontDescription;
-class FontPlatformData;
 class SharedBuffer;
+class FontCreationContext;
+class FontDescription;
+class FontMemoryResource;
 struct FontSelectionSpecifiedCapabilities;
 struct FontVariantSettings;
+class FragmentedSharedBuffer;
 
 template <typename T> class FontTaggedSettings;
 typedef FontTaggedSettings<int> FontFeatureSettings;
@@ -44,23 +51,21 @@ struct FontCustomPlatformData {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(FontCustomPlatformData);
 public:
-    FontCustomPlatformData(HANDLE fontReference, const String& name)
-        : m_fontReference(fontReference)
-        , m_name(name)
-    {
-    }
+    FontCustomPlatformData(const String& name, FontPlatformData::CreationData&&);
+    WEBCORE_EXPORT ~FontCustomPlatformData();
 
-    ~FontCustomPlatformData();
-
-    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
+    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontCreationContext&);
 
     static bool supportsFormat(const String&);
 
-    HANDLE m_fontReference;
-    String m_name;
+    String name;
+#if USE(CORE_TEXT)
+    RetainPtr<CTFontDescriptorRef> fontDescriptor;
+#endif
+    FontPlatformData::CreationData creationData;
 };
 
-std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&, const String&);
+WEBCORE_EXPORT std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&, const String&);
 
 }
 

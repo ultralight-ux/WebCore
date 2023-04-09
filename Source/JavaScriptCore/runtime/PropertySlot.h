@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2020 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005-2022 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -29,6 +29,7 @@
 #include "ScopeOffset.h"
 #include <wtf/Assertions.h>
 #include <wtf/ForbidHeapAllocation.h>
+#include <wtf/FunctionPtr.h>
 
 namespace JSC {
 class GetterSetter;
@@ -47,8 +48,9 @@ enum class PropertyAttribute : unsigned {
     CustomValue       = 1 << 6,
     CustomAccessorOrValue = CustomAccessor | CustomValue,
     AccessorOrCustomAccessorOrValue = Accessor | CustomAccessor | CustomValue,
+    ReadOnlyOrAccessorOrCustomAccessor = ReadOnly | Accessor | CustomAccessor,
 
-    // Things that are used by static hashtables are not in the attributes byte in PropertyMapEntry.
+    // Things that are used by static hashtables are not in the attributes byte in PropertyTableEntry.
     Function          = 1 << 8,  // property is a function - only used by static hashtables
     Builtin           = 1 << 9,  // property is a builtin function - only used by static hashtables
     ConstantInteger   = 1 << 10, // property is a constant integer - only used by static hashtables
@@ -84,11 +86,17 @@ inline unsigned attributesForStructure(unsigned attributes)
     return static_cast<uint8_t>(attributes);
 }
 
+using GetValueFunc = FunctionPtr<GetValueFuncPtrTag, EncodedJSValue(JSGlobalObject*, EncodedJSValue, PropertyName), FunctionAttributes::JITOperation>;
+using GetValueFuncWithPtr = FunctionPtr<GetValueFuncWithPtrPtrTag, EncodedJSValue(JSGlobalObject*, EncodedJSValue, PropertyName, void*), FunctionAttributes::JITOperation>;
+
+using PutValueFunc = FunctionPtr<PutValueFuncPtrTag, bool(JSGlobalObject*, EncodedJSValue, EncodedJSValue, PropertyName), FunctionAttributes::JITOperation>;
+using PutValueFuncWithPtr = FunctionPtr<PutValueFuncWithPtrPtrTag, bool(JSGlobalObject*, EncodedJSValue, EncodedJSValue, PropertyName, void*), FunctionAttributes::JITOperation>;
+
 class PropertySlot {
 
     // We rely on PropertySlot being stack allocated when used. This is needed
     // because we rely on some of its fields being a GC root. For example, it
-    // may be the only thing that points to the CustomGetterSetter property it has.
+    // may be the only thing that points to the GetterSetter property it has.
     WTF_FORBID_HEAP_ALLOCATION;
 
     enum PropertyType : uint8_t {
@@ -96,7 +104,6 @@ class PropertySlot {
         TypeValue,
         TypeGetter,
         TypeCustom,
-        TypeCustomAccessor,
     };
 
 public:
@@ -121,10 +128,6 @@ public:
             disallowVMEntry.emplace(*vmForInquiry);
     }
 
-    // FIXME: Remove this slotBase / receiver behavior difference in custom values and custom accessors.
-    // https://bugs.webkit.org/show_bug.cgi?id=158014
-    typedef EncodedJSValue (*GetValueFunc)(JSGlobalObject*, EncodedJSValue thisValue, PropertyName);
-
     JSValue getValue(JSGlobalObject*, PropertyName) const;
     JSValue getValue(JSGlobalObject*, uint64_t propertyName) const;
     JSValue getPureResult() const;
@@ -134,7 +137,6 @@ public:
     bool isValue() const { return m_propertyType == TypeValue; }
     bool isAccessor() const { return m_propertyType == TypeGetter; }
     bool isCustom() const { return m_propertyType == TypeCustom; }
-    bool isCustomAccessor() const { return m_propertyType == TypeCustomAccessor; }
     bool isCacheableValue() const { return isCacheable() && isValue(); }
     bool isCacheableGetter() const { return isCacheable() && isAccessor(); }
     bool isCacheableCustom() const { return isCacheable() && isCustom(); }
@@ -165,14 +167,14 @@ public:
 
     GetValueFunc customGetter() const
     {
-        ASSERT(isCacheableCustom());
+        ASSERT(isCustom());
         return m_data.custom.getValue;
     }
 
-    CustomGetterSetter* customGetterSetter() const
+    PutValueFunc customSetter() const
     {
-        ASSERT(isCustomAccessor());
-        return m_data.customAccessor.getterSetter;
+        ASSERT(isCustom());
+        return m_data.custom.putValue;
     }
 
     JSObject* slotBase() const
@@ -185,11 +187,11 @@ public:
         return m_watchpointSet;
     }
 
-    Optional<DOMAttributeAnnotation> domAttribute() const
+    std::optional<DOMAttributeAnnotation> domAttribute() const
     {
         if (m_additionalDataType == AdditionalDataType::DOMAttribute)
             return m_additionalData.domAttribute;
-        return WTF::nullopt;
+        return std::nullopt;
     }
 
     struct ModuleNamespaceSlot {
@@ -197,11 +199,11 @@ public:
         unsigned scopeOffset;
     };
 
-    Optional<ModuleNamespaceSlot> moduleNamespaceSlot() const
+    std::optional<ModuleNamespaceSlot> moduleNamespaceSlot() const
     {
         if (m_additionalDataType == AdditionalDataType::ModuleNamespace)
             return m_additionalData.moduleNamespaceSlot;
-        return WTF::nullopt;
+        return std::nullopt;
     }
 
     void setValue(JSObject* slotBase, unsigned attributes, JSValue value)
@@ -256,13 +258,15 @@ public:
         m_additionalData.moduleNamespaceSlot.scopeOffset = scopeOffset.offset();
     }
 
-    void setCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue)
+    void setCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, PutValueFunc putValue = nullptr)
     {
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
-        assertIsCFunctionPtr(getValue);
+        assertIsTaggedWith<GetValueFuncPtrTag>(bitwise_cast<void*>(getValue));
         m_data.custom.getValue = getValue;
+        assertIsNullOrTaggedWith<PutValueFuncPtrTag>(bitwise_cast<void*>(putValue));
+        m_data.custom.putValue = putValue;
         m_attributes = attributes;
 
         ASSERT(slotBase);
@@ -271,20 +275,20 @@ public:
         ASSERT(m_cacheability == CachingDisallowed);
     }
 
-    void setCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, DOMAttributeAnnotation domAttribute)
+    void setCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, PutValueFunc putValue, DOMAttributeAnnotation domAttribute)
     {
-        setCustom(slotBase, attributes, getValue);
+        setCustom(slotBase, attributes, getValue, putValue);
         m_additionalDataType = AdditionalDataType::DOMAttribute;
         m_additionalData.domAttribute = domAttribute;
     }
     
-    void setCacheableCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue)
+    void setCacheableCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, PutValueFunc putValue = nullptr)
     {
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
-        assertIsCFunctionPtr(getValue);
         m_data.custom.getValue = getValue;
+        m_data.custom.putValue = putValue;
         m_attributes = attributes;
 
         ASSERT(slotBase);
@@ -294,29 +298,11 @@ public:
         m_cacheability = CachingAllowed;
     }
 
-    void setCacheableCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, DOMAttributeAnnotation domAttribute)
+    void setCacheableCustom(JSObject* slotBase, unsigned attributes, GetValueFunc getValue, PutValueFunc putValue, DOMAttributeAnnotation domAttribute)
     {
-        setCacheableCustom(slotBase, attributes, getValue);
+        setCacheableCustom(slotBase, attributes, getValue, putValue);
         m_additionalDataType = AdditionalDataType::DOMAttribute;
         m_additionalData.domAttribute = domAttribute;
-    }
-
-    void setCustomGetterSetter(JSObject* slotBase, unsigned attributes, CustomGetterSetter* getterSetter)
-    {
-        ASSERT(attributes == attributesForStructure(attributes));
-        ASSERT(attributes & PropertyAttribute::CustomAccessor);
-
-        disableCaching();
-
-        ASSERT(getterSetter);
-        m_data.customAccessor.getterSetter = getterSetter;
-        m_attributes = attributes;
-
-        ASSERT(slotBase);
-        m_slotBase = slotBase;
-        m_propertyType = TypeCustomAccessor;
-
-        ASSERT(m_cacheability == CachingDisallowed);
     }
 
     void setGetterSlot(JSObject* slotBase, unsigned attributes, GetterSetter* getterSetter)
@@ -371,25 +357,24 @@ public:
 
     void setWatchpointSet(WatchpointSet& set)
     {
+        ASSERT(set.isStillValid());
         m_watchpointSet = &set;
     }
 
 private:
     JS_EXPORT_PRIVATE JSValue functionGetter(JSGlobalObject*) const;
-    JS_EXPORT_PRIVATE JSValue customGetter(JSGlobalObject*, PropertyName) const;
-    JS_EXPORT_PRIVATE JSValue customAccessorGetter(JSGlobalObject*, PropertyName) const;
+    JS_EXPORT_PRIVATE JSValue customGetter(VM&, PropertyName) const;
 
-    union {
+    union Data {
+        Data() { } // Needed because of GetValueFunc and PutValueFunc.
         EncodedJSValue value;
         struct {
             GetterSetter* getterSetter;
         } getter;
         struct {
             GetValueFunc getValue;
+            PutValueFunc putValue;
         } custom;
-        struct {
-            CustomGetterSetter* getterSetter;
-        } customAccessor;
     } m_data;
 
     unsigned m_attributes { 0 };
@@ -403,7 +388,7 @@ private:
     AdditionalDataType m_additionalDataType { AdditionalDataType::None };
     bool m_isTaintedByOpaqueObject { false };
 public:
-    Optional<DisallowVMEntry> disallowVMEntry;
+    std::optional<DisallowVMEntry> disallowVMEntry;
 private:
     union {
         DOMAttributeAnnotation domAttribute;
@@ -417,9 +402,7 @@ ALWAYS_INLINE JSValue PropertySlot::getValue(JSGlobalObject* globalObject, Prope
         return JSValue::decode(m_data.value);
     if (m_propertyType == TypeGetter)
         return functionGetter(globalObject);
-    if (m_propertyType == TypeCustomAccessor)
-        return customAccessorGetter(globalObject, propertyName);
-    return customGetter(globalObject, propertyName);
+    return customGetter(getVM(globalObject), propertyName);
 }
 
 ALWAYS_INLINE JSValue PropertySlot::getValue(JSGlobalObject* globalObject, uint64_t propertyName) const
@@ -429,9 +412,7 @@ ALWAYS_INLINE JSValue PropertySlot::getValue(JSGlobalObject* globalObject, uint6
         return JSValue::decode(m_data.value);
     if (m_propertyType == TypeGetter)
         return functionGetter(globalObject);
-    if (m_propertyType == TypeCustomAccessor)
-        return customAccessorGetter(globalObject, Identifier::from(vm, propertyName));
-    return customGetter(globalObject, Identifier::from(vm, propertyName));
+    return customGetter(getVM(globalObject), Identifier::from(vm, propertyName));
 }
 
 } // namespace JSC

@@ -55,4 +55,8 @@ WEBCORE_EXPORT OptionSet<DragOperation> gdkDragActionToDragOperation(GdkDragActi
 WEBCORE_EXPORT GdkDragAction dragOperationToGdkDragActions(OptionSet<DragOperation>);
 WEBCORE_EXPORT GdkDragAction dragOperationToSingleGdkDragAction(OptionSet<DragOperation>);
 
+void monitorWorkArea(GdkMonitor*, GdkRectangle*);
+
+bool shouldUseOverlayScrollbars();
+
 } // namespace WebCore

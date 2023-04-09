@@ -84,6 +84,16 @@ this.globalStaticFunction2 = function() { return 20; }
 shouldBe("globalStaticFunction2();", 20);
 shouldBe("this.globalStaticFunction2();", 20);
 
+var globalStaticValue2Descriptor = Object.getOwnPropertyDescriptor(this, "globalStaticValue2");
+shouldBe('typeof globalStaticValue2Descriptor', "object");
+shouldBe('globalStaticValue2Descriptor.writable', false);
+shouldBe('globalStaticValue2Descriptor.enumerable', false);
+
+var globalStaticFunction3Descriptor = Object.getOwnPropertyDescriptor(this, "globalStaticFunction3");
+shouldBe('typeof globalStaticFunction3Descriptor', "object");
+shouldBe('globalStaticFunction3Descriptor.writable', false);
+shouldBe('globalStaticFunction3Descriptor.enumerable', false);
+
 function iAmNotAStaticFunction() { return 10; }
 shouldBe("iAmNotAStaticFunction();", 10);
 this.iAmNotAStaticFunction = function() { return 20; }
@@ -188,6 +198,64 @@ shouldBe("MyObject.nullGetSet", 1);
 shouldThrow("MyObject.nullCall()");
 shouldThrow("MyObject.hasPropertyLie");
 
+var symbolToStringTagDescriptor = Object.getOwnPropertyDescriptor(MyObject, Symbol.toStringTag);
+shouldBe("typeof symbolToStringTagDescriptor", "object");
+shouldBe("symbolToStringTagDescriptor.value", "MyObject");
+shouldBe("symbolToStringTagDescriptor.writable", true);
+shouldBe("symbolToStringTagDescriptor.enumerable", false);
+shouldBe("symbolToStringTagDescriptor.configurable", true);
+
+MyObject[Symbol.toStringTag] = "Foo";
+shouldBe("Object.prototype.toString.call(MyObject)", "[object Foo]");
+
+var MyObjectHeir = Object.create(MyObject);
+MyObjectHeir.throwOnSet = 22;
+var MyObjectHeirThrowOnSetDescriptor = Object.getOwnPropertyDescriptor(MyObjectHeir, "throwOnSet");
+shouldBe("typeof MyObjectHeirThrowOnSetDescriptor", "object");
+shouldBe("MyObjectHeirThrowOnSetDescriptor.value", 22);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.writable", true);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.enumerable", true);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.configurable", true);
+shouldThrow("MyObject.throwOnSet = 22");
+
+var globalObjectHeir = Object.create(this);
+globalObjectHeir.globalStaticValue2 = 33;
+var globalObjectHeirGlobalStaticValue2Descriptor = Object.getOwnPropertyDescriptor(globalObjectHeir, "globalStaticValue2");
+shouldBe("typeof globalObjectHeirGlobalStaticValue2Descriptor", "object");
+shouldBe("globalObjectHeirGlobalStaticValue2Descriptor.value", 33);
+shouldBe("globalObjectHeirGlobalStaticValue2Descriptor.writable", true);
+shouldBe("globalObjectHeirGlobalStaticValue2Descriptor.enumerable", true);
+shouldBe("globalObjectHeirGlobalStaticValue2Descriptor.configurable", true);
+shouldBe("this.globalStaticValue2", 3);
+
+var symbolToPrimitiveDescriptor = Object.getOwnPropertyDescriptor(MyObject, Symbol.toPrimitive);
+shouldBe("typeof symbolToPrimitiveDescriptor", "object");
+shouldBe("symbolToPrimitiveDescriptor.value", MyObject[Symbol.toPrimitive]);
+shouldBe("symbolToPrimitiveDescriptor.writable", true);
+shouldBe("symbolToPrimitiveDescriptor.enumerable", false);
+shouldBe("symbolToPrimitiveDescriptor.configurable", true);
+
+shouldBe("MyObject[Symbol.toPrimitive]('default')", 1);
+shouldBe("MyObject[Symbol.toPrimitive]('number')", 1);
+shouldBe("MyObject[Symbol.toPrimitive]('string')", "MyObjectAsString");
+
+shouldThrow("MyObject[Symbol.toPrimitive]('foo')");
+shouldThrow("MyObject[Symbol.toPrimitive].call({}, 'default')");
+shouldThrow("(0, MyObject[Symbol.toPrimitive])('default')");
+
+MyObject[Symbol.toPrimitive] = () => null;
+shouldBe("MyObject[Symbol.toPrimitive]('bar')", null);
+
+var MyObjectHeir = Object.create(MyObject);
+MyObjectHeir.throwOnSet = 22;
+var MyObjectHeirThrowOnSetDescriptor = Object.getOwnPropertyDescriptor(MyObjectHeir, "throwOnSet");
+shouldBe("typeof MyObjectHeirThrowOnSetDescriptor", "object");
+shouldBe("MyObjectHeirThrowOnSetDescriptor.value", 22);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.writable", true);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.enumerable", true);
+shouldBe("MyObjectHeirThrowOnSetDescriptor.configurable", true);
+shouldThrow("MyObject.throwOnSet = 22");
+
 derived = new Derived();
 
 shouldBe("derived instanceof Derived", true);
@@ -267,10 +335,25 @@ shouldThrow("EvilExceptionObject*5");
 EvilExceptionObject.toStringExplicit = function f() { return f(); }
 shouldThrow("String(EvilExceptionObject)");
 
-shouldBe("console", "[object Console]");
+EvilExceptionObject.toNumber = () => ({ valueOf: () => 4815 });
+shouldBe("Number(EvilExceptionObject)", 4815);
+EvilExceptionObject.toStringExplicit = () => ({ toString: () => "foobar" });
+shouldBe("`${EvilExceptionObject}`", "foobar");
+
+shouldBe("console", "[object console]");
 shouldBe("typeof console.log", "function");
 
 shouldBe("EmptyObject", "[object CallbackObject]");
+
+var symbolToStringTagDescriptor = Object.getOwnPropertyDescriptor(EmptyObject, Symbol.toStringTag);
+shouldBe("typeof symbolToStringTagDescriptor", "object");
+shouldBe("symbolToStringTagDescriptor.value", "CallbackObject");
+shouldBe("symbolToStringTagDescriptor.writable", true);
+shouldBe("symbolToStringTagDescriptor.enumerable", false);
+shouldBe("symbolToStringTagDescriptor.configurable", true);
+
+EmptyObject[Symbol.toStringTag] = "Foo";
+shouldBe("Object.prototype.toString.call(EmptyObject)", "[object Foo]");
 
 for (var i = 0; i < 6; ++i)
     PropertyCatchalls.x = i;

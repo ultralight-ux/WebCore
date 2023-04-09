@@ -37,6 +37,7 @@
 namespace WebCore {
 
 class Document;
+class WeakPtrImplWithEventTargetData;
 
 enum ProcessingUserGestureState {
     ProcessingUserGesture,
@@ -64,7 +65,7 @@ public:
     bool processingUserGestureForMedia() const { return m_state == ProcessingUserGesture || m_state == ProcessingPotentialUserGesture; }
     UserGestureType gestureType() const { return m_gestureType; }
 
-    void addDestructionObserver(WTF::Function<void (UserGestureToken&)>&& observer)
+    void addDestructionObserver(Function<void(UserGestureToken&)>&& observer)
     {
         m_destructionObservers.append(WTFMove(observer));
     }
@@ -102,15 +103,15 @@ public:
 
     MonotonicTime startTime() const { return m_startTime; }
 
-    bool isValidForDocument(Document&) const;
+    bool isValidForDocument(const Document&) const;
 
 private:
     UserGestureToken(ProcessingUserGestureState, UserGestureType, Document*);
 
     ProcessingUserGestureState m_state = NotProcessingUserGesture;
-    Vector<WTF::Function<void (UserGestureToken&)>> m_destructionObservers;
+    Vector<Function<void(UserGestureToken&)>> m_destructionObservers;
     UserGestureType m_gestureType;
-    WeakHashSet<Document> m_documentsImpactedByUserGesture;
+    WeakHashSet<Document, WeakPtrImplWithEventTargetData> m_documentsImpactedByUserGesture;
     DOMPasteAccessPolicy m_domPasteAccessPolicy { DOMPasteAccessPolicy::NotRequestedYet };
     GestureScope m_scope { GestureScope::All };
     MonotonicTime m_startTime { MonotonicTime::now() };
@@ -123,12 +124,12 @@ class UserGestureIndicator {
 public:
     WEBCORE_EXPORT static RefPtr<UserGestureToken> currentUserGesture();
 
-    WEBCORE_EXPORT static bool processingUserGesture(Document* = nullptr);
+    WEBCORE_EXPORT static bool processingUserGesture(const Document* = nullptr);
     WEBCORE_EXPORT static bool processingUserGestureForMedia();
 
     // If a document is provided, its last known user gesture timestamp is updated.
     enum class ProcessInteractionStyle { Immediate, Delayed };
-    WEBCORE_EXPORT explicit UserGestureIndicator(Optional<ProcessingUserGestureState>, Document* = nullptr, UserGestureType = UserGestureType::Other, ProcessInteractionStyle = ProcessInteractionStyle::Immediate);
+    WEBCORE_EXPORT explicit UserGestureIndicator(std::optional<ProcessingUserGestureState>, Document* = nullptr, UserGestureType = UserGestureType::Other, ProcessInteractionStyle = ProcessInteractionStyle::Immediate);
     WEBCORE_EXPORT explicit UserGestureIndicator(RefPtr<UserGestureToken>, UserGestureToken::GestureScope = UserGestureToken::GestureScope::All, UserGestureToken::IsPropagatedFromFetch = UserGestureToken::IsPropagatedFromFetch::No);
     WEBCORE_EXPORT ~UserGestureIndicator();
 

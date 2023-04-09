@@ -39,34 +39,35 @@ AnimationPlaybackEvent::AnimationPlaybackEvent(const AtomString& type, const Ani
     if (initializer.currentTime)
         m_currentTime = Seconds::fromMilliseconds(*initializer.currentTime);
     else
-        m_currentTime = WTF::nullopt;
+        m_currentTime = std::nullopt;
 
     if (initializer.timelineTime)
         m_timelineTime = Seconds::fromMilliseconds(*initializer.timelineTime);
     else
-        m_timelineTime = WTF::nullopt;
+        m_timelineTime = std::nullopt;
 }
 
-AnimationPlaybackEvent::AnimationPlaybackEvent(const AtomString& type, Optional<Seconds> currentTime, Optional<Seconds> timelineTime, WebAnimation* animation)
-    : AnimationEventBase(type, animation, timelineTime)
+AnimationPlaybackEvent::AnimationPlaybackEvent(const AtomString& type, WebAnimation* animation, std::optional<Seconds> scheduledTime, std::optional<Seconds> timelineTime, std::optional<Seconds> currentTime)
+    : AnimationEventBase(type, animation, scheduledTime)
+    , m_timelineTime(timelineTime)
     , m_currentTime(currentTime)
 {
 }
 
 AnimationPlaybackEvent::~AnimationPlaybackEvent() = default;
 
-Optional<double> AnimationPlaybackEvent::bindingsCurrentTime() const
+std::optional<double> AnimationPlaybackEvent::bindingsCurrentTime() const
 {
     if (!m_currentTime)
-        return WTF::nullopt;
+        return std::nullopt;
     return secondsToWebAnimationsAPITime(m_currentTime.value());
 }
 
-Optional<double> AnimationPlaybackEvent::bindingsTimelineTime() const
+std::optional<double> AnimationPlaybackEvent::bindingsTimelineTime() const
 {
-    if (!timelineTime())
-        return WTF::nullopt;
-    return secondsToWebAnimationsAPITime(timelineTime().value());
+    if (!m_timelineTime)
+        return std::nullopt;
+    return secondsToWebAnimationsAPITime(m_timelineTime.value());
 }
 
 } // namespace WebCore

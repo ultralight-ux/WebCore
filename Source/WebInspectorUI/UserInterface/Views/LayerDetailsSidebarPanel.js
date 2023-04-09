@@ -40,11 +40,24 @@ WI.LayerDetailsSidebarPanel = class LayerDetailsSidebarPanel extends WI.DetailsS
         this._dataGridNodesByLayerId = new Map;
 
         this._bottomBar = null;
+        this._bottomBarWidth = NaN;
         this._layersCountLabel = null;
         this._layersMemoryLabel = null;
     }
 
     // Public
+
+    get minimumWidth()
+    {
+        let minimumWidth = super.minimumWidth;
+
+        if (isNaN(this._bottomBarWidth) && this._layersCountLabel && this._layersMemoryLabel)
+            this._bottomBarWidth = this._layersCountLabel.realOffsetWidth + this._layersMemoryLabel.realOffsetWidth;
+        if (!isNaN(this._bottomBarWidth))
+            minimumWidth = Math.max(minimumWidth, this._bottomBarWidth);
+
+        return minimumWidth;
+    }
 
     inspect(objects)
     {
@@ -126,6 +139,8 @@ WI.LayerDetailsSidebarPanel = class LayerDetailsSidebarPanel extends WI.DetailsS
 
         this._layersMemoryLabel = this._bottomBar.appendChild(document.createElement("div"));
         this._layersMemoryLabel.className = "layers-memory-label";
+
+        this._bottomBarWidth = NaN;
     }
 
     _sortDataGrid()
@@ -149,22 +164,29 @@ WI.LayerDetailsSidebarPanel = class LayerDetailsSidebarPanel extends WI.DetailsS
 
     _dataGridMouseMove(event)
     {
-        let node = this._dataGrid.dataGridNodeFromNode(event.target);
-        if (node === this._hoveredDataGridNode)
+        let dataGridNode = this._dataGrid.dataGridNodeFromNode(event.target);
+        if (dataGridNode === this._hoveredDataGridNode)
             return;
 
-        if (!node) {
+        if (!dataGridNode) {
             this._hideDOMNodeHighlight();
             return;
         }
 
-        this._hoveredDataGridNode = node;
+        this._hoveredDataGridNode = dataGridNode;
 
-        if (node.layer.isGeneratedContent || node.layer.isReflection || node.layer.isAnonymous) {
+        let layer = dataGridNode.layer;
+
+        if (layer.isGeneratedContent || layer.isReflection || layer.isAnonymous) {
             const usePageCoordinates = true;
-            WI.domManager.highlightRect(node.layer.bounds, usePageCoordinates);
-        } else
-            WI.domManager.highlightDOMNode(node.layer.nodeId);
+            WI.domManager.highlightRect(layer.bounds, usePageCoordinates);
+        } else {
+            let domNode = WI.domManager.nodeForId(layer.nodeId);
+            if (domNode)
+                domNode.highlight();
+            else
+                WI.domManager.hideDOMNodeHighlight();
+        }
     }
 
     _dataGridMouseLeave(event)
@@ -225,6 +247,8 @@ WI.LayerDetailsSidebarPanel = class LayerDetailsSidebarPanel extends WI.DetailsS
 
         let totalMemory = newLayers.reduce((total, layer) => total + (layer.memory || 0), 0);
         this._layersMemoryLabel.textContent = WI.UIString("Memory: %s").format(Number.bytesToString(totalMemory));
+
+        this._bottomBarWidth = NaN;
     }
 };
 

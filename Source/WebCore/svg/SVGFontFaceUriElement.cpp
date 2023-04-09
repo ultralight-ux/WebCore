@@ -19,8 +19,6 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SVG_FONTS)
 #include "SVGFontFaceUriElement.h"
 
 #include "CSSFontFaceSrcValue.h"
@@ -28,6 +26,8 @@
 #include "CachedResourceLoader.h"
 #include "CachedResourceRequest.h"
 #include "Document.h"
+#include "SVGElementInlines.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGFontFaceElement.h"
 #include "SVGNames.h"
 #include "XLinkNames.h"
@@ -40,7 +40,7 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFontFaceUriElement);
 using namespace SVGNames;
     
 inline SVGFontFaceUriElement::SVGFontFaceUriElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(font_face_uriTag));
 }
@@ -56,12 +56,14 @@ SVGFontFaceUriElement::~SVGFontFaceUriElement()
         m_cachedFont->removeClient(*this);
 }
 
-Ref<CSSFontFaceSrcValue> SVGFontFaceUriElement::srcValue() const
+Ref<CSSFontFaceSrcResourceValue> SVGFontFaceUriElement::createSrcValue() const
 {
-    auto src = CSSFontFaceSrcValue::create(getAttribute(SVGNames::hrefAttr, XLinkNames::hrefAttr), LoadedFromOpaqueSource::No);
-    AtomString value(attributeWithoutSynchronization(formatAttr));
-    src.get().setFormat(value.isEmpty() ? "svg" : value); // Default format
-    return src;
+    ResolvedURL location;
+    location.specifiedURLString = getAttribute(SVGNames::hrefAttr, XLinkNames::hrefAttr);
+    if (!location.specifiedURLString.isNull())
+        location.resolvedURL = document().completeURL(location.specifiedURLString);
+    auto& format = attributeWithoutSynchronization(formatAttr);
+    return CSSFontFaceSrcResourceValue::create(WTFMove(location), format.isEmpty() ? "svg"_s : format.string(), LoadedFromOpaqueSource::No);
 }
 
 void SVGFontFaceUriElement::parseAttribute(const QualifiedName& name, const AtomString& value)
@@ -79,9 +81,9 @@ void SVGFontFaceUriElement::childrenChanged(const ChildChange& change)
     if (!parentNode() || !parentNode()->hasTagName(font_face_srcTag))
         return;
     
-    auto grandparent = makeRefPtr(parentNode()->parentNode());
-    if (grandparent && grandparent->hasTagName(font_faceTag))
-        downcast<SVGFontFaceElement>(*grandparent).rebuildFontFace();
+    RefPtr grandParent = parentNode()->parentNode();
+    if (grandParent && grandParent->hasTagName(font_faceTag))
+        downcast<SVGFontFaceElement>(*grandParent).rebuildFontFace();
 }
 
 Node::InsertedIntoAncestorResult SVGFontFaceUriElement::insertedIntoAncestor(InsertionType insertionType, ContainerNode& parentOfInsertedTree)
@@ -92,8 +94,8 @@ Node::InsertedIntoAncestorResult SVGFontFaceUriElement::insertedIntoAncestor(Ins
 
 static bool isSVGFontTarget(const SVGFontFaceUriElement& element)
 {
-    Ref<CSSFontFaceSrcValue> srcValue(element.srcValue());
-    return srcValue->isSVGFontTarget();
+    auto& format = element.attributeWithoutSynchronization(formatAttr);
+    return format.isEmpty() || equalLettersIgnoringASCIICase(format, "svg"_s);
 }
 
 void SVGFontFaceUriElement::loadFont()
@@ -119,5 +121,3 @@ void SVGFontFaceUriElement::loadFont()
 }
 
 }
-
-#endif // ENABLE(SVG_FONTS)

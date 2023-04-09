@@ -124,13 +124,13 @@ void LocaleWin::ensureShortMonthLabels()
         LOCALE_SABBREVMONTHNAME11,
         LOCALE_SABBREVMONTHNAME12,
     };
-    m_shortMonthLabels.reserveCapacity(WTF_ARRAY_LENGTH(types));
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(types); ++i) {
+    m_shortMonthLabels.reserveCapacity(std::size(types));
+    for (unsigned i = 0; i < std::size(types); ++i) {
         m_shortMonthLabels.append(getLocaleInfoString(types[i]));
         if (m_shortMonthLabels.last().isEmpty()) {
             m_shortMonthLabels.shrink(0);
-            m_shortMonthLabels.reserveCapacity(WTF_ARRAY_LENGTH(WTF::monthName));
-            for (unsigned m = 0; m < WTF_ARRAY_LENGTH(WTF::monthName); ++m)
+            m_shortMonthLabels.reserveCapacity(std::size(WTF::monthName));
+            for (unsigned m = 0; m < std::size(WTF::monthName); ++m)
                 m_shortMonthLabels.append(WTF::monthName[m]);
             return;
         }
@@ -259,13 +259,13 @@ void LocaleWin::ensureMonthLabels()
         LOCALE_SMONTHNAME11,
         LOCALE_SMONTHNAME12,
     };
-    m_monthLabels.reserveCapacity(WTF_ARRAY_LENGTH(types));
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(types); ++i) {
+    m_monthLabels.reserveCapacity(std::size(types));
+    for (unsigned i = 0; i < std::size(types); ++i) {
         m_monthLabels.append(getLocaleInfoString(types[i]));
         if (m_monthLabels.last().isEmpty()) {
             m_monthLabels.shrink(0);
-            m_monthLabels.reserveCapacity(WTF_ARRAY_LENGTH(WTF::monthFullName));
-            for (unsigned m = 0; m < WTF_ARRAY_LENGTH(WTF::monthFullName); ++m)
+            m_monthLabels.reserveCapacity(std::size(WTF::monthFullName));
+            for (unsigned m = 0; m < std::size(WTF::monthFullName); ++m)
                 m_monthLabels.append(WTF::monthFullName[m]);
             return;
         }
@@ -302,7 +302,7 @@ String LocaleWin::monthFormat()
 String LocaleWin::shortMonthFormat()
 {
     if (m_shortMonthFormat.isNull())
-        m_shortMonthFormat = convertWindowsDateTimeFormat(getLocaleInfoString(LOCALE_SYEARMONTH)).replace("MMMM", "MMM");
+        m_shortMonthFormat = makeStringByReplacingAll(convertWindowsDateTimeFormat(getLocaleInfoString(LOCALE_SYEARMONTH)), "MMMM"_s, "MMM"_s);
     return m_shortMonthFormat;
 }
 
@@ -326,7 +326,7 @@ String LocaleWin::shortTimeFormat()
         builder.append("ss");
         size_t pos = format.reverseFind(builder.toString());
         if (pos != notFound)
-            format.remove(pos, builder.length());
+            format = makeStringByRemoving(format, pos, builder.length());
     }
     m_timeFormatWithoutSeconds = convertWindowsDateTimeFormat(format);
     return m_timeFormatWithoutSeconds;
@@ -398,16 +398,16 @@ void LocaleWin::initializeLocaleData()
     DWORD digitSubstitution = DigitSubstitution0to9;
     getLocaleInfo(LOCALE_IDIGITSUBSTITUTION, digitSubstitution);
     if (digitSubstitution == DigitSubstitution0to9) {
-        symbols.append("0");
-        symbols.append("1");
-        symbols.append("2");
-        symbols.append("3");
-        symbols.append("4");
-        symbols.append("5");
-        symbols.append("6");
-        symbols.append("7");
-        symbols.append("8");
-        symbols.append("9");
+        symbols.append("0"_s);
+        symbols.append("1"_s);
+        symbols.append("2"_s);
+        symbols.append("3"_s);
+        symbols.append("4"_s);
+        symbols.append("5"_s);
+        symbols.append("6"_s);
+        symbols.append("7"_s);
+        symbols.append("8"_s);
+        symbols.append("9"_s);
     } else {
         String digits = getLocaleInfoString(LOCALE_SNATIVEDIGITS);
         ASSERT(digits.length() >= 10);
@@ -434,8 +434,8 @@ void LocaleWin::initializeLocaleData()
     String negativeSuffix = emptyString();
     switch (negativeFormat) {
     case NegativeFormatParenthesis:
-        negativePrefix = "(";
-        negativeSuffix = ")";
+        negativePrefix = "("_s;
+        negativeSuffix = ")"_s;
         break;
     case NegativeFormatSignSpacePrefix:
         negativePrefix = negativeSign + " ";

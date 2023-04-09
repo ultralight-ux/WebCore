@@ -45,60 +45,17 @@ WI.ThreadTreeElement = class ThreadTreeElement extends WI.GeneralTreeElement
         this._updateStatus();
 
         let targetData = WI.debuggerManager.dataForTarget(this._target);
-        let callFrames = targetData.callFrames;
 
-        if (targetData.pausing || !callFrames.length) {
+        if (targetData.pausing || !targetData.stackTrace?.callFrames.length) {
             this.appendChild(this._idleTreeElement);
             this.expand();
             return;
         }
 
-        let activeCallFrame = WI.debuggerManager.activeCallFrame;
-        let activeCallFrameTreeElement = null;
-
-        for (let callFrame of callFrames) {
-            let callFrameTreeElement = new WI.CallFrameTreeElement(callFrame);
-            if (callFrame === activeCallFrame)
-                activeCallFrameTreeElement = callFrameTreeElement;
-            this.appendChild(callFrameTreeElement);
-        }
-
+        let activeCallFrameTreeElement = WI.StackTraceTreeController.groupBlackboxedStackTrace(this, targetData.stackTrace, {rememberBlackboxedCallFrameGroupToAutoExpand: true});
         if (activeCallFrameTreeElement) {
             activeCallFrameTreeElement.select(true, true);
             activeCallFrameTreeElement.isActiveCallFrame = true;
-        }
-
-        let currentStackTrace = targetData.asyncStackTrace;
-        while (currentStackTrace) {
-            console.assert(currentStackTrace.callFrames.length, "StackTrace should have non-empty call frames array.");
-            if (!currentStackTrace.callFrames.length)
-                break;
-
-            let boundaryCallFrame;
-            if (currentStackTrace.topCallFrameIsBoundary) {
-                boundaryCallFrame = currentStackTrace.callFrames[0];
-                console.assert(boundaryCallFrame.nativeCode && !boundaryCallFrame.sourceCodeLocation);
-            } else {
-                // Create a generic native CallFrame for the asynchronous boundary.
-                const functionName = WI.UIString("(async)");
-                const nativeCode = true;
-                boundaryCallFrame = new WI.CallFrame(null, null, null, functionName, null, null, nativeCode);
-            }
-
-            const isAsyncBoundaryCallFrame = true;
-            this.appendChild(new WI.CallFrameTreeElement(boundaryCallFrame, isAsyncBoundaryCallFrame));
-
-            let startIndex = currentStackTrace.topCallFrameIsBoundary ? 1 : 0;
-            for (let i = startIndex; i < currentStackTrace.callFrames.length; ++i)
-                this.appendChild(new WI.CallFrameTreeElement(currentStackTrace.callFrames[i]));
-
-            if (currentStackTrace.truncated) {
-                let truncatedTreeElement = new WI.GeneralTreeElement("truncated-call-frames", WI.UIString("Call Frames Truncated"));
-                truncatedTreeElement.selectable = false;
-                this.appendChild(truncatedTreeElement);
-            }
-
-            currentStackTrace = currentStackTrace.parentStackTrace;
         }
 
         this.expand();
@@ -141,7 +98,9 @@ WI.ThreadTreeElement = class ThreadTreeElement extends WI.GeneralTreeElement
         if (!this._statusButton) {
             let tooltip = WI.UIString("Resume Thread");
             this._statusButton = new WI.TreeElementStatusButton(WI.ImageUtilities.useSVGSymbol("Images/Resume.svg", "resume", tooltip));
-            this._statusButton.addEventListener(WI.TreeElementStatusButton.Event.Clicked, () => { WI.debuggerManager.continueUntilNextRunLoop(this._target); });
+            this._statusButton.addEventListener(WI.TreeElementStatusButton.Event.Clicked, function(event) {
+                WI.debuggerManager.continueUntilNextRunLoop(this._target);
+            }, this);
             this._statusButton.element.addEventListener("mousedown", (event) => {
                 // Prevent tree element from being selected.
                 event.stopPropagation();

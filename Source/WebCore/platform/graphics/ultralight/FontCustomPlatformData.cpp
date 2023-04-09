@@ -24,7 +24,7 @@ FontCustomPlatformData::~FontCustomPlatformData()
 }
 
 FontPlatformData FontCustomPlatformData::fontPlatformData(
-  const FontDescription& description, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities)
+  const FontDescription& description, bool bold, bool italic, const FontCreationContext& fontCreationContext)
 {
   return FontPlatformData(m_face, description);
 }
@@ -41,12 +41,12 @@ FontCustomPlatformData& FontCustomPlatformData::operator=(const FontCustomPlatfo
 
 bool FontCustomPlatformData::supportsFormat(const String& format)
 {
-  return equalLettersIgnoringASCIICase(format, "truetype")
-    || equalLettersIgnoringASCIICase(format, "opentype")
+  return equalLettersIgnoringASCIICase(format, "truetype"_s)
+      || equalLettersIgnoringASCIICase(format, "opentype"_s)
 #if USE(WOFF2)
-    || equalLettersIgnoringASCIICase(format, "woff2")
+      || equalLettersIgnoringASCIICase(format, "woff2"_s)
 #endif
-    || equalLettersIgnoringASCIICase(format, "woff");
+      || equalLettersIgnoringASCIICase(format, "woff"_s);
 }
 
 std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(

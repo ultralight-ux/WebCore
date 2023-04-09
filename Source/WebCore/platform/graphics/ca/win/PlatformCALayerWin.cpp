@@ -33,7 +33,7 @@
 #include "ColorSerialization.h"
 #include "FontCascade.h"
 #include "GDIUtilities.h"
-#include "GraphicsContext.h"
+#include "GraphicsContextCG.h"
 #include "PlatformCAAnimationWin.h"
 #include "PlatformCALayerWinInternal.h"
 #include "TextRun.h"
@@ -528,15 +528,6 @@ void PlatformCALayerWin::setWantsDeepColorBackingStore(bool)
 {
 }
 
-bool PlatformCALayerWin::supportsSubpixelAntialiasedText() const
-{
-    return false;
-}
-
-void PlatformCALayerWin::setSupportsSubpixelAntialiasedText(bool)
-{
-}
-
 bool PlatformCALayerWin::hasContents() const
 {
     return !!CACFLayerGetContents(m_layer.get());
@@ -572,12 +563,12 @@ void PlatformCALayerWin::setMagnificationFilter(FilterType value)
 
 Color PlatformCALayerWin::backgroundColor() const
 {
-    return CACFLayerGetBackgroundColor(m_layer.get());
+    return roundAndClampToSRGBALossy(CACFLayerGetBackgroundColor(m_layer.get()));
 }
 
 void PlatformCALayerWin::setBackgroundColor(const Color& value)
 {
-    CACFLayerSetBackgroundColor(m_layer.get(), cachedCGColor(value));
+    CACFLayerSetBackgroundColor(m_layer.get(), cachedCGColor(value).get());
     setNeedsCommit();
 }
 
@@ -630,9 +621,9 @@ void PlatformCALayerWin::setTimeOffset(CFTimeInterval value)
     setNeedsCommit();
 }
 
-void PlatformCALayerWin::setEdgeAntialiasingMask(unsigned mask)
+void PlatformCALayerWin::setAntialiasesEdges(bool antialiasesEdges)
 {
-    CACFLayerSetEdgeAntialiasingMask(m_layer.get(), mask);
+    CACFLayerSetEdgeAntialiasingMask(m_layer.get(), antialiasesEdges ? (kCACFLayerLeftEdge | kCACFLayerRightEdge | kCACFLayerBottomEdge | kCACFLayerTopEdge) : 0);
     setNeedsCommit();
 }
 
@@ -698,44 +689,12 @@ static void printIndent(StringBuilder& builder, int indent)
 
 static void printTransform(StringBuilder& builder, const CATransform3D& transform)
 {
-    builder.append('[');
-    builder.append(FormattedNumber::fixedPrecision(transform.m11));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m12));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m13));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m14));
-    builder.append("; ");
-    builder.append(FormattedNumber::fixedPrecision(transform.m21));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m22));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m23));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m24));
-    builder.append("; ");
-    builder.append(FormattedNumber::fixedPrecision(transform.m31));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m32));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m33));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m34));
-    builder.append("; ");
-    builder.append(FormattedNumber::fixedPrecision(transform.m41));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m42));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m43));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(transform.m44));
-    builder.append(']');
+    builder.append('[', FormattedNumber::fixedPrecision(transform.m11), ' ', FormattedNumber::fixedPrecision(transform.m12), ' ', FormattedNumber::fixedPrecision(transform.m13), ' ', FormattedNumber::fixedPrecision(transform.m14), "; ", FormattedNumber::fixedPrecision(transform.m21), ' ', FormattedNumber::fixedPrecision(transform.m22), ' ', FormattedNumber::fixedPrecision(transform.m23), ' ', FormattedNumber::fixedPrecision(transform.m24), "; ", FormattedNumber::fixedPrecision(transform.m31), ' ', FormattedNumber::fixedPrecision(transform.m32), ' ', FormattedNumber::fixedPrecision(transform.m33), ' ', FormattedNumber::fixedPrecision(transform.m34), "; ", FormattedNumber::fixedPrecision(transform.m41), ' ', FormattedNumber::fixedPrecision(transform.m42), ' ', FormattedNumber::fixedPrecision(transform.m43), ' ', FormattedNumber::fixedPrecision(transform.m44), ']');
 }
 
-static void printColor(StringBuilder& builder, int indent, const String& label, CGColorRef color)
+static void printColor(StringBuilder& builder, int indent, ASCIILiteral label, CGColorRef color)
 {
-    Color layerColor(color);
+    Color layerColor(roundAndClampToSRGBALossy(color));
     if (!layerColor.isValid())
         return;
 
@@ -752,10 +711,9 @@ static void printLayer(StringBuilder& builder, const PlatformCALayer* layer, int
     builder.append('\n');
     printIndent(builder, indent);
 
-    char* layerTypeName = nullptr;
+    const char* layerTypeName = nullptr;
     switch (layer->layerType()) {
     case PlatformCALayer::LayerTypeLayer: layerTypeName = "layer"; break;
-    case PlatformCALayer::LayerTypeEditableImageLayer:
     case PlatformCALayer::LayerTypeWebLayer: layerTypeName = "web-layer"; break;
     case PlatformCALayer::LayerTypeSimpleLayer: layerTypeName = "simple-layer"; break;
     case PlatformCALayer::LayerTypeTransformLayer: layerTypeName = "transform-layer"; break;
@@ -767,36 +725,11 @@ static void printLayer(StringBuilder& builder, const PlatformCALayer* layer, int
     case PlatformCALayer::LayerTypeContentsProvidedLayer: layerTypeName = "contents-provided-layer"; break;
     case PlatformCALayer::LayerTypeBackdropLayer: layerTypeName = "backdrop-layer"; break;
     case PlatformCALayer::LayerTypeShapeLayer: layerTypeName = "shape-layer"; break;
-    case PlatformCALayer::LayerTypeLightSystemBackdropLayer: layerTypeName = "light-system-backdrop-layer"; break;
-    case PlatformCALayer::LayerTypeDarkSystemBackdropLayer: layerTypeName = "dark-system-backdrop-layer"; break;
     case PlatformCALayer::LayerTypeScrollContainerLayer: layerTypeName = "scroll-container-layer"; break;
     case PlatformCALayer::LayerTypeCustom: layerTypeName = "custom-layer"; break;
     }
 
-    builder.append("(");
-    builder.append(layerTypeName);
-    builder.append(" [");
-    builder.append(FormattedNumber::fixedPrecision(layerPosition.x()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerPosition.y()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerPosition.z()));
-    builder.append("] [");
-    builder.append(FormattedNumber::fixedPrecision(layerBounds.x()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerBounds.y()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerBounds.width()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerBounds.height()));
-    builder.append("] [");
-    builder.append(FormattedNumber::fixedPrecision(layerAnchorPoint.x()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerAnchorPoint.y()));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(layerAnchorPoint.z()));
-    builder.append("] superlayer=");
-    builder.appendNumber(reinterpret_cast<unsigned long long>(layer->superlayer()));
+    builder.append('(', layerTypeName, " [", FormattedNumber::fixedPrecision(layerPosition.x()), ' ', FormattedNumber::fixedPrecision(layerPosition.y()), ' ', FormattedNumber::fixedPrecision(layerPosition.z()), "] [", FormattedNumber::fixedPrecision(layerBounds.x()), ' ', FormattedNumber::fixedPrecision(layerBounds.y()), ' ', FormattedNumber::fixedPrecision(layerBounds.width()), ' ', FormattedNumber::fixedPrecision(layerBounds.height()), "] [", FormattedNumber::fixedPrecision(layerAnchorPoint.x()), ' ', FormattedNumber::fixedPrecision(layerAnchorPoint.y()), ' ', FormattedNumber::fixedPrecision(layerAnchorPoint.z()), "] superlayer=", reinterpret_cast<unsigned long long>(layer->superlayer()));
 
     // Print name if needed
     String layerName = CACFLayerGetName(layer->platformLayer());
@@ -818,10 +751,10 @@ static void printLayer(StringBuilder& builder, const PlatformCALayer* layer, int
     }
 
     // Print backgroundColor if needed
-    printColor(builder, indent + 1, "backgroundColor", CACFLayerGetBackgroundColor(layer->platformLayer()));
+    printColor(builder, indent + 1, "backgroundColor"_s, CACFLayerGetBackgroundColor(layer->platformLayer()));
 
     // Print borderColor if needed
-    printColor(builder, indent + 1, "borderColor", CACFLayerGetBorderColor(layer->platformLayer()));
+    printColor(builder, indent + 1, "borderColor"_s, CACFLayerGetBorderColor(layer->platformLayer()));
 
     // Print masksToBounds if needed
     if (bool layerMasksToBounds = layer->masksToBounds()) {
@@ -872,11 +805,7 @@ static void printLayer(StringBuilder& builder, const PlatformCALayer* layer, int
             CGImageRef imageContents = static_cast<CGImageRef>(const_cast<void*>(layerContents));
             builder.append('\n');
             printIndent(builder, indent + 1);
-            builder.append("(contents (image [");
-            builder.appendNumber(CGImageGetWidth(imageContents));
-            builder.append(' ');
-            builder.appendNumber(CGImageGetHeight(imageContents));
-            builder.append("]))");
+            builder.append("(contents (image [", CGImageGetWidth(imageContents), ' ', CGImageGetHeight(imageContents), "]))");
         }
 
         if (CFGetTypeID(layerContents) == CABackingStoreGetTypeID()) {
@@ -884,11 +813,7 @@ static void printLayer(StringBuilder& builder, const PlatformCALayer* layer, int
             CGImageRef imageContents = CABackingStoreGetCGImage(backingStore);
             builder.append('\n');
             printIndent(builder, indent + 1);
-            builder.append("(contents (backing-store [");
-            builder.appendNumber(CGImageGetWidth(imageContents));
-            builder.append(' ');
-            builder.appendNumber(CGImageGetHeight(imageContents));
-            builder.append("]))");
+            builder.append("(contents (backing-store [", CGImageGetWidth(imageContents), ' ', CGImageGetHeight(imageContents), "]))");
         }
     }
 
@@ -917,17 +842,7 @@ String PlatformCALayerWin::layerTreeAsString() const
     CGRect rootBounds = bounds();
 
     StringBuilder builder;
-    builder.append("\n\n** Render tree at time ");
-    builder.append(FormattedNumber::fixedPrecision(MonotonicTime::now().secondsSinceEpoch().seconds()));
-    builder.append(" (bounds ");
-    builder.append(FormattedNumber::fixedPrecision(rootBounds.origin.x));
-    builder.append(", ");
-    builder.append(FormattedNumber::fixedPrecision(rootBounds.origin.y));
-    builder.append(' ');
-    builder.append(FormattedNumber::fixedPrecision(rootBounds.size.width));
-    builder.append('x');
-    builder.append(FormattedNumber::fixedPrecision(rootBounds.size.height));
-    builder.append(") **\n\n");
+    builder.append("\n\n** Render tree at time ", FormattedNumber::fixedPrecision(MonotonicTime::now().secondsSinceEpoch().seconds()), " (bounds ", FormattedNumber::fixedPrecision(rootBounds.origin.x), ", ", FormattedNumber::fixedPrecision(rootBounds.origin.y), ' ', FormattedNumber::fixedPrecision(rootBounds.size.width), 'x', FormattedNumber::fixedPrecision(rootBounds.size.height), ") **\n\n");
 
     // Print layer tree from the root
     printLayer(builder, this, 0);
@@ -938,12 +853,6 @@ String PlatformCALayerWin::layerTreeAsString() const
 Ref<PlatformCALayer> PlatformCALayerWin::createCompatibleLayer(PlatformCALayer::LayerType layerType, PlatformCALayerClient* client) const
 {
     return PlatformCALayerWin::create(layerType, client);
-}
-
-GraphicsLayer::EmbeddedViewID PlatformCALayerWin::embeddedViewID() const
-{
-    ASSERT_NOT_REACHED();
-    return 0;
 }
 
 TiledBacking* PlatformCALayerWin::tiledBacking()
@@ -970,7 +879,7 @@ void PlatformCALayerWin::drawTextAtPoint(CGContextRef context, CGFloat x, CGFloa
     FontCascade font = FontCascade(WTFMove(desc), 0, 0);
     font.update(nullptr);
 
-    GraphicsContext cg(context);
+    GraphicsContextCG cg(context);
     cg.setFillColor(Color::black);
     cg.drawText(font, TextRun(text), IntPoint(x, y));
 }

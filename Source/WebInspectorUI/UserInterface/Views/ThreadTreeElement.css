@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,7 +24,7 @@
  */
 
 .tree-outline > .item.thread .icon {
-    content: url(../Images/Thread.svg);
+    content: url(../Images/IdentifierIcons.svg#Thread-light);
     width: 15px;
     height: 15px;
 }
@@ -42,7 +42,7 @@
     fill: hsla(0, 0%, var(--foreground-lightness), 0.7);
 }
 
-.tree-outline:focus > .item.thread.selected .status-button.resume {
+body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus-within > .item.thread.selected .status-button.resume {
     fill: var(--selected-foreground-color);
 }
 
@@ -51,17 +51,8 @@
     display: inline-block;
 }
 
-.tree-outline > .item.thread + ol > .item.truncated-call-frames {
-    -webkit-margin-start: 31px;
-    -webkit-margin-end: 6px;
-    -webkit-padding-start: 0;
-    color: var(--text-color-gray-medium);
-    border-top: dashed 0.5px var(--border-color);
-    cursor: default;
-}
-
-.tree-outline > .item.thread + ol > .item.truncated-call-frames .icon {
-    -webkit-margin-start: 0;
-    content: url(../Images/Function.svg);
-    opacity: 0.6;
+@media (prefers-color-scheme: dark) {
+    .tree-outline > .item.thread .icon {
+        content: url(../Images/IdentifierIcons.svg#Thread-dark);
+    }
 }

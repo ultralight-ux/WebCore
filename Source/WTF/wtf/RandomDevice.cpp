@@ -45,6 +45,7 @@
 #endif
 
 #if OS(DARWIN)
+#include <CommonCrypto/CommonCryptor.h>
 #include <CommonCrypto/CommonRandom.h>
 #endif
 

@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "MediaSample.h"
 #include "PlatformLayer.h"
+#include "VideoFrame.h"
 #include <wtf/CompletionHandler.h>
 #include <wtf/WeakPtr.h>
 
@@ -36,14 +36,14 @@ class MediaTime;
 
 namespace WebCore {
 class IntSize;
-class MediaSample;
+class VideoFrame;
 
 class SampleBufferDisplayLayer {
 public:
     class Client : public CanMakeWeakPtr<Client> {
     public:
         virtual ~Client() = default;
-        virtual void sampleBufferDisplayLayerStatusDidChange(SampleBufferDisplayLayer&) = 0;
+        virtual void sampleBufferDisplayLayerStatusDidFail() = 0;
     };
 
     WEBCORE_EXPORT static std::unique_ptr<SampleBufferDisplayLayer> create(Client&);
@@ -53,12 +53,15 @@ public:
     virtual ~SampleBufferDisplayLayer() = default;
 
     virtual void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) = 0;
+#if !RELEASE_LOG_DISABLED
+    virtual void setLogIdentifier(String&&) = 0;
+#endif
     virtual bool didFail() const = 0;
 
     virtual void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) = 0;
 
     virtual void updateAffineTransform(CGAffineTransform) = 0;
-    virtual void updateBoundsAndPosition(CGRect, MediaSample::VideoRotation) = 0;
+    virtual void updateBoundsAndPosition(CGRect, VideoFrame::Rotation) = 0;
 
     virtual void flush() = 0;
     virtual void flushAndRemoveImage() = 0;
@@ -66,8 +69,8 @@ public:
     virtual void play() = 0;
     virtual void pause() = 0;
 
-    virtual void enqueueSample(MediaSample&) = 0;
-    virtual void clearEnqueuedSamples() = 0;
+    virtual void enqueueVideoFrame(VideoFrame&) = 0;
+    virtual void clearVideoFrames() = 0;
 
     virtual PlatformLayer* rootLayer() = 0;
 
@@ -84,7 +87,7 @@ private:
 };
 
 inline SampleBufferDisplayLayer::SampleBufferDisplayLayer(Client& client)
-    : m_client(makeWeakPtr(client))
+    : m_client(client)
 {
 }
 

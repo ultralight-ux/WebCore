@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -134,8 +134,7 @@ public:
                 
                 for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
                     Node* node = block->at(nodeIndex);
-                    // FIXME: The mayExit status of a node doesn't seem like it should mean we don't need to have everything available.
-                    if (mayExit(m_graph, node) != DoesNotExit && node->origin.exitOK) {
+                    if (node->origin.exitOK) {
                         // If we're allowed to exit here, the heap must be in a state
                         // where exiting wouldn't crash. These particular fields are
                         // required for correctness because we use them during OSR exit
@@ -143,7 +142,8 @@ public:
                         // to be dead.
 
                         CodeOrigin exitOrigin = node->origin.forExit;
-                        AvailabilityMap& availabilityMap = calculator.m_availability;
+                        // FIXME: availabilityMap seems like it should be able to be a reference to the calculator's map. https://bugs.webkit.org/show_bug.cgi?id=215675
+                        AvailabilityMap availabilityMap = calculator.m_availability;
                         availabilityMap.pruneByLiveness(m_graph, exitOrigin);
 
                         for (auto heapPair : availabilityMap.m_heap) {
@@ -166,12 +166,20 @@ public:
                         }
 
                         // FIXME: It seems like we should be able to do at least some validation when OSR entering. https://bugs.webkit.org/show_bug.cgi?id=215511
-                        if (m_graph.m_plan.mode() != FTLForOSREntryMode) {
+                        if (m_graph.m_plan.mode() != JITCompilationMode::FTLForOSREntry) {
                             for (size_t i = 0; i < availabilityMap.m_locals.size(); ++i) {
                                 Operand operand = availabilityMap.m_locals.operandForIndex(i);
                                 Availability availability = availabilityMap.m_locals[i];
-                                if (availability.isDead() && m_graph.isLiveInBytecode(operand, exitOrigin))
+                                if (availability.isDead() && m_graph.isLiveInBytecode(operand, exitOrigin)) {
+                                    for (BasicBlock* block : m_graph.blocksInNaturalOrder()) {
+                                        dataLogLn("Block #", block->index);
+                                        dataLogLn("Availability at head: ", availabilityAtHead(block));
+                                        dataLogLn("Availability at tail: ", availabilityAtTail(block));
+                                        dataLogLn();
+                                    }
+
                                     DFG_CRASH(m_graph, node, toCString("Live bytecode local not available: operand = ", operand, ", availabilityMap = ", availabilityMap, ", origin = ", exitOrigin).data());
+                                }
                             }
                         }
                     }
@@ -267,11 +275,6 @@ void LocalOSRAvailabilityCalculator::executeNode(Node* node)
         break;
     }
 
-    case ZombieHint: {
-        m_availability.m_locals.operand(node->unlinkedOperand()).setNodeUnavailable();
-        break;
-    }
-
     case InitializeEntrypointArguments: {
         unsigned entrypointIndex = node->entrypointIndex();
         const Vector<FlushFormat>& argumentFormats = m_graph.m_argumentFormats[entrypointIndex];
@@ -292,7 +295,7 @@ void LocalOSRAvailabilityCalculator::executeNode(Node* node)
         m_availability.m_locals.operand(data->count) = Availability(FlushedAt(FlushedInt32, data->machineCount));
         for (unsigned i = data->limit; i--;) {
             m_availability.m_locals.operand(data->start + i) =
-                Availability(FlushedAt(FlushedJSValue, data->machineStart + i));
+                Availability(FlushedAt(FlushedJSValue, data->machineStart.isValid() ? (data->machineStart + i) : VirtualRegister()));
         }
         break;
     }

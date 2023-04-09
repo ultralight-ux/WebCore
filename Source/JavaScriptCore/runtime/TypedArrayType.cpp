@@ -30,6 +30,12 @@
 
 namespace JSC {
 
+const uint8_t logElementSizes[] = {
+#define JSC_ELEMENT_SIZE(type) logElementSize(Type ## type),
+FOR_EACH_TYPED_ARRAY_TYPE(JSC_ELEMENT_SIZE)
+#undef JSC_ELEMENT_SIZE
+};
+
 const ClassInfo* constructorClassInfoForType(TypedArrayType type)
 {
     switch (type) {
@@ -53,6 +59,10 @@ const ClassInfo* constructorClassInfoForType(TypedArrayType type)
         return JSFloat32ArrayConstructor::info();
     case TypeFloat64:
         return JSFloat64ArrayConstructor::info();
+    case TypeBigInt64:
+        return JSBigInt64ArrayConstructor::info();
+    case TypeBigUint64:
+        return JSBigUint64ArrayConstructor::info();
     case TypeDataView:
         return JSDataViewConstructor::info();
     }
@@ -98,6 +108,12 @@ void printInternal(PrintStream& out, TypedArrayType type)
         return;
     case TypeFloat64:
         out.print("TypeFloat64");
+        return;
+    case TypeBigInt64:
+        out.print("TypeBigInt64");
+        return;
+    case TypeBigUint64:
+        out.print("TypeBigUint64");
         return;
     case TypeDataView:
         out.print("TypeDataView");

@@ -30,57 +30,120 @@
 #include "AuthenticationChallenge.h"
 
 #include "ResourceError.h"
+#include "URLSoup.h"
 #include <libsoup/soup.h>
 
 namespace WebCore {
 
-static ProtectionSpaceServerType protectionSpaceServerTypeFromURI(SoupURI* uri, bool isForProxy)
+static ProtectionSpace::ServerType protectionSpaceServerTypeFromURL(const URL& url, bool isForProxy)
 {
-    if (uri->scheme == SOUP_URI_SCHEME_HTTPS)
-        return isForProxy ? ProtectionSpaceProxyHTTPS : ProtectionSpaceServerHTTPS;
-    if (uri->scheme == SOUP_URI_SCHEME_HTTP)
-        return isForProxy ? ProtectionSpaceProxyHTTP : ProtectionSpaceServerHTTP;
-    if (uri->scheme == SOUP_URI_SCHEME_FTP)
-        return isForProxy ? ProtectionSpaceProxyFTP : ProtectionSpaceServerFTP;
-    return isForProxy ? ProtectionSpaceProxyHTTP : ProtectionSpaceServerHTTP;
+    if (url.protocolIs("https"_s) || url.protocolIs("wss"_s))
+        return isForProxy ? ProtectionSpace::ServerType::ProxyHTTPS : ProtectionSpace::ServerType::HTTPS;
+    if (url.protocolIs("http"_s) || url.protocolIs("ws"_s))
+        return isForProxy ? ProtectionSpace::ServerType::ProxyHTTP : ProtectionSpace::ServerType::HTTP;
+    if (url.protocolIs("ftp"_s))
+        return isForProxy ? ProtectionSpace::ServerType::ProxyFTP : ProtectionSpace::ServerType::FTP;
+    return isForProxy ? ProtectionSpace::ServerType::ProxyHTTP : ProtectionSpace::ServerType::HTTP;
 }
 
-static ProtectionSpace protectionSpaceFromSoupAuthAndMessage(SoupAuth* soupAuth, SoupMessage* message)
+static ProtectionSpace protectionSpaceFromSoupAuthAndURL(SoupAuth* soupAuth, const URL& url)
 {
     const char* schemeName = soup_auth_get_scheme_name(soupAuth);
-    ProtectionSpaceAuthenticationScheme scheme;
+    ProtectionSpace::AuthenticationScheme scheme;
     if (!g_ascii_strcasecmp(schemeName, "basic"))
-        scheme = ProtectionSpaceAuthenticationSchemeHTTPBasic;
+        scheme = ProtectionSpace::AuthenticationScheme::HTTPBasic;
     else if (!g_ascii_strcasecmp(schemeName, "digest"))
-        scheme = ProtectionSpaceAuthenticationSchemeHTTPDigest;
+        scheme = ProtectionSpace::AuthenticationScheme::HTTPDigest;
     else if (!g_ascii_strcasecmp(schemeName, "ntlm"))
-        scheme = ProtectionSpaceAuthenticationSchemeNTLM;
+        scheme = ProtectionSpace::AuthenticationScheme::NTLM;
     else if (!g_ascii_strcasecmp(schemeName, "negotiate"))
-        scheme = ProtectionSpaceAuthenticationSchemeNegotiate;
+        scheme = ProtectionSpace::AuthenticationScheme::Negotiate;
     else
-        scheme = ProtectionSpaceAuthenticationSchemeUnknown;
+        scheme = ProtectionSpace::AuthenticationScheme::Unknown;
 
-    SoupURI* soupURI = soup_message_get_uri(message);
-    return ProtectionSpace(String::fromUTF8(soup_uri_get_host(soupURI)), soup_uri_get_port(soupURI),
-        protectionSpaceServerTypeFromURI(soupURI, soup_auth_is_for_proxy(soupAuth)),
+#if USE(SOUP2)
+    auto host = url.host();
+    auto port = url.port();
+    if (!port)
+        port = defaultPortForProtocol(url.protocol());
+#else
+    URL authURL({ }, makeString("http://", soup_auth_get_authority(soupAuth)));
+    auto host = authURL.host();
+    auto port = authURL.port();
+#endif
+
+    return ProtectionSpace(host.toString(), static_cast<int>(port.value_or(0)),
+        protectionSpaceServerTypeFromURL(url, soup_auth_is_for_proxy(soupAuth)),
         String::fromUTF8(soup_auth_get_realm(soupAuth)), scheme);
 }
 
-AuthenticationChallenge::AuthenticationChallenge(SoupMessage* soupMessage, SoupAuth* soupAuth, bool retrying, AuthenticationClient* client)
-    : AuthenticationChallengeBase(protectionSpaceFromSoupAuthAndMessage(soupAuth, soupMessage),
-        Credential(), // proposedCredentials
-        retrying ? 1 : 0, // previousFailureCount
-        soupMessage, // failureResponse
-        ResourceError::authenticationError(soupMessage))
+AuthenticationChallenge::AuthenticationChallenge(SoupMessage* soupMessage, SoupAuth* soupAuth, bool retrying)
+    : AuthenticationChallengeBase(protectionSpaceFromSoupAuthAndURL(soupAuth, soupURIToURL(soup_message_get_uri(soupMessage)))
+        , Credential() // proposedCredentials
+        , retrying ? 1 : 0 // previousFailureCount
+        , soupMessage // failureResponse
+        , ResourceError::authenticationError(soupMessage))
+#if USE(SOUP2)
     , m_soupMessage(soupMessage)
+#endif
     , m_soupAuth(soupAuth)
-    , m_authenticationClient(client)
+{
+}
+
+ProtectionSpace AuthenticationChallenge::protectionSpaceForClientCertificate(const URL& url)
+{
+    auto port = url.port();
+    if (!port)
+        port = defaultPortForProtocol(url.protocol());
+    return ProtectionSpace(url.host().toString(), static_cast<int>(port.value_or(0)), protectionSpaceServerTypeFromURL(url, false), { },
+        ProtectionSpace::AuthenticationScheme::ClientCertificateRequested);
+}
+
+AuthenticationChallenge::AuthenticationChallenge(SoupMessage* soupMessage, GTlsClientConnection*)
+    : AuthenticationChallengeBase(protectionSpaceForClientCertificate(soupURIToURL(soup_message_get_uri(soupMessage)))
+        , Credential() // proposedCredentials
+        , 0 // previousFailureCount
+        , soupMessage // failureResponse
+        , ResourceError::authenticationError(soupMessage))
+{
+}
+
+ProtectionSpace AuthenticationChallenge::protectionSpaceForClientCertificatePassword(const URL& url, GTlsPassword* tlsPassword)
+{
+    auto port = url.port();
+    if (!port)
+        port = defaultPortForProtocol(url.protocol());
+    return ProtectionSpace(url.host().toString(), static_cast<int>(port.value_or(0)), protectionSpaceServerTypeFromURL(url, false),
+        String::fromUTF8(g_tls_password_get_description(tlsPassword)), ProtectionSpace::AuthenticationScheme::ClientCertificatePINRequested);
+}
+
+AuthenticationChallenge::AuthenticationChallenge(SoupMessage* soupMessage, GTlsPassword* tlsPassword)
+    : AuthenticationChallengeBase(protectionSpaceForClientCertificatePassword(soupURIToURL(soup_message_get_uri(soupMessage)), tlsPassword)
+        , Credential() // proposedCredentials
+        , g_tls_password_get_flags(tlsPassword) & G_TLS_PASSWORD_RETRY ? 1 : 0 // previousFailureCount
+        , soupMessage // failureResponse
+        , ResourceError::authenticationError(soupMessage))
+    , m_tlsPassword(tlsPassword)
+    , m_tlsPasswordFlags(tlsPassword ? g_tls_password_get_flags(tlsPassword) : G_TLS_PASSWORD_NONE)
 {
 }
 
 bool AuthenticationChallenge::platformCompare(const AuthenticationChallenge& a, const AuthenticationChallenge& b)
 {
-    return a.soupMessage() == b.soupMessage() && a.soupAuth() == b.soupAuth();
+    if (a.soupAuth() != b.soupAuth())
+        return false;
+
+    if (a.tlsPassword() != b.tlsPassword())
+        return false;
+
+    if (a.tlsPasswordFlags() != b.tlsPasswordFlags())
+        return false;
+
+#if USE(SOUP2)
+    return a.soupMessage() == b.soupMessage();
+#endif
+
+    return true;
 }
 
 } // namespace WebCore

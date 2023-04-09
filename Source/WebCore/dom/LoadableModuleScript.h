@@ -26,6 +26,7 @@
 #pragma once
 
 #include "LoadableScript.h"
+#include "LoadableScriptError.h"
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
@@ -37,21 +38,16 @@ class LoadableModuleScript final : public LoadableScript {
 public:
     virtual ~LoadableModuleScript();
 
-    static Ref<LoadableModuleScript> create(const String& nonce, const String& integrity, ReferrerPolicy, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree);
+    static Ref<LoadableModuleScript> create(const AtomString& nonce, const AtomString& integrity, ReferrerPolicy, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree);
 
     bool isLoaded() const final;
-    Optional<Error> error() const final;
+    bool hasError() const final;
+    std::optional<Error> takeError() final;
     bool wasCanceled() const final;
 
-    bool isClassicScript() const final { return false; }
-    bool isModuleScript() const final { return true; }
+    ScriptType scriptType() const final { return ScriptType::Module; }
 
     void execute(ScriptElement&) final;
-
-    void setError(Error&&);
-
-    void load(Document&, const URL& rootURL);
-    void load(Document&, const ScriptSourceCode&);
 
     void notifyLoadCompleted(UniquedStringImpl&);
     void notifyLoadFailed(LoadableScript::Error&&);
@@ -59,12 +55,14 @@ public:
 
     UniquedStringImpl* moduleKey() const { return m_moduleKey.get(); }
 
+    ModuleFetchParameters& parameters() { return m_parameters.get(); }
+
 private:
-    LoadableModuleScript(const String& nonce, const String& integrity, ReferrerPolicy, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree);
+    LoadableModuleScript(const AtomString& nonce, const AtomString& integrity, ReferrerPolicy, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree);
 
     Ref<ModuleFetchParameters> m_parameters;
     RefPtr<UniquedStringImpl> m_moduleKey;
-    Optional<LoadableScript::Error> m_error;
+    std::optional<LoadableScript::Error> m_error;
     bool m_wasCanceled { false };
     bool m_isLoaded { false };
 };

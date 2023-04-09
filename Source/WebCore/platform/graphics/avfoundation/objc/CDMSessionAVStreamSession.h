@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CDMSessionAVStreamSession_h
-#define CDMSessionAVStreamSession_h
+#pragma once
 
 #include "CDMSessionMediaSourceAVFObjC.h"
 #include "SourceBufferPrivateAVFObjC.h"
@@ -43,7 +42,7 @@ class CDMPrivateMediaSourceAVFObjC;
 class CDMSessionAVStreamSession : public CDMSessionMediaSourceAVFObjC {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMSessionAVStreamSession(Vector<int>&& protocolVersions, CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient*);
+    CDMSessionAVStreamSession(Vector<int>&& protocolVersions, CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient&);
     virtual ~CDMSessionAVStreamSession();
 
     // LegacyCDMSession
@@ -51,6 +50,7 @@ public:
     RefPtr<Uint8Array> generateKeyRequest(const String& mimeType, Uint8Array* initData, String& destinationURL, unsigned short& errorCode, uint32_t& systemCode) override;
     void releaseKeys() override;
     bool update(Uint8Array*, RefPtr<Uint8Array>& nextMessage, unsigned short& errorCode, uint32_t& systemCode) override;
+    RefPtr<ArrayBuffer> cachedKeyForKeyID(const String&) const override;
 
     // CDMSessionMediaSourceAVFObjC
     void addParser(AVStreamDataParser*) override;
@@ -60,6 +60,10 @@ public:
 
 protected:
     RefPtr<Uint8Array> generateKeyReleaseMessage(unsigned short& errorCode, uint32_t& systemCode);
+
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const { return "CDMSessionAVStreamSession"; }
+#endif
 
     RetainPtr<AVStreamSession> m_streamSession;
     RefPtr<Uint8Array> m_initData;
@@ -80,5 +84,3 @@ inline CDMSessionAVStreamSession* toCDMSessionAVStreamSession(LegacyCDMSession* 
 }
 
 #endif
-
-#endif // CDMSessionAVStreamSession_h

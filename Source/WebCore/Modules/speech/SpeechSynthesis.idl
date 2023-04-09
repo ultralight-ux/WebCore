@@ -22,18 +22,23 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
- 
+
+// https://wicg.github.io/speech-api/#speechsynthesis
 [
+    EnabledBySetting=SpeechSynthesisAPIEnabled,
     Conditional=SPEECH_SYNTHESIS,
-    NoInterfaceObject,
-] interface SpeechSynthesis  {
+    Exposed=Window,
+] interface SpeechSynthesis : EventTarget {
+
     readonly attribute boolean pending;
     readonly attribute boolean speaking;
     readonly attribute boolean paused;
 
-    void speak(SpeechSynthesisUtterance utterance);
-    void cancel();
-    void pause();
-    void resume();
+    attribute EventHandler onvoiceschanged;
+  
+    undefined speak(SpeechSynthesisUtterance utterance);
+    undefined cancel();
+    undefined pause();
+    undefined resume();
     sequence<SpeechSynthesisVoice> getVoices();
 };

@@ -97,19 +97,21 @@ WI.OverviewTimelineView = class OverviewTimelineView extends WI.TimelineView
         this._timelineRuler.secondsPerPixel = x;
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
-        this._timelineRuler.updateLayout(WI.View.LayoutReason.Resize);
+        this._timelineRuler.needsLayout(WI.View.LayoutReason.Resize);
     }
 
     closed()
     {
         for (let timeline of this._recording.timelines.values())
-            timeline.removeEventListener(null, null, this);
+            timeline.removeEventListener(WI.Timeline.Event.RecordAdded, this._handleTimelineRecordAdded, this);
 
-        this._recording.removeEventListener(null, null, this);
+        this._recording.removeEventListener(WI.TimelineRecording.Event.SourceCodeTimelineAdded, this._sourceCodeTimelineAdded, this);
+        this._recording.removeEventListener(WI.TimelineRecording.Event.MarkerAdded, this._markerAdded, this);
+        this._recording.removeEventListener(WI.TimelineRecording.Event.Reset, this._recordingReset, this);
     }
 
     get navigationItems()
@@ -225,12 +227,12 @@ WI.OverviewTimelineView = class OverviewTimelineView extends WI.TimelineView
         if (this._shouldGroupBySourceCode) {
             let networkTimeline = this._recording.timelines.get(WI.TimelineRecord.Type.Network);
             if (networkTimeline)
-                this._pendingRepresentedObjects = this._pendingRepresentedObjects.concat(networkTimeline.records.map((record) => record.resource));
+                this._pendingRepresentedObjects.pushAll(networkTimeline.records.map((record) => record.resource));
 
-            this._pendingRepresentedObjects = this._pendingRepresentedObjects.concat(this._recording.sourceCodeTimelines);
+            this._pendingRepresentedObjects.pushAll(this._recording.sourceCodeTimelines);
         } else {
             for (let timeline of this._relevantTimelines)
-                this._pendingRepresentedObjects = this._pendingRepresentedObjects.concat(timeline.records);
+                this._pendingRepresentedObjects.pushAll(timeline.records);
         }
 
         this.needsLayout();
@@ -441,3 +443,5 @@ WI.OverviewTimelineView = class OverviewTimelineView extends WI.TimelineView
         this._timelineRuler.addMarker(this._currentTimeMarker);
     }
 };
+
+WI.OverviewTimelineView.ReferencePage = WI.ReferencePage.TimelinesTab.EventsView;

@@ -22,10 +22,12 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
- 
+
+// https://wicg.github.io/speech-api/#speechsynthesisvoice
 [
-    NoInterfaceObject,
-    Conditional=SPEECH_SYNTHESIS
+    EnabledBySetting=SpeechSynthesisAPIEnabled,
+    Conditional=SPEECH_SYNTHESIS,
+    Exposed=Window
 ] interface SpeechSynthesisVoice {
     readonly attribute DOMString voiceURI;
     readonly attribute DOMString name;

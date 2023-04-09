@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
 }
 
 .console-user-command.special-user-log > .console-message-body {
-    padding: 0 6px 1px;
+    padding: 0 3px 1px;
     border-radius: 3px;
     border: 1px solid transparent;
     background-color: var(--selected-background-color);
@@ -61,6 +61,7 @@
 
 .console-message-body {
     white-space: pre-wrap;
+    display: flex;
 }
 
 .console-message-body > span {
@@ -71,15 +72,28 @@
     -webkit-user-select: none;
 }
 
-.console-message-body > .console-image {
-    max-width: 500px;
-    max-height: 500px;
-    box-shadow: 1px 2px 6px hsla(0, 0%, 0%, 0.58);
-}
-
 .console-message-body > .show-grid {
     /* Prevents the light blue highlight from being visible in the checkerboard. */
-    --checkerboard-light-square: white;
+    --checkerboard-light-square: var(--background-color);
+}
+
+.console-image > .console-message-body > :matches(hr, img) {
+    display: block;
+    margin: 4px 0;
+}
+
+.console-image > .console-message-body > hr {
+    height: 1px;
+    background-image: linear-gradient(to right, var(--border-color) 50%, transparent 50%);
+    background-size: 10px 1px;
+    background-repeat: repeat-x;
+    border: none;
+}
+
+.console-image > .console-message-body > img {
+    max-width: 500px;
+    max-height: 500px;
+    box-shadow: 1px 2px 6px hsla(0, 0%, 0%, 0.5);
 }
 
 .console-message.expandable .console-top-level-message::before {
@@ -87,7 +101,7 @@
 
     vertical-align: baseline;
     margin-bottom: -2px;
-    -webkit-margin-end: 2px;
+    margin-inline-end: 2px;
 
     width: 13px;
     height: 13px;
@@ -98,10 +112,6 @@
     background-position: center;
 
     content: "";
-}
-
-body[dir=rtl] .console-message.expandable .console-top-level-message::before {
-    transform: scaleX(-1);
 }
 
 .console-message.expandable.expanded .console-top-level-message::before {
@@ -176,7 +186,7 @@ body[dir=rtl] .console-message.expandable .console-top-level-message::before {
 }
 
 .console-warning-level {
-    background-color: hsl(50, 100%, 94%);
+    background-color: var(--warning-color);
     border-color: hsl(40, 100%, 90%);
 }
 
@@ -193,7 +203,7 @@ body[dir=rtl] .console-message.expandable .console-top-level-message::before {
     content: url(../Images/Log.svg);
 }
 
-.console-log-level.console-image-container::before {
+.console-log-level.console-image::before {
     content: url(../Images/ConsoleImage.svg);
 }
 
@@ -272,6 +282,7 @@ body[dir=rtl] .console-message.expandable .console-top-level-message::before {
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
+    vertical-align: text-top;
 }
 
 .console-message-location.call-frame > .subtitle > .source-link {
@@ -298,6 +309,16 @@ body[dir=rtl] .console-message.expandable .console-top-level-message::before {
 
 .console-top-level-message .object-tree .object-tree {
     display: inline-block;
+}
+
+.console-message .timestamp {
+    color: var(--text-color-tertiary);
+    padding-inline-end: 5px;
+    display: block;
+}
+
+.console-session:not(.timestamps-visible) .console-message .timestamp {
+    display: none;
 }
 
 @media (prefers-color-scheme: dark) {

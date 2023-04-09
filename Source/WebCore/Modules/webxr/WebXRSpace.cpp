@@ -28,7 +28,9 @@
 
 #if ENABLE(WEBXR)
 
+#include "DOMPointReadOnly.h"
 #include "Document.h"
+#include "WebXRRigidTransform.h"
 #include "WebXRSession.h"
 #include <wtf/IsoMallocInlines.h>
 
@@ -36,13 +38,51 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(WebXRSpace);
 
-WebXRSpace::WebXRSpace(Document& document, Ref<WebXRSession>&& session)
+WebXRSpace::WebXRSpace(Document& document, Ref<WebXRRigidTransform>&& offset)
     : ContextDestructionObserver(&document)
-    , m_session(WTFMove(session))
+    , m_originOffset(WTFMove(offset))
 {
 }
 
 WebXRSpace::~WebXRSpace() = default;
+
+std::optional<TransformationMatrix> WebXRSpace::effectiveOrigin() const
+{
+    // https://immersive-web.github.io/webxr/#xrspace-effective-origin
+    // The effective origin can be obtained by multiplying origin offset and the native origin.
+    auto origin = nativeOrigin();
+    if (!origin)
+        return std::nullopt;
+    return origin.value() * m_originOffset->rawTransform();
+}
+
+
+std::optional<bool> WebXRSpace::isPositionEmulated() const
+{
+    WebXRSession* xrSession = session();
+    if (!xrSession)
+        return std::nullopt;
+
+    return xrSession->isPositionEmulated();
+}
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(WebXRViewerSpace);
+
+WebXRViewerSpace::WebXRViewerSpace(Document& document, WebXRSession& session)
+    : WebXRSpace(document, WebXRRigidTransform::create())
+    , m_session(session)
+{
+}
+
+WebXRViewerSpace::~WebXRViewerSpace() = default;
+
+std::optional<TransformationMatrix> WebXRViewerSpace::nativeOrigin() const
+{
+    if (!m_session)
+        return std::nullopt;
+    return WebXRFrame::matrixFromPose(m_session->frameData().origin);
+}
+
 
 } // namespace WebCore
 

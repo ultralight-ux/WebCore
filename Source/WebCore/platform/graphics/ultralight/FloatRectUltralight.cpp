@@ -1,5 +1,6 @@
 #include "config.h"
 #include "FloatRect.h"
+#include "FloatRoundedRect.h"
 
 #if USE(ULTRALIGHT)
 

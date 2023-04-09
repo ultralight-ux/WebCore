@@ -1,8 +1,8 @@
 #include "WebCorePrefix.h"
-#import "config.h"
-#import "SSLKeyGenerator.h"
 
 #if OS(DARWIN)
+#import "config.h"
+#import "SSLKeyGenerator.h"
 
 #import "LocalizedStrings.h"
 #import <Security/SecAsn1Coder.h>

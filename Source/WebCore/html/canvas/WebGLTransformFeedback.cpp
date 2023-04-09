@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,11 @@
 #if ENABLE(WEBGL2)
 #include "WebGLTransformFeedback.h"
 
+#include "WebCoreOpaqueRoot.h"
+#include "WebGL2RenderingContext.h"
+#include "WebGLBuffer.h"
 #include "WebGLContextGroup.h"
-#include "WebGLRenderingContextBase.h"
-#include <JavaScriptCore/SlotVisitor.h>
-#include <JavaScriptCore/SlotVisitorInlines.h>
+#include <JavaScriptCore/AbstractSlotVisitorInlines.h>
 #include <wtf/Lock.h>
 #include <wtf/Locker.h>
 
@@ -57,7 +58,7 @@ WebGLTransformFeedback::WebGLTransformFeedback(WebGL2RenderingContext& ctx)
     m_boundIndexedTransformFeedbackBuffers.resize(ctx.maxTransformFeedbackSeparateAttribs());
 }
 
-void WebGLTransformFeedback::deleteObjectImpl(const AbstractLocker&, GraphicsContextGLOpenGL* context3d, PlatformGLObject object)
+void WebGLTransformFeedback::deleteObjectImpl(const AbstractLocker&, GraphicsContextGL* context3d, PlatformGLObject object)
 {
     context3d->deleteTransformFeedback(object);
 }
@@ -76,7 +77,7 @@ void WebGLTransformFeedback::setBoundIndexedTransformFeedbackBuffer(const Abstra
 
 bool WebGLTransformFeedback::getBoundIndexedTransformFeedbackBuffer(GCGLuint index, WebGLBuffer** outBuffer)
 {
-    if (index > m_boundIndexedTransformFeedbackBuffers.size())
+    if (index >= m_boundIndexedTransformFeedbackBuffers.size())
         return false;
     *outBuffer = m_boundIndexedTransformFeedbackBuffers[index].get();
     return true;
@@ -93,12 +94,12 @@ bool WebGLTransformFeedback::hasEnoughBuffers(GCGLuint numRequired) const
     return true;
 }
 
-void WebGLTransformFeedback::addMembersToOpaqueRoots(const AbstractLocker& locker, JSC::SlotVisitor& visitor)
+void WebGLTransformFeedback::addMembersToOpaqueRoots(const AbstractLocker& locker, JSC::AbstractSlotVisitor& visitor)
 {
     for (auto& buffer : m_boundIndexedTransformFeedbackBuffers)
-        visitor.addOpaqueRoot(buffer.get());
+        addWebCoreOpaqueRoot(visitor, buffer.get());
 
-    visitor.addOpaqueRoot(m_program.get());
+    addWebCoreOpaqueRoot(visitor, m_program.get());
     if (m_program)
         m_program->addMembersToOpaqueRoots(locker, visitor);
 }

@@ -77,6 +77,9 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
         this._textEditor.addEventListener(WI.TextEditor.Event.MIMETypeChanged, this._handleTextEditorMIMETypeChanged, this);
         this._textEditor.addEventListener(WI.SourceCodeTextEditor.Event.ContentWillPopulate, this._contentWillPopulate, this);
         this._textEditor.addEventListener(WI.SourceCodeTextEditor.Event.ContentDidPopulate, this._contentDidPopulate, this);
+
+        if (this._script instanceof WI.LocalScript && this._script.editable)
+            this._textEditor.addEventListener(WI.TextEditor.Event.ContentDidChange, this._handleTextEditorContentDidChange, this);
     }
 
     // Public
@@ -106,31 +109,17 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
         return [WI.debuggerManager.activeCallFrame];
     }
 
-    revealPosition(position, textRangeToSelect, forceUnformatted)
+    revealPosition(position, options = {})
     {
-        this._textEditor.revealPosition(position, textRangeToSelect, forceUnformatted);
-    }
-
-    shown()
-    {
-        super.shown();
-
-        this._textEditor.shown();
-    }
-
-    hidden()
-    {
-        super.hidden();
-
-        this._textEditor.hidden();
+        this._textEditor.revealPosition(position, options);
     }
 
     closed()
     {
         super.closed();
 
-        WI.settings.showJavaScriptTypeInformation.removeEventListener(null, null, this);
-        WI.settings.enableControlFlowProfiler.removeEventListener(null, null, this);
+        WI.settings.showJavaScriptTypeInformation.removeEventListener(WI.Setting.Event.Changed, this._showJavaScriptTypeInformationSettingChanged, this);
+        WI.settings.enableControlFlowProfiler.removeEventListener(WI.Setting.Event.Changed, this._enableControlFlowProfilerSettingChanged, this);
 
         this._textEditor.close();
     }
@@ -143,8 +132,22 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
 
     restoreFromCookie(cookie)
     {
-        if ("lineNumber" in cookie && "columnNumber" in cookie)
-            this.revealPosition(new WI.SourceCodePosition(cookie.lineNumber, cookie.columnNumber));
+        let textRangeToSelect = null;
+        if (!isNaN(cookie.startLine) && !isNaN(cookie.startColumn) && !isNaN(cookie.endLine) && !isNaN(cookie.endColumn))
+            textRangeToSelect = new WI.TextRange(cookie.startLine, cookie.startColumn, cookie.endLine, cookie.endColumn);
+
+        let position = null;
+        if (!isNaN(cookie.lineNumber) && !isNaN(cookie.columnNumber))
+            position = new WI.SourceCodePosition(cookie.lineNumber, cookie.columnNumber);
+        else if (textRangeToSelect)
+            position = textRangeToSelect.startPosition();
+
+        let scrollOffset = null;
+        if (!isNaN(cookie.scrollOffsetX) && !isNaN(cookie.scrollOffsetY))
+            scrollOffset = new WI.Point(cookie.scrollOffsetX, cookie.scrollOffsetY);
+
+        if (position)
+            this.revealPosition(position, {...cookie, textRangeToSelect, scrollOffset});
     }
 
     get supportsSave()
@@ -152,10 +155,22 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
         return true;
     }
 
+    get saveMode()
+    {
+        return WI.FileUtilities.SaveMode.SingleFile;
+    }
+
     get saveData()
     {
-        let url = this._script.url || WI.FileUtilities.inspectorURLForFilename(this._script.displayName + ".js");
-        return {url, content: this._textEditor.string};
+        let saveData = {
+            url: this._script.url,
+            content: this._textEditor.string,
+        };
+
+        if (!this._script.url)
+            saveData.suggestedName = this._script.displayName + ".js";
+
+        return saveData;
     }
 
     get supportsSearch()
@@ -211,7 +226,7 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
             return;
 
         // Allow editing any local file since edits can be saved and reloaded right from the Inspector.
-        if (this._script.urlComponents.scheme === "file")
+        if (this._script.urlComponents.scheme === "file" || (this._script instanceof WI.LocalScript && this._script.editable))
             this._textEditor.readOnly = false;
 
         this.element.removeChildren();
@@ -220,13 +235,23 @@ WI.ScriptContentView = class ScriptContentView extends WI.ContentView
 
     _contentDidPopulate(event)
     {
+        let isLocalScript = this._script instanceof WI.LocalScript;
+
         this._prettyPrintButtonNavigationItem.enabled = this._textEditor.canBeFormatted();
 
-        this._showTypesButtonNavigationItem.enabled = this._textEditor.canShowTypeAnnotations();
+        this._showTypesButtonNavigationItem.enabled = !isLocalScript && this._textEditor.canShowTypeAnnotations();
         this._showTypesButtonNavigationItem.activated = WI.settings.showJavaScriptTypeInformation.value;
 
-        this._codeCoverageButtonNavigationItem.enabled = this._textEditor.canShowCoverageHints();
+        this._codeCoverageButtonNavigationItem.enabled = !isLocalScript && this._textEditor.canShowCoverageHints();
         this._codeCoverageButtonNavigationItem.activated = WI.settings.enableControlFlowProfiler.value;
+    }
+
+    _handleTextEditorContentDidChange(event)
+    {
+        this._updateRevisionContentDebouncer ||= new Debouncer(() => {
+            this._script.editableRevision.updateRevisionContent(this._textEditor.string);
+        });
+        this._updateRevisionContentDebouncer.delayForTime(250);
     }
 
     _togglePrettyPrint(event)

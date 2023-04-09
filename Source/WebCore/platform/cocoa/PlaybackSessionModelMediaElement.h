@@ -50,8 +50,10 @@ public:
     WEBCORE_EXPORT void setMediaElement(HTMLMediaElement*);
     HTMLMediaElement* mediaElement() const { return m_mediaElement.get(); }
 
+    WEBCORE_EXPORT void mediaEngineChanged();
+
     WEBCORE_EXPORT void handleEvent(WebCore::ScriptExecutionContext&, WebCore::Event&) final;
-    void updateForEventName(const WTF::AtomString&);
+    void updateForEventName(const AtomString&);
     bool operator==(const EventListener& rhs) const final { return static_cast<const WebCore::EventListener*>(this) == &rhs; }
 
     WEBCORE_EXPORT void addClient(PlaybackSessionModelClient&);
@@ -66,6 +68,8 @@ public:
     WEBCORE_EXPORT void beginScanningForward() final;
     WEBCORE_EXPORT void beginScanningBackward() final;
     WEBCORE_EXPORT void endScanning() final;
+    WEBCORE_EXPORT void setDefaultPlaybackRate(double) final;
+    WEBCORE_EXPORT void setPlaybackRate(double) final;
     WEBCORE_EXPORT void selectAudioMediaOption(uint64_t index) final;
     WEBCORE_EXPORT void selectLegibleMediaOption(uint64_t index) final;
     WEBCORE_EXPORT void togglePictureInPicture() final;
@@ -73,13 +77,16 @@ public:
     WEBCORE_EXPORT void setMuted(bool) final;
     WEBCORE_EXPORT void setVolume(double) final;
     WEBCORE_EXPORT void setPlayingOnSecondScreen(bool) final;
+    WEBCORE_EXPORT void sendRemoteCommand(PlatformMediaSession::RemoteControlCommandType, const PlatformMediaSession::RemoteCommandArgument&) final;
 
     double duration() const final;
     double currentTime() const final;
     double bufferedTime() const final;
     bool isPlaying() const final;
+    bool isStalled() const final;
     bool isScrubbing() const final { return false; }
-    float playbackRate() const final;
+    double defaultPlaybackRate() const final;
+    double playbackRate() const final;
     Ref<TimeRanges> seekableRanges() const final;
     double seekableTimeRangesLastModifiedTime() const final;
     double liveUpdateInterval() const final;
@@ -101,9 +108,8 @@ private:
     WEBCORE_EXPORT PlaybackSessionModelMediaElement();
 
     void progressEventTimerFired();
-    static const Vector<WTF::AtomString>& observedEventNames();
-    const WTF::AtomString& eventNameAll();
-    bool isStalled() const;
+    static const Vector<AtomString>& observedEventNames();
+    const AtomString& eventNameAll();
 
     RefPtr<HTMLMediaElement> m_mediaElement;
     bool m_isListening { false };

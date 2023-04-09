@@ -33,8 +33,10 @@
 #include "FrameView.h"
 #include "ImageBuffer.h"
 #include "NotImplemented.h"
+#include "Position.h"
 #include "RenderElement.h"
 #include "RenderView.h"
+#include "SelectionRangeData.h"
 #include "SimpleRange.h"
 #include "TextIndicator.h"
 
@@ -80,7 +82,7 @@ DragImageRef fitDragImageToMaxSize(DragImageRef image, const IntSize& layoutSize
 
 struct ScopedNodeDragEnabler {
     ScopedNodeDragEnabler(Frame& frame, Node& node)
-        : element(is<Element>(node) ? &downcast<Element>(node) : nullptr)
+        : element(dynamicDowncast<Element>(node))
     {
         if (element)
             element->setBeingDragged(true);
@@ -96,7 +98,7 @@ struct ScopedNodeDragEnabler {
     RefPtr<Element> element;
 };
 
-static DragImageRef createDragImageFromSnapshot(std::unique_ptr<ImageBuffer> snapshot, Node* node)
+static DragImageRef createDragImageFromSnapshot(RefPtr<ImageBuffer> snapshot, Node* node)
 {
     if (!snapshot)
         return nullptr;
@@ -119,15 +121,17 @@ static DragImageRef createDragImageFromSnapshot(std::unique_ptr<ImageBuffer> sna
 DragImageRef createDragImageForNode(Frame& frame, Node& node)
 {
     ScopedNodeDragEnabler enableDrag(frame, node);
-    return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
+    return createDragImageFromSnapshot(snapshotNode(frame, node, { { }, PixelFormat::BGRA8, DestinationColorSpace::SRGB() }), &node);
 }
 
 #if !PLATFORM(IOS_FAMILY) || !ENABLE(DRAG_SUPPORT)
 
 DragImageRef createDragImageForSelection(Frame& frame, TextIndicatorData&, bool forceBlackText)
 {
-    SnapshotOptions options = forceBlackText ? SnapshotOptionsForceBlackText : SnapshotOptionsNone;
-    return createDragImageFromSnapshot(snapshotSelection(frame, options), nullptr);
+    SnapshotOptions options { { }, PixelFormat::BGRA8, DestinationColorSpace::SRGB() };
+    if (forceBlackText)
+        options.flags.add(SnapshotFlags::ForceBlackText);
+    return createDragImageFromSnapshot(snapshotSelection(frame, WTFMove(options)), nullptr);
 }
 
 #endif
@@ -144,12 +148,12 @@ struct ScopedFrameSelectionState {
     {
         if (auto* renderView = frame.contentRenderer()) {
             ASSERT(selection);
-            renderView->selection().setSelection(selection.value(), HighlightData::RepaintMode::Nothing);
+            renderView->selection().set(selection.value(), SelectionRangeData::RepaintMode::Nothing);
         }
     }
 
     const Frame& frame;
-    Optional<HighlightData::RenderRange> selection;
+    std::optional<RenderRange> selection;
 };
 
 #if !PLATFORM(IOS_FAMILY)
@@ -162,12 +166,12 @@ DragImageRef createDragImageForRange(Frame& frame, const SimpleRange& range, boo
         return nullptr;
 
     // To snapshot the range, temporarily select it and take selection snapshot.
-    Position start = createLegacyEditingPosition(range.start);
+    Position start = makeDeprecatedLegacyPosition(range.start);
     Position candidate = start.downstream();
     if (candidate.deprecatedNode() && candidate.deprecatedNode()->renderer())
         start = candidate;
 
-    Position end = createLegacyEditingPosition(range.end);
+    Position end = makeDeprecatedLegacyPosition(range.end);
     candidate = end.upstream();
     if (candidate.deprecatedNode() && candidate.deprecatedNode()->renderer())
         end = candidate;
@@ -182,14 +186,17 @@ DragImageRef createDragImageForRange(Frame& frame, const SimpleRange& range, boo
     if (!startRenderer || !endRenderer)
         return nullptr;
 
-    SnapshotOptions options = SnapshotOptionsPaintSelectionOnly | (forceBlackText ? SnapshotOptionsForceBlackText : SnapshotOptionsNone);
+    SnapshotOptions options { { SnapshotFlags::PaintSelectionOnly }, PixelFormat::BGRA8, DestinationColorSpace::SRGB() };
+    if (forceBlackText)
+        options.flags.add(SnapshotFlags::ForceBlackText);
+
     int startOffset = start.deprecatedEditingOffset();
     int endOffset = end.deprecatedEditingOffset();
     ASSERT(startOffset >= 0 && endOffset >= 0);
-    view->selection().setSelection({ startRenderer, endRenderer, static_cast<unsigned>(startOffset), static_cast<unsigned>(endOffset) }, HighlightData::RepaintMode::Nothing);
+    view->selection().set({ startRenderer, endRenderer, static_cast<unsigned>(startOffset), static_cast<unsigned>(endOffset) }, SelectionRangeData::RepaintMode::Nothing);
     // We capture using snapshotFrameRect() because we fake up the selection using
     // FrameView but snapshotSelection() uses the selection from the Frame itself.
-    return createDragImageFromSnapshot(snapshotFrameRect(frame, view->selection().boundsClippedToVisibleContent(), options), nullptr);
+    return createDragImageFromSnapshot(snapshotFrameRect(frame, view->selection().boundsClippedToVisibleContent(), WTFMove(options)), nullptr);
 }
 
 #endif
@@ -212,7 +219,7 @@ DragImageRef createDragImageForImage(Frame& frame, Node& node, IntRect& imageRec
     elementRect = snappedIntRect(topLevelRect);
     imageRect = paintingRect;
 
-    return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
+    return createDragImageFromSnapshot(snapshotNode(frame, node, { { }, PixelFormat::BGRA8, DestinationColorSpace::SRGB() }), &node);
 }
 
 #if !PLATFORM(IOS_FAMILY) || !ENABLE(DRAG_SUPPORT)

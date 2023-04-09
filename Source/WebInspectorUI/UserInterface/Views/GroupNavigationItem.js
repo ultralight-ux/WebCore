@@ -51,6 +51,16 @@ WI.GroupNavigationItem = class GroupNavigationItem extends WI.NavigationItem
         this._needsUpdate = true;
     }
 
+    get hidden()
+    {
+        return super.hidden || this._navigationItems.every((item) => item.hidden);
+    }
+
+    set hidden(flag)
+    {
+        super.hidden = flag;
+    }
+
     get width()
     {
         this._updateItems();
@@ -67,17 +77,26 @@ WI.GroupNavigationItem = class GroupNavigationItem extends WI.NavigationItem
 
     // Protected
 
-    updateLayout(expandOnly)
+    get additionalClassNames()
     {
-        super.updateLayout(expandOnly);
+        return ["group"];
+    }
+
+    update(options = {})
+    {
+        super.update(options);
+
+        this._updateItems();
 
         for (let item of this._navigationItems)
-            item.updateLayout(expandOnly);
+            item.update(options);
     }
 
     didAttach(navigationBar)
     {
         super.didAttach(navigationBar);
+
+        this._updateItems();
 
         for (let item of this._navigationItems)
             item.didAttach(navigationBar);

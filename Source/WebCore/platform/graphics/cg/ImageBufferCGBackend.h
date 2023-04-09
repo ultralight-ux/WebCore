@@ -28,34 +28,28 @@
 #if USE(CG)
 
 #include "ImageBufferBackend.h"
+#include <wtf/Forward.h>
+
+typedef struct CGImage* CGImageRef;
 
 namespace WebCore {
 
 class WEBCORE_EXPORT ImageBufferCGBackend : public ImageBufferBackend {
 public:
-    RefPtr<Image> copyImage(BackingStoreCopy = CopyBackingStore, PreserveResolution = PreserveResolution::No) const override;
-    RefPtr<Image> sinkIntoImage(PreserveResolution) override;
+    static unsigned calculateBytesPerRow(const IntSize& backendSize);
 
-    void draw(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions&) override;
-    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions&) override;
-
-    AffineTransform baseTransform() const override;
-
-    String toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const override;
-    Vector<uint8_t> toData(const String& mimeType, Optional<double> quality) const override;
+    static constexpr bool isOriginAtBottomLeftCorner = true;
 
 protected:
     using ImageBufferBackend::ImageBufferBackend;
 
-    static RetainPtr<CGColorSpaceRef> contextColorSpace(const GraphicsContext&);
-    void setupContext();
-    virtual RetainPtr<CFDataRef> toCFData(const String& mimeType, Optional<double> quality, PreserveResolution) const;
+    void clipToMask(GraphicsContext&, const FloatRect& destRect) override;
 
-#if USE(ACCELERATE)
-    void copyImagePixels(
-        AlphaPremultiplication srcAlphaFormat, ColorFormat srcColorFormat, unsigned srcBytesPerRow, uint8_t* srcRows,
-        AlphaPremultiplication destAlphaFormat, ColorFormat destColorFormat, unsigned destBytesPerRow, uint8_t* destRows, const IntSize&) const override;
-#endif
+    std::unique_ptr<ThreadSafeImageBufferFlusher> createFlusher() override;
+
+    bool originAtBottomLeftCorner() const override;
+
+    static RetainPtr<CGColorSpaceRef> contextColorSpace(const GraphicsContext&);
 };
 
 } // namespace WebCore

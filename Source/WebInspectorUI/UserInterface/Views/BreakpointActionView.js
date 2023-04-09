@@ -25,7 +25,7 @@
 
 WI.BreakpointActionView = class BreakpointActionView extends WI.Object
 {
-    constructor(action, delegate, omitFocus)
+    constructor(action, delegate, {omitFocus} = {})
     {
         super();
 
@@ -64,7 +64,7 @@ WI.BreakpointActionView = class BreakpointActionView extends WI.Object
         let removeActionButton = buttonContainerElement.appendChild(document.createElement("button"));
         removeActionButton.className = "breakpoint-action-remove-button";
         removeActionButton.addEventListener("click", this._removeAction.bind(this));
-        removeActionButton.title = WI.UIString("Remove this breakpoint action");
+        removeActionButton.title = WI.UIString("Delete this breakpoint action");
 
         this._bodyElement = this._element.appendChild(document.createElement("div"));
         this._bodyElement.className = "breakpoint-action-block-body";
@@ -107,21 +107,18 @@ WI.BreakpointActionView = class BreakpointActionView extends WI.Object
 
     _pickerChanged(event)
     {
-        var newType = event.target.value;
-        this._action = this._action.breakpoint.recreateAction(newType, this._action);
+        this._action.type = event.target.value;
         this._updateBody();
         this._delegate.breakpointActionViewResized(this);
     }
 
     _appendActionButtonClicked(event)
     {
-        var newAction = this._action.breakpoint.createAction(this._action.type, this._action);
-        this._delegate.breakpointActionViewAppendActionView(this, newAction);
+        this._delegate.breakpointActionViewAppendActionView(this, new WI.BreakpointAction(this._action.type));
     }
 
     _removeAction()
     {
-        this._action.breakpoint.removeAction(this._action);
         this._delegate.breakpointActionViewRemoveActionView(this);
     }
 
@@ -129,19 +126,40 @@ WI.BreakpointActionView = class BreakpointActionView extends WI.Object
     {
         this._bodyElement.removeChildren();
 
+        let createOptionsElements = () => {
+            let optionsElement = document.createElement("div");
+
+            let emulateUserGestureLabel = optionsElement.appendChild(document.createElement("label"));
+
+            this._emulateUserGestureCheckbox = emulateUserGestureLabel.appendChild(document.createElement("input"));
+            this._emulateUserGestureCheckbox.type = "checkbox";
+            this._emulateUserGestureCheckbox.checked = this._action.emulateUserGesture;
+            this._emulateUserGestureCheckbox.addEventListener("change", this._handleEmulateUserGestureCheckboxChange.bind(this));
+
+            emulateUserGestureLabel.appendChild(document.createTextNode(WI.UIString("Emulate User Gesture", "Emulate User Gesture @ breakpoint action configuration", "Checkbox shown when configuring log/evaluate/probe breakpoint actions to cause it to be evaluated as though it was in response to user interaction.")));
+
+            return optionsElement;
+        };
+
         switch (this._action.type) {
         case WI.BreakpointAction.Type.Log:
             this._bodyElement.hidden = false;
 
             var input = this._bodyElement.appendChild(document.createElement("input"));
             input.placeholder = WI.UIString("Message");
-            input.addEventListener("change", this._logInputChanged.bind(this));
+            input.addEventListener("input", this._handleLogInputInput.bind(this));
             input.value = this._action.data || "";
             input.spellcheck = false;
             if (!omitFocus)
                 setTimeout(function() { input.focus(); }, 0);
 
-            var descriptionElement = this._bodyElement.appendChild(document.createElement("div"));
+            var flexWrapper = this._bodyElement.appendChild(document.createElement("div"));
+            flexWrapper.className = "flex";
+
+            if (WI.BreakpointAction.supportsEmulateUserAction())
+                flexWrapper.appendChild(createOptionsElements());
+
+            var descriptionElement = flexWrapper.appendChild(document.createElement("div"));
             descriptionElement.classList.add("description");
             descriptionElement.setAttribute("dir", "ltr");
             descriptionElement.textContent = WI.UIString("${expr} = expression");
@@ -162,15 +180,17 @@ WI.BreakpointActionView = class BreakpointActionView extends WI.Object
                 value: this._action.data || "",
             });
 
-            this._codeMirror.on("viewportChange", this._codeMirrorViewportChanged.bind(this));
-            this._codeMirror.on("blur", this._codeMirrorBlurred.bind(this));
+            this._codeMirrorClientHeight = NaN;
 
-            this._codeMirrorViewport = {from: null, to: null};
+            this._codeMirror.on("changes", this._handleJavaScriptCodeMirrorChanges.bind(this));
 
-            var completionController = new WI.CodeMirrorCompletionController(this._codeMirror);
+            var completionController = new WI.CodeMirrorCompletionController(this._delegate.breakpointActionViewCodeMirrorCompletionControllerMode(this, this._codeMirror), this._codeMirror);
             completionController.addExtendedCompletionProvider("javascript", WI.javaScriptRuntimeCompletionProvider);
 
-            // CodeMirror needs a refresh after the popover displays, to layout, otherwise it doesn't appear.
+            if (WI.BreakpointAction.supportsEmulateUserAction())
+                this._bodyElement.appendChild(createOptionsElements());
+
+            // CodeMirror needs a refresh after the popover displays to layout otherwise it doesn't appear.
             setTimeout(() => {
                 this._codeMirror.refresh();
                 if (!omitFocus)
@@ -190,24 +210,26 @@ WI.BreakpointActionView = class BreakpointActionView extends WI.Object
         }
     }
 
-    _logInputChanged(event)
+    _handleLogInputInput(event)
     {
         this._action.data = event.target.value;
     }
 
-    _codeMirrorBlurred(event)
+    _handleJavaScriptCodeMirrorChanges(codeMirror, changes)
     {
         // Throw away the expression if it's just whitespace.
-        this._action.data = (this._codeMirror.getValue() || "").trim();
+        this._action.data = this._codeMirror.getValue().trim();
+
+        let {clientHeight} = this._codeMirror.getScrollInfo();
+        if (clientHeight !== this._codeMirrorClientHeight) {
+            this._codeMirrorClientHeight = clientHeight;
+
+            this._delegate.breakpointActionViewResized(this);
+        }
     }
 
-    _codeMirrorViewportChanged(event, from, to)
+    _handleEmulateUserGestureCheckboxChange(event)
     {
-        if (this._codeMirrorViewport.from === from && this._codeMirrorViewport.to === to)
-            return;
-
-        this._codeMirrorViewport.from = from;
-        this._codeMirrorViewport.to = to;
-        this._delegate.breakpointActionViewResized(this);
+        this._action.emulateUserGesture = this._emulateUserGestureCheckbox.checked;
     }
 };

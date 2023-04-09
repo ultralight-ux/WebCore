@@ -4,9 +4,8 @@
 #if USE(TEXTURE_MAPPER_ULTRALIGHT) 
 
 #include "FilterOperations.h"
-#include "GraphicsContext.h"
+#include "GraphicsContextUltralight.h"
 #include "Image.h"
-#include "CanvasImage.h"
 #include "GraphicsLayer.h"
 #include "TextureMapper.h"
 #include <Ultralight/platform/Platform.h>
@@ -44,28 +43,10 @@ void BitmapTextureUltralight::updateContents(Image* image,
     if (!image)
         return;
 
-    if (image->isCanvasImage()) {
-      ultralight::RefPtr<ultralight::Canvas> imageCanvas = static_cast<CanvasImage*>(image)->canvas();
-      ultralight::Rect src = { 0.0f, 0.0f, (float)imageCanvas->width(), (float)imageCanvas->height() };
-      ultralight::Rect dest = { (float)targetRect.x(), (float)targetRect.y(),
-        (float)targetRect.maxX(), (float)targetRect.maxY() };
-      ultralight::Paint paint;
-      paint.color = UltralightRGBA(255, 255, 255, 255);
+    if (image->isBitmapImage()) {
+      RefPtr<NativeImage> frameImage = image->nativeImageForCurrentFrame();
 
-      // TODO: handle offset
-
-      canvas_->set_blending_enabled(false);
-      canvas_->DrawCanvas(imageCanvas, src, dest, paint);
-      canvas_->set_blending_enabled(true);
-
-      paint.color = UltralightColorRED;
-
-      //canvas_->DrawRect({ 10, 10, 20, 20 }, paint);
-      //return;
-    } else if (image->isBitmapImage()) {
-      NativeImagePtr frameImage = image->nativeImageForCurrentFrame();
-
-      IntSize imageSize = nativeImageSize(frameImage);
+      IntSize imageSize = frameImage->size();
 
       ultralight::Rect srcRect = { 0.0f, 0.0f, (float)imageSize.width(),
           (float)imageSize.height() };
@@ -74,16 +55,13 @@ void BitmapTextureUltralight::updateContents(Image* image,
       ultralight::Rect destRect = { (float)targetRect.x(), (float)targetRect.y(),
         (float)targetRect.maxX(), (float)targetRect.maxY() };
 
-      ultralight::Paint paint;
-      paint.color = UltralightColorWHITE;
       canvas_->set_blending_enabled(false);
-      canvas_->DrawImage(frameImage, srcRect, destRect, paint);
+      canvas_->DrawImage(frameImage->platformImage(), srcRect, destRect, UltralightColorWHITE);
       canvas_->set_blending_enabled(true);
     }
 }
 
-void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
-  GraphicsLayer* sourceLayer, const IntRect& targetRect,
+void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const IntRect& targetRect,
   const IntPoint& offset, float scale) {
   IntRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
@@ -97,16 +75,14 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   // Clear rect by disabling blending and drawing a transparent quad.
   canvas_->set_scissor_enabled(true);
   canvas_->set_blending_enabled(false);
-  ultralight::Paint paint;
-  paint.color = UltralightColorTRANSPARENT;
-  canvas_->DrawRect(FloatRect(sourceRect), paint);
+  canvas_->DrawRect(FloatRect(sourceRect), UltralightColorTRANSPARENT);
   canvas_->set_blending_enabled(true);
 
   sourceRect.scale(1 / scale);
   
   canvas_->Save();
   {
-    GraphicsContext ctx(canvas_);
+    GraphicsContextUltralight ctx(canvas_);
     ctx.applyDeviceScaleFactor(scale);
 
     sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);
@@ -122,7 +98,7 @@ void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,
 }
 
 RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper&,
-    const FilterOperations&) {
+    const FilterOperations&, bool) {
     // not implemented
     return this;
 }

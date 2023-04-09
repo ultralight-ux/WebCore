@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006, 2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2003, 2006, 2017, 2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,20 @@
 
 #pragma once
 
+#include "FontTaggedSettings.h"
+#include <optional>
+#include <variant>
+#include <vector>
 #include <wtf/EnumTraits.h>
-#include <wtf/Optional.h>
+#include <wtf/Hasher.h>
+
+namespace WTF {
+class TextStream;
+}
 
 namespace WebCore {
+
+class FontFeatureValues;
 
 enum class TextRenderingMode : uint8_t {
     AutoTextRendering,
@@ -44,12 +54,7 @@ enum class FontSmoothingMode : uint8_t {
     SubpixelAntialiased
 };
 
-// This setting is used to provide ways of switching between multiple rendering modes that may have different
-// metrics. It is used to switch between CG and GDI text on Windows.
-enum class FontRenderingMode : uint8_t {
-    Normal,
-    Alternate
-};
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, FontSmoothingMode);
 
 enum class FontOrientation : uint8_t {
     Horizontal,
@@ -61,41 +66,73 @@ enum class NonCJKGlyphOrientation : uint8_t {
     Upright
 };
 
-enum ExpansionBehaviorFlags {
-    ForbidRightExpansion = 0 << 0,
-    AllowRightExpansion = 1 << 0,
-    ForceRightExpansion = 2 << 0,
-    RightExpansionMask = 3 << 0,
+struct ExpansionBehavior {
+    enum class Behavior : uint8_t {
+        Forbid,
+        Allow,
+        Force
+    };
 
-    ForbidLeftExpansion = 0 << 2,
-    AllowLeftExpansion = 1 << 2,
-    ForceLeftExpansion = 2 << 2,
-    LeftExpansionMask = 3 << 2,
+    ExpansionBehavior()
+        : left(Behavior::Forbid)
+        , right(Behavior::Allow)
+    {
 
-    DefaultExpansion = AllowRightExpansion | ForbidLeftExpansion,
+    }
+
+    ExpansionBehavior(Behavior left, Behavior right)
+        : left(left)
+        , right(right)
+    {
+    }
+
+    bool operator==(const ExpansionBehavior& other) const
+    {
+        return left == other.left && right == other.right;
+    }
+
+    static ExpansionBehavior defaultBehavior()
+    {
+        return { };
+    }
+
+    static ExpansionBehavior allowRightOnly()
+    {
+        return { Behavior::Forbid, Behavior::Allow };
+    }
+
+    static ExpansionBehavior allowLeftOnly()
+    {
+        return { Behavior::Allow, Behavior::Forbid };
+    }
+
+    static ExpansionBehavior forceLeftOnly()
+    {
+        return { Behavior::Force, Behavior::Forbid };
+    }
+
+    static ExpansionBehavior forbidAll()
+    {
+        return { Behavior::Forbid, Behavior::Forbid };
+    }
+
+    static constexpr unsigned bitsOfKind = 2;
+    Behavior left : bitsOfKind;
+    Behavior right : bitsOfKind;
 };
-typedef unsigned ExpansionBehavior;
 
-enum FontSynthesisValues {
-    FontSynthesisNone = 0x0,
-    FontSynthesisWeight = 0x1,
-    FontSynthesisStyle = 0x2,
-    FontSynthesisSmallCaps = 0x4
-};
-typedef unsigned FontSynthesis;
-const unsigned FontSynthesisWidth = 3;
+WTF::TextStream& operator<<(WTF::TextStream&, ExpansionBehavior::Behavior);
+WTF::TextStream& operator<<(WTF::TextStream&, ExpansionBehavior);
 
-enum class FontVariantLigatures : uint8_t {
-    Normal,
-    Yes,
-    No
+enum class FontSynthesisLonghandValue : bool {
+    None,
+    Auto
 };
 
-enum class FontVariantPosition : uint8_t {
-    Normal,
-    Subscript,
-    Superscript
-};
+enum class FontVariantLigatures : uint8_t { Normal, Yes, No };
+enum class FontVariantPosition : uint8_t { Normal, Subscript, Superscript };
+
+WTF::TextStream& operator<<(WTF::TextStream&, FontVariantPosition);
 
 enum class FontVariantCaps : uint8_t {
     Normal,
@@ -106,6 +143,8 @@ enum class FontVariantCaps : uint8_t {
     Unicase,
     Titling
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, FontVariantCaps);
 
 enum class FontVariantNumericFigure : uint8_t {
     Normal,
@@ -125,20 +164,96 @@ enum class FontVariantNumericFraction : uint8_t {
     StackedFractions
 };
 
-enum class FontVariantNumericOrdinal : uint8_t {
-    Normal,
-    Yes
+enum class FontVariantNumericOrdinal : bool { Normal, Yes };
+enum class FontVariantNumericSlashedZero : bool { Normal, Yes };
+
+struct FontVariantAlternatesNormal {
+    bool operator==(const FontVariantAlternatesNormal&) const
+    {
+        return true;
+    }
+    bool operator!=(const FontVariantAlternatesNormal& other) const
+    {
+        return !(*this == other);
+    }
 };
 
-enum class FontVariantNumericSlashedZero : uint8_t {
-    Normal,
-    Yes
+struct FontVariantAlternatesValues {
+    bool operator==(const FontVariantAlternatesValues& other) const
+    {
+        return stylistic == other.stylistic
+            && styleset == other.styleset
+            && characterVariant == other.characterVariant
+            && swash == other.swash
+            && ornaments == other.ornaments
+            && annotation == other.annotation
+            && historicalForms == other.historicalForms;
+    }
+
+    bool operator!=(const FontVariantAlternatesValues& other) const
+    {
+        return !(*this == other);
+    }
+
+    std::optional<String> stylistic;
+    Vector<String> styleset;
+    Vector<String> characterVariant;
+    std::optional<String> swash;
+    std::optional<String> ornaments;
+    std::optional<String> annotation;
+    bool historicalForms = false;
+
+    friend void add(Hasher&, const FontVariantAlternatesValues&);
 };
 
-enum class FontVariantAlternates : uint8_t {
-    Normal,
-    HistoricalForms
+class FontVariantAlternates {
+    using Values = FontVariantAlternatesValues;
+
+public:
+    bool operator==(const FontVariantAlternates& other) const
+    {
+        return m_val == other.m_val;
+    }
+
+    bool isNormal() const
+    {
+        return std::holds_alternative<FontVariantAlternatesNormal>(m_val);
+    }
+
+    Values values() const
+    {
+        ASSERT(!isNormal());
+        return *std::get_if<Values>(&m_val);
+    }
+
+    Values& valuesRef()
+    {
+        if (isNormal())
+            setValues();
+
+        return *std::get_if<Values>(&m_val);
+    }
+
+    void setValues()
+    {
+        m_val = Values { };
+    }
+
+    static FontVariantAlternates Normal()
+    {
+        FontVariantAlternates result;
+        result.m_val = FontVariantAlternatesNormal { };
+        return result;
+    }
+
+    friend void add(Hasher&, const FontVariantAlternates&);
+
+private:
+    std::variant<FontVariantAlternatesNormal, Values> m_val;
+    FontVariantAlternates() = default;
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, FontVariantAlternates);
 
 enum class FontVariantEastAsianVariant : uint8_t {
     Normal,
@@ -174,7 +289,7 @@ struct FontVariantSettings {
         , numericFraction(FontVariantNumericFraction::Normal)
         , numericOrdinal(FontVariantNumericOrdinal::Normal)
         , numericSlashedZero(FontVariantNumericSlashedZero::Normal)
-        , alternates(FontVariantAlternates::Normal)
+        , alternates(FontVariantAlternates::Normal())
         , eastAsianVariant(FontVariantEastAsianVariant::Normal)
         , eastAsianWidth(FontVariantEastAsianWidth::Normal)
         , eastAsianRuby(FontVariantEastAsianRuby::Normal)
@@ -228,7 +343,7 @@ struct FontVariantSettings {
             && numericFraction == FontVariantNumericFraction::Normal
             && numericOrdinal == FontVariantNumericOrdinal::Normal
             && numericSlashedZero == FontVariantNumericSlashedZero::Normal
-            && alternates == FontVariantAlternates::Normal
+            && alternates.isNormal()
             && eastAsianVariant == FontVariantEastAsianVariant::Normal
             && eastAsianWidth == FontVariantEastAsianWidth::Normal
             && eastAsianRuby == FontVariantEastAsianRuby::Normal;
@@ -255,29 +370,6 @@ struct FontVariantSettings {
 
     bool operator!=(const FontVariantSettings& other) const { return !(*this == other); }
 
-    unsigned uniqueValue() const
-    {
-        return static_cast<unsigned>(commonLigatures) << 26
-            | static_cast<unsigned>(discretionaryLigatures) << 24
-            | static_cast<unsigned>(historicalLigatures) << 22
-            | static_cast<unsigned>(contextualAlternates) << 20
-            | static_cast<unsigned>(position) << 18
-            | static_cast<unsigned>(caps) << 15
-            | static_cast<unsigned>(numericFigure) << 13
-            | static_cast<unsigned>(numericSpacing) << 11
-            | static_cast<unsigned>(numericFraction) << 9
-            | static_cast<unsigned>(numericOrdinal) << 8
-            | static_cast<unsigned>(numericSlashedZero) << 7
-            | static_cast<unsigned>(alternates) << 6
-            | static_cast<unsigned>(eastAsianVariant) << 3
-            | static_cast<unsigned>(eastAsianWidth) << 1
-            | static_cast<unsigned>(eastAsianRuby) << 0;
-    }
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<FontVariantSettings> decode(Decoder&);
-
-    // FIXME: this would be much more compact with bitfields.
     FontVariantLigatures commonLigatures;
     FontVariantLigatures discretionaryLigatures;
     FontVariantLigatures historicalLigatures;
@@ -295,123 +387,6 @@ struct FontVariantSettings {
     FontVariantEastAsianRuby eastAsianRuby;
 };
 
-template<class Encoder>
-void FontVariantSettings::encode(Encoder& encoder) const
-{
-    encoder << commonLigatures;
-    encoder << discretionaryLigatures;
-    encoder << historicalLigatures;
-    encoder << contextualAlternates;
-    encoder << position;
-    encoder << caps;
-    encoder << numericFigure;
-    encoder << numericSpacing;
-    encoder << numericFraction;
-    encoder << numericOrdinal;
-    encoder << numericSlashedZero;
-    encoder << alternates;
-    encoder << eastAsianVariant;
-    encoder << eastAsianWidth;
-    encoder << eastAsianRuby;
-}
-
-template<class Decoder>
-Optional<FontVariantSettings> FontVariantSettings::decode(Decoder& decoder)
-{
-    Optional<FontVariantLigatures> commonLigatures;
-    decoder >> commonLigatures;
-    if (!commonLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> discretionaryLigatures;
-    decoder >> discretionaryLigatures;
-    if (!discretionaryLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> historicalLigatures;
-    decoder >> historicalLigatures;
-    if (!historicalLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> contextualAlternates;
-    decoder >> contextualAlternates;
-    if (!contextualAlternates)
-        return WTF::nullopt;
-
-    Optional<FontVariantPosition> position;
-    decoder >> position;
-    if (!position)
-        return WTF::nullopt;
-
-    Optional<FontVariantCaps> caps;
-    decoder >> caps;
-    if (!caps)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericFigure> numericFigure;
-    decoder >> numericFigure;
-    if (!numericFigure)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericSpacing> numericSpacing;
-    decoder >> numericSpacing;
-    if (!numericSpacing)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericFraction> numericFraction;
-    decoder >> numericFraction;
-    if (!numericFraction)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericOrdinal> numericOrdinal;
-    decoder >> numericOrdinal;
-    if (!numericOrdinal)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericSlashedZero> numericSlashedZero;
-    decoder >> numericSlashedZero;
-    if (!numericSlashedZero)
-        return WTF::nullopt;
-
-    Optional<FontVariantAlternates> alternates;
-    decoder >> alternates;
-    if (!alternates)
-        return WTF::nullopt;
-
-    Optional<FontVariantEastAsianVariant> eastAsianVariant;
-    decoder >> eastAsianVariant;
-    if (!eastAsianVariant)
-        return WTF::nullopt;
-
-    Optional<FontVariantEastAsianWidth> eastAsianWidth;
-    decoder >> eastAsianWidth;
-    if (!eastAsianWidth)
-        return WTF::nullopt;
-
-    Optional<FontVariantEastAsianRuby> eastAsianRuby;
-    decoder >> eastAsianRuby;
-    if (!eastAsianRuby)
-        return WTF::nullopt;
-
-    return {{
-        *commonLigatures,
-        *discretionaryLigatures,
-        *historicalLigatures,
-        *contextualAlternates,
-        *position,
-        *caps,
-        *numericFigure,
-        *numericSpacing,
-        *numericFraction,
-        *numericOrdinal,
-        *numericSlashedZero,
-        *alternates,
-        *eastAsianVariant,
-        *eastAsianWidth,
-        *eastAsianRuby
-    }};
-}
-
 struct FontVariantLigaturesValues {
     FontVariantLigaturesValues(
         FontVariantLigatures commonLigatures,
@@ -425,49 +400,11 @@ struct FontVariantLigaturesValues {
     {
     }
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<FontVariantLigaturesValues> decode(Decoder&);
-
     FontVariantLigatures commonLigatures;
     FontVariantLigatures discretionaryLigatures;
     FontVariantLigatures historicalLigatures;
     FontVariantLigatures contextualAlternates;
 };
-
-template<class Encoder>
-void FontVariantLigaturesValues::encode(Encoder& encoder) const
-{
-    encoder << commonLigatures;
-    encoder << discretionaryLigatures;
-    encoder << historicalLigatures;
-    encoder << contextualAlternates;
-}
-
-template<class Decoder>
-Optional<FontVariantLigaturesValues> FontVariantLigaturesValues::decode(Decoder& decoder)
-{
-    Optional<FontVariantLigatures> commonLigatures;
-    decoder >> commonLigatures;
-    if (!commonLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> discretionaryLigatures;
-    decoder >> discretionaryLigatures;
-    if (!discretionaryLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> historicalLigatures;
-    decoder >> historicalLigatures;
-    if (!historicalLigatures)
-        return WTF::nullopt;
-
-    Optional<FontVariantLigatures> contextualAlternates;
-    decoder >> contextualAlternates;
-    if (!contextualAlternates)
-        return WTF::nullopt;
-
-    return {{ *commonLigatures, *discretionaryLigatures, *historicalLigatures, *contextualAlternates }};
-}
 
 struct FontVariantNumericValues {
     FontVariantNumericValues(
@@ -484,56 +421,12 @@ struct FontVariantNumericValues {
     {
     }
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<FontVariantNumericValues> decode(Decoder&);
-
     FontVariantNumericFigure figure;
     FontVariantNumericSpacing spacing;
     FontVariantNumericFraction fraction;
     FontVariantNumericOrdinal ordinal;
     FontVariantNumericSlashedZero slashedZero;
 };
-
-template<class Encoder>
-void FontVariantNumericValues::encode(Encoder& encoder) const
-{
-    encoder << figure;
-    encoder << spacing;
-    encoder << fraction;
-    encoder << ordinal;
-    encoder << slashedZero;
-}
-
-template<class Decoder>
-Optional<FontVariantNumericValues> FontVariantNumericValues::decode(Decoder& decoder)
-{
-    Optional<FontVariantNumericFigure> figure;
-    decoder >> figure;
-    if (!figure)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericSpacing> spacing;
-    decoder >> spacing;
-    if (!spacing)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericFraction> fraction;
-    decoder >> fraction;
-    if (!fraction)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericOrdinal> ordinal;
-    decoder >> ordinal;
-    if (!ordinal)
-        return WTF::nullopt;
-
-    Optional<FontVariantNumericSlashedZero> slashedZero;
-    decoder >> slashedZero;
-    if (!slashedZero)
-        return WTF::nullopt;
-
-    return {{ *figure, *spacing, *fraction, *ordinal, *slashedZero }};
-}
 
 struct FontVariantEastAsianValues {
     FontVariantEastAsianValues(
@@ -546,42 +439,11 @@ struct FontVariantEastAsianValues {
     {
     }
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<FontVariantEastAsianValues> decode(Decoder&);
-
     FontVariantEastAsianVariant variant;
     FontVariantEastAsianWidth width;
     FontVariantEastAsianRuby ruby;
 };
 
-template<class Encoder>
-void FontVariantEastAsianValues::encode(Encoder& encoder) const
-{
-    encoder << variant;
-    encoder << width;
-    encoder << ruby;
-}
-
-template<class Decoder>
-Optional<FontVariantEastAsianValues> FontVariantEastAsianValues::decode(Decoder& decoder)
-{
-    Optional<FontVariantEastAsianVariant> variant;
-    decoder >> variant;
-    if (!variant)
-        return WTF::nullopt;
-
-    Optional<FontVariantEastAsianWidth> width;
-    decoder >> width;
-    if (!width)
-        return WTF::nullopt;
-
-    Optional<FontVariantEastAsianRuby> ruby;
-    decoder >> ruby;
-    if (!ruby)
-        return WTF::nullopt;
-
-    return {{ *variant, *width, *ruby }};
-}
 
 enum class FontWidthVariant : uint8_t {
     RegularWidth,
@@ -593,11 +455,11 @@ enum class FontWidthVariant : uint8_t {
 
 const unsigned FontWidthVariantWidth = 2;
 
-COMPILE_ASSERT(!(static_cast<unsigned>(FontWidthVariant::LastFontWidthVariant) >> FontWidthVariantWidth), FontWidthVariantWidth_is_correct);
+static_assert(!(static_cast<unsigned>(FontWidthVariant::LastFontWidthVariant) >> FontWidthVariantWidth), "FontWidthVariantWidth is correct");
 
-enum class FontSmallCaps : uint8_t {
-    Off = 0,
-    On = 1
+enum class FontSmallCaps : bool {
+    Off,
+    On
 };
 
 enum class Kerning : uint8_t {
@@ -605,6 +467,8 @@ enum class Kerning : uint8_t {
     Normal,
     NoShift
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, Kerning);
 
 enum class FontOpticalSizing : uint8_t {
     Enabled,
@@ -622,217 +486,7 @@ enum class AllowUserInstalledFonts : uint8_t {
     Yes
 };
 
+using FeaturesMap = HashMap<FontTag, int, FourCharacterTagHash, FourCharacterTagHashTraits>;
+FeaturesMap computeFeatureSettingsFromVariants(const FontVariantSettings&, RefPtr<FontFeatureValues>);
+
 }
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::TextRenderingMode> {
-    using values = EnumValues<
-    WebCore::TextRenderingMode,
-    WebCore::TextRenderingMode::AutoTextRendering,
-    WebCore::TextRenderingMode::OptimizeSpeed,
-    WebCore::TextRenderingMode::OptimizeLegibility,
-    WebCore::TextRenderingMode::GeometricPrecision
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontSmoothingMode> {
-    using values = EnumValues<
-    WebCore::FontSmoothingMode,
-    WebCore::FontSmoothingMode::AutoSmoothing,
-    WebCore::FontSmoothingMode::NoSmoothing,
-    WebCore::FontSmoothingMode::Antialiased,
-    WebCore::FontSmoothingMode::SubpixelAntialiased,
-    WebCore::FontSmoothingMode::AutoSmoothing
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontRenderingMode> {
-    using values = EnumValues<
-    WebCore::FontRenderingMode,
-    WebCore::FontRenderingMode::Normal,
-    WebCore::FontRenderingMode::Alternate
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontOrientation> {
-    using values = EnumValues<
-    WebCore::FontOrientation,
-    WebCore::FontOrientation::Horizontal,
-    WebCore::FontOrientation::Vertical
-    >;
-};
-
-template<> struct EnumTraits<WebCore::NonCJKGlyphOrientation> {
-    using values = EnumValues<
-    WebCore::NonCJKGlyphOrientation,
-    WebCore::NonCJKGlyphOrientation::Mixed,
-    WebCore::NonCJKGlyphOrientation::Upright
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantLigatures> {
-    using values = EnumValues<
-    WebCore::FontVariantLigatures,
-    WebCore::FontVariantLigatures::Normal,
-    WebCore::FontVariantLigatures::Yes,
-    WebCore::FontVariantLigatures::No
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantPosition> {
-    using values = EnumValues<
-    WebCore::FontVariantPosition,
-    WebCore::FontVariantPosition::Normal,
-    WebCore::FontVariantPosition::Subscript,
-    WebCore::FontVariantPosition::Superscript
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantCaps> {
-    using values = EnumValues<
-    WebCore::FontVariantCaps,
-    WebCore::FontVariantCaps::Normal,
-    WebCore::FontVariantCaps::Small,
-    WebCore::FontVariantCaps::AllSmall,
-    WebCore::FontVariantCaps::Petite,
-    WebCore::FontVariantCaps::AllPetite,
-    WebCore::FontVariantCaps::Unicase,
-    WebCore::FontVariantCaps::Titling
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantNumericFigure> {
-    using values = EnumValues<
-    WebCore::FontVariantNumericFigure,
-    WebCore::FontVariantNumericFigure::Normal,
-    WebCore::FontVariantNumericFigure::LiningNumbers,
-    WebCore::FontVariantNumericFigure::OldStyleNumbers
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantNumericSpacing> {
-    using values = EnumValues<
-    WebCore::FontVariantNumericSpacing,
-    WebCore::FontVariantNumericSpacing::Normal,
-    WebCore::FontVariantNumericSpacing::ProportionalNumbers,
-    WebCore::FontVariantNumericSpacing::TabularNumbers
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantNumericFraction> {
-    using values = EnumValues<
-    WebCore::FontVariantNumericFraction,
-    WebCore::FontVariantNumericFraction::Normal,
-    WebCore::FontVariantNumericFraction::DiagonalFractions,
-    WebCore::FontVariantNumericFraction::StackedFractions
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantNumericOrdinal> {
-    using values = EnumValues<
-    WebCore::FontVariantNumericOrdinal,
-    WebCore::FontVariantNumericOrdinal::Normal,
-    WebCore::FontVariantNumericOrdinal::Yes
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantNumericSlashedZero> {
-    using values = EnumValues<
-    WebCore::FontVariantNumericSlashedZero,
-    WebCore::FontVariantNumericSlashedZero::Normal,
-    WebCore::FontVariantNumericSlashedZero::Yes
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantAlternates> {
-    using values = EnumValues<
-    WebCore::FontVariantAlternates,
-    WebCore::FontVariantAlternates::Normal,
-    WebCore::FontVariantAlternates::HistoricalForms
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantEastAsianVariant> {
-    using values = EnumValues<
-    WebCore::FontVariantEastAsianVariant,
-    WebCore::FontVariantEastAsianVariant::Normal,
-    WebCore::FontVariantEastAsianVariant::Jis78,
-    WebCore::FontVariantEastAsianVariant::Jis83,
-    WebCore::FontVariantEastAsianVariant::Jis90,
-    WebCore::FontVariantEastAsianVariant::Jis04,
-    WebCore::FontVariantEastAsianVariant::Simplified,
-    WebCore::FontVariantEastAsianVariant::Traditional,
-    WebCore::FontVariantEastAsianVariant::Normal
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantEastAsianWidth> {
-    using values = EnumValues<
-    WebCore::FontVariantEastAsianWidth,
-    WebCore::FontVariantEastAsianWidth::Normal,
-    WebCore::FontVariantEastAsianWidth::Full,
-    WebCore::FontVariantEastAsianWidth::Proportional
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontVariantEastAsianRuby> {
-    using values = EnumValues<
-    WebCore::FontVariantEastAsianRuby,
-    WebCore::FontVariantEastAsianRuby::Normal,
-    WebCore::FontVariantEastAsianRuby::Yes
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontWidthVariant> {
-    using values = EnumValues<
-    WebCore::FontWidthVariant,
-    WebCore::FontWidthVariant::RegularWidth,
-    WebCore::FontWidthVariant::HalfWidth,
-    WebCore::FontWidthVariant::ThirdWidth,
-    WebCore::FontWidthVariant::QuarterWidth
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontSmallCaps> {
-    using values = EnumValues<
-    WebCore::FontSmallCaps,
-    WebCore::FontSmallCaps::Off,
-    WebCore::FontSmallCaps::On
-    >;
-};
-
-template<> struct EnumTraits<WebCore::Kerning> {
-    using values = EnumValues<
-    WebCore::Kerning,
-    WebCore::Kerning::Auto,
-    WebCore::Kerning::Normal,
-    WebCore::Kerning::NoShift
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontOpticalSizing> {
-    using values = EnumValues<
-    WebCore::FontOpticalSizing,
-    WebCore::FontOpticalSizing::Enabled,
-    WebCore::FontOpticalSizing::Disabled
-    >;
-};
-
-template<> struct EnumTraits<WebCore::FontStyleAxis> {
-    using values = EnumValues<
-    WebCore::FontStyleAxis,
-    WebCore::FontStyleAxis::slnt,
-    WebCore::FontStyleAxis::ital
-    >;
-};
-
-template<> struct EnumTraits<WebCore::AllowUserInstalledFonts> {
-    using values = EnumValues<
-    WebCore::AllowUserInstalledFonts,
-    WebCore::AllowUserInstalledFonts::No,
-    WebCore::AllowUserInstalledFonts::Yes
-    >;
-};
-
-} // namespace WTF

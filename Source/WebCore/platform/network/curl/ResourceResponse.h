@@ -46,11 +46,14 @@ public:
     {
     }
 
-    ResourceResponse(const CurlResponse&);
+    ResourceResponse(CurlResponse&);
+    
+    ResourceResponse(ResourceResponseBase&& base)
+        : ResourceResponseBase(WTFMove(base))
+    {
+    }
 
     void appendHTTPHeaderField(const String&);
-
-    void setCertificateInfo(CertificateInfo&&);
 
     bool shouldRedirect();
     bool isMovedPermanently() const;
@@ -69,7 +72,7 @@ private:
     static bool isAppendableHeader(const String &key);
     String platformSuggestedFilename() const;
 
-    void setStatusLine(const String&);
+    void setStatusLine(StringView);
 };
 
 } // namespace WebCore

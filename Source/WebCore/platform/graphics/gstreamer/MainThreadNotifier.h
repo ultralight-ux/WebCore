@@ -57,7 +57,7 @@ public:
         if (!addPendingNotification(notificationType))
             return;
 
-        RunLoop::main().dispatch([this, protectedThis = makeRef(*this), notificationType, callback = WTF::Function<void()>(WTFMove(callbackFunctor))] {
+        RunLoop::main().dispatch([this, protectedThis = Ref { *this }, notificationType, callback = Function<void()>(WTFMove(callbackFunctor))] {
             if (!m_isValid.load())
                 return;
             if (removePendingNotification(notificationType))
@@ -68,25 +68,25 @@ public:
     template<typename F>
     void notifyAndWait(T notificationType, F&& callbackFunctor)
     {
-        Lock mutex;
+        Lock lock;
         Condition condition;
 
-        notify(notificationType, [functor = WTFMove(callbackFunctor), &condition, &mutex] {
+        notify(notificationType, [functor = WTFMove(callbackFunctor), &condition, &lock] {
             functor();
-            LockHolder holder(mutex);
+            Locker locker { lock };
             condition.notifyOne();
         });
 
         if (!isMainThread()) {
-            LockHolder holder(mutex);
-            condition.wait(mutex);
+            Locker locker { lock };
+            condition.wait(lock);
         }
     }
 
     void cancelPendingNotifications(unsigned mask = 0)
     {
         ASSERT(m_isValid.load());
-        LockHolder locker(m_pendingNotificationsLock);
+        Locker locker { m_pendingNotificationsLock };
         if (mask)
             m_pendingNotifications &= ~mask;
         else
@@ -107,7 +107,7 @@ private:
 
     bool addPendingNotification(T notificationType)
     {
-        LockHolder locker(m_pendingNotificationsLock);
+        Locker locker { m_pendingNotificationsLock };
         if (notificationType & m_pendingNotifications)
             return false;
         m_pendingNotifications |= notificationType;
@@ -116,7 +116,7 @@ private:
 
     bool removePendingNotification(T notificationType)
     {
-        LockHolder locker(m_pendingNotificationsLock);
+        Locker locker { m_pendingNotificationsLock };
         if (notificationType & m_pendingNotifications) {
             m_pendingNotifications &= ~notificationType;
             return true;
@@ -125,7 +125,7 @@ private:
     }
 
     Lock m_pendingNotificationsLock;
-    unsigned m_pendingNotifications { 0 };
+    unsigned m_pendingNotifications WTF_GUARDED_BY_LOCK(m_pendingNotificationsLock) { 0 };
     Atomic<bool> m_isValid;
 };
 

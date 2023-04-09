@@ -33,13 +33,14 @@
 #include "AudioStreamDescription.h"
 #include "CAAudioStreamDescription.h"
 #include "LibWebRTCAudioFormat.h"
+#include "LibWebRTCAudioModule.h"
 #include "Logging.h"
 #include <pal/avfoundation/MediaTimeAVFoundation.h>
+#include <wtf/FastMalloc.h>
 
 #include <pal/cf/CoreMediaSoftLink.h>
 
 namespace WebCore {
-using namespace PAL;
 
 Ref<RealtimeIncomingAudioSource> RealtimeIncomingAudioSource::create(rtc::scoped_refptr<webrtc::AudioTrackInterface>&& audioTrack, String&& audioTrackId)
 {
@@ -53,11 +54,6 @@ Ref<RealtimeIncomingAudioSourceCocoa> RealtimeIncomingAudioSourceCocoa::create(r
     return adoptRef(*new RealtimeIncomingAudioSourceCocoa(WTFMove(audioTrack), WTFMove(audioTrackId)));
 }
 
-RealtimeIncomingAudioSourceCocoa::RealtimeIncomingAudioSourceCocoa(rtc::scoped_refptr<webrtc::AudioTrackInterface>&& audioTrack, String&& audioTrackId)
-    : RealtimeIncomingAudioSource(WTFMove(audioTrack), WTFMove(audioTrackId))
-{
-}
-
 static inline AudioStreamBasicDescription streamDescription(size_t sampleRate, size_t channelCount)
 {
     AudioStreamBasicDescription streamFormat;
@@ -65,32 +61,79 @@ static inline AudioStreamBasicDescription streamDescription(size_t sampleRate, s
     return streamFormat;
 }
 
-void RealtimeIncomingAudioSourceCocoa::OnData(const void* audioData, int bitsPerSample, int sampleRate, size_t numberOfChannels, size_t numberOfFrames)
+RealtimeIncomingAudioSourceCocoa::RealtimeIncomingAudioSourceCocoa(rtc::scoped_refptr<webrtc::AudioTrackInterface>&& audioTrack, String&& audioTrackId)
+    : RealtimeIncomingAudioSource(WTFMove(audioTrack), WTFMove(audioTrackId))
+    , m_sampleRate(LibWebRTCAudioFormat::sampleRate)
+    , m_numberOfChannels(1)
+    , m_streamDescription(streamDescription(m_sampleRate, m_numberOfChannels))
+    , m_audioBufferList(makeUnique<WebAudioBufferList>(m_streamDescription))
+#if !RELEASE_LOG_DISABLED
+    , m_logTimer(*this, &RealtimeIncomingAudioSourceCocoa::logTimerFired)
+#endif
+{
+}
+
+void RealtimeIncomingAudioSourceCocoa::startProducingData()
+{
+    RealtimeIncomingAudioSource::startProducingData();
+#if !RELEASE_LOG_DISABLED
+    m_logTimer.startRepeating(LogTimerInterval);
+#endif
+}
+
+void RealtimeIncomingAudioSourceCocoa::stopProducingData()
 {
 #if !RELEASE_LOG_DISABLED
-    if (!(++m_chunksReceived % 200)) {
-        callOnMainThread([identifier = LOGIDENTIFIER, this, protectedThis = makeRef(*this), chunksReceived = m_chunksReceived] {
-            ALWAYS_LOG_IF(loggerPtr(), identifier, "chunk ", chunksReceived);
-        });
+    m_logTimer.stop();
+#endif
+    RealtimeIncomingAudioSource::stopProducingData();
+}
+
+#if !RELEASE_LOG_DISABLED
+void RealtimeIncomingAudioSourceCocoa::logTimerFired()
+{
+    if (!m_lastChunksReceived || (m_chunksReceived - m_lastChunksReceived) >= ChunksReceivedCountForLogging) {
+        m_lastChunksReceived = m_chunksReceived;
+        ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "chunk ", m_chunksReceived);
     }
+    if (m_audioFormatChanged) {
+        ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "new audio buffer list for sampleRate ", m_sampleRate, " and ", m_numberOfChannels, " channel(s)");
+        m_audioFormatChanged = false;
+    }
+}
 #endif
 
-    if (!m_audioBufferList || m_sampleRate != sampleRate || m_numberOfChannels != numberOfChannels) {
-        callOnMainThread([identifier = LOGIDENTIFIER, this, protectedThis = makeRef(*this), sampleRate, numberOfChannels] {
-            ALWAYS_LOG_IF(loggerPtr(), identifier, "new audio buffer list for sampleRate ", sampleRate, " and ", numberOfChannels, " channel(s)");
-        });
+void RealtimeIncomingAudioSourceCocoa::OnData(const void* audioData, int bitsPerSample, int sampleRate, size_t numberOfChannels, size_t numberOfFrames)
+{
+    ++m_chunksReceived;
+
+    static constexpr size_t initialSampleRate = 16000;
+    static constexpr size_t initialChunksReceived = 20;
+    // We usually receive some initial callbacks with no data at 16000, then we got real data at the actual sample rate.
+    // To limit reallocations, let's skip these initial calls.
+    if (m_chunksReceived < initialChunksReceived && sampleRate == initialSampleRate)
+        return;
+
+    if (!m_audioBufferList || m_numberOfChannels != numberOfChannels || m_sampleRate != sampleRate) {
+#if !RELEASE_LOG_DISABLED
+        m_audioFormatChanged = true;
+#endif
 
         m_sampleRate = sampleRate;
         m_numberOfChannels = numberOfChannels;
         m_streamDescription = streamDescription(sampleRate, numberOfChannels);
-        m_audioBufferList = makeUnique<WebAudioBufferList>(m_streamDescription);
+
+        {
+            DisableMallocRestrictionsForCurrentThreadScope scope;
+            m_audioBufferList = makeUnique<WebAudioBufferList>(m_streamDescription);
+        }
         if (m_sampleRate && m_numberOfFrames)
             m_numberOfFrames = m_numberOfFrames * sampleRate / m_sampleRate;
         else
             m_numberOfFrames = 0;
     }
 
-    CMTime startTime = CMTimeMake(m_numberOfFrames, sampleRate);
+    CMTime startTime = PAL::CMTimeMake(audioModule() ? audioModule()->currentAudioSampleCount() : m_numberOfFrames, LibWebRTCAudioFormat::sampleRate);
     auto mediaTime = PAL::toMediaTime(startTime);
     m_numberOfFrames += numberOfFrames;
 

@@ -32,14 +32,23 @@ enum class TaskSource : uint8_t {
     DatabaseAccess,
     FileReading,
     FontLoading,
+    Gamepad,
+    Geolocation,
     IdleTask,
+    IndexedDB,
     MediaElement,
     Microtask,
     Networking,
+    PerformanceTimeline,
+    Permission,
     PostedMessageQueue,
+    Reporting,
+    ScreenWakelock,
+    Speech,
     UserInteraction,
     WebGL,
     WebXR,
+    WebSocket,
 
     // Internal to WebCore
     InternalAsyncTask, // Safe to re-order or delay.

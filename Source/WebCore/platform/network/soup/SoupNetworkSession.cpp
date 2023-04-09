@@ -32,7 +32,8 @@
 #include "AuthenticationChallenge.h"
 #include "GUniquePtrSoup.h"
 #include "Logging.h"
-#include "SoupNetworkProxySettings.h"
+#include "SoupVersioning.h"
+#include "WebKitAutoconfigProxyResolver.h"
 #include <glib/gstdio.h>
 #include <libsoup/soup.h>
 #include <pal/crypto/CryptoDigest.h>
@@ -44,24 +45,10 @@
 
 namespace WebCore {
 
-static bool gIgnoreTLSErrors;
-
 static CString& initialAcceptLanguages()
 {
     static NeverDestroyed<CString> storage;
     return storage.get();
-}
-
-static SoupNetworkProxySettings& proxySettings()
-{
-    static NeverDestroyed<SoupNetworkProxySettings> settings;
-    return settings.get();
-}
-
-static CString& hstsStorageDirectory()
-{
-    static NeverDestroyed<CString> directory;
-    return directory.get();
 }
 
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
@@ -101,23 +88,14 @@ private:
         digest->addBytes(certificateData->data, certificateData->len);
 
         auto hash = digest->computeHash();
-        return base64Encode(reinterpret_cast<const char*>(hash.data()), hash.size());
+        return base64EncodeToString(hash);
     }
 
     HashSet<String> m_certificates;
 };
 
-using AllowedCertificatesMap = HashMap<String, HostTLSCertificateSet, ASCIICaseInsensitiveHash>;
-
-static AllowedCertificatesMap& allowedCertificates()
-{
-    static NeverDestroyed<AllowedCertificatesMap> certificates;
-    return certificates;
-}
-
 SoupNetworkSession::SoupNetworkSession(PAL::SessionID sessionID)
-    : m_soupSession(adoptGRef(soup_session_new()))
-    , m_sessionID(sessionID)
+    : m_sessionID(sessionID)
 {
     // Values taken from http://www.browserscope.org/ following
     // the rule "Do What Every Other Modern Browser Is Doing". They seem
@@ -126,30 +104,43 @@ SoupNetworkSession::SoupNetworkSession(PAL::SessionID sessionID)
     static const int maxConnections = 17;
     static const int maxConnectionsPerHost = 6;
 
-    g_object_set(m_soupSession.get(),
-        SOUP_SESSION_MAX_CONNS, maxConnections,
-        SOUP_SESSION_MAX_CONNS_PER_HOST, maxConnectionsPerHost,
-        SOUP_SESSION_TIMEOUT, 0,
-        SOUP_SESSION_IDLE_TIMEOUT, 0,
-        SOUP_SESSION_ADD_FEATURE_BY_TYPE, SOUP_TYPE_CONTENT_SNIFFER,
-#if SOUP_CHECK_VERSION(2, 67, 90)
-        SOUP_SESSION_ADD_FEATURE_BY_TYPE, SOUP_TYPE_WEBSOCKET_EXTENSION_MANAGER,
+    m_soupSession = adoptGRef(soup_session_new_with_options(
+        "max-conns", maxConnections,
+        "max-conns-per-host", maxConnectionsPerHost,
+        "timeout", 0,
+        nullptr));
+
+    soup_session_add_feature_by_type(m_soupSession.get(), SOUP_TYPE_CONTENT_SNIFFER);
+    soup_session_add_feature_by_type(m_soupSession.get(), SOUP_TYPE_AUTH_NTLM);
+#if SOUP_CHECK_VERSION(2, 67, 1)
+    soup_session_add_feature_by_type(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER);
 #endif
-        nullptr);
+#if SOUP_CHECK_VERSION(2, 67, 90)
+    soup_session_add_feature_by_type(m_soupSession.get(), SOUP_TYPE_WEBSOCKET_EXTENSION_MANAGER);
+#endif
 
     if (!initialAcceptLanguages().isNull())
         setAcceptLanguages(initialAcceptLanguages());
 
-    if (soup_auth_negotiate_supported() && !m_sessionID.isEphemeral()) {
-        g_object_set(m_soupSession.get(),
-            SOUP_SESSION_ADD_FEATURE_BY_TYPE, SOUP_TYPE_AUTH_NEGOTIATE,
-            nullptr);
-    }
+    if (soup_auth_negotiate_supported() && !m_sessionID.isEphemeral())
+        soup_session_add_feature_by_type(m_soupSession.get(), SOUP_TYPE_AUTH_NEGOTIATE);
 
-    if (proxySettings().mode != SoupNetworkProxySettings::Mode::Default)
-        setupProxy();
+#if ENABLE(DEVELOPER_MODE)
+    // Optionally load a custom path with the TLS CAFile. This is used on the GTK/WPE bundles. See script generate-bundle
+    // Don't enable this outside DEVELOPER_MODE because using a non-default TLS database has surprising undesired effects
+    // on how certificate verification is performed. See https://webkit.org/b/237107#c14 and git commit 82999879b on glib
+    const char* customTLSCAFile = g_getenv("WEBKIT_TLS_CAFILE_PEM");
+    if (customTLSCAFile) {
+        GUniqueOutPtr<GError> error;
+        GRefPtr<GTlsDatabase> customTLSDB = adoptGRef(g_tls_file_database_new(customTLSCAFile, &error.outPtr()));
+        if (error)
+            WTFLogAlways("Failed to load TLS database \"%s\": %s", customTLSCAFile, error->message);
+        else
+            soup_session_set_tls_database(m_soupSession.get(), customTLSDB.get());
+    }
+#endif // ENABLE(DEVELOPER_MODE)
+
     setupLogger();
-    setupHSTSEnforcer();
 }
 
 SoupNetworkSession::~SoupNetworkSession() = default;
@@ -160,7 +151,11 @@ void SoupNetworkSession::setupLogger()
     if (LogNetwork.state != WTFLogChannelState::On || soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_LOGGER))
         return;
 
+#if USE(SOUP2)
     GRefPtr<SoupLogger> logger = adoptGRef(soup_logger_new(SOUP_LOGGER_LOG_BODY, -1));
+#else
+    GRefPtr<SoupLogger> logger = adoptGRef(soup_logger_new(SOUP_LOGGER_LOG_BODY));
+#endif
     soup_session_add_feature(m_soupSession.get(), SOUP_SESSION_FEATURE(logger.get()));
     soup_logger_set_printer(logger.get(), soupLogPrinter, nullptr, nullptr);
 #endif
@@ -178,40 +173,32 @@ SoupCookieJar* SoupNetworkSession::cookieJar() const
     return SOUP_COOKIE_JAR(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_COOKIE_JAR));
 }
 
-void SoupNetworkSession::setHSTSPersistentStorage(const CString& directory)
+void SoupNetworkSession::setHSTSPersistentStorage(const String& directory)
 {
-    hstsStorageDirectory() = directory;
-}
+    if (m_sessionID.isEphemeral())
+        return;
 
-void SoupNetworkSession::setupHSTSEnforcer()
-{
 #if SOUP_CHECK_VERSION(2, 67, 1)
-    if (soup_session_has_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER))
-        soup_session_remove_feature_by_type(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER);
-
-    GRefPtr<SoupHSTSEnforcer> enforcer;
-    if (m_sessionID.isEphemeral() || hstsStorageDirectory().isNull())
-        enforcer = adoptGRef(soup_hsts_enforcer_new());
-    else {
-        if (FileSystem::makeAllDirectories(hstsStorageDirectory().data())) {
-            CString storagePath = FileSystem::fileSystemRepresentation(hstsStorageDirectory().data());
-            GUniquePtr<char> dbFilename(g_build_filename(storagePath.data(), "hsts-storage.sqlite", nullptr));
-            enforcer = adoptGRef(soup_hsts_enforcer_db_new(dbFilename.get()));
-        } else {
-            RELEASE_LOG_ERROR(Network, "Unable to create the HSTS storage directory \"%s\". Using a memory enforcer instead.", hstsStorageDirectory().data());
-            enforcer = adoptGRef(soup_hsts_enforcer_new());
-        }
+    if (!FileSystem::makeAllDirectories(directory)) {
+        RELEASE_LOG_ERROR(Network, "Unable to create the HSTS storage directory \"%s\". Using a memory enforcer instead.", directory.utf8().data());
+        return;
     }
+
+    CString storagePath = FileSystem::fileSystemRepresentation(directory);
+    GUniquePtr<char> dbFilename(g_build_filename(storagePath.data(), "hsts-storage.sqlite", nullptr));
+    GRefPtr<SoupHSTSEnforcer> enforcer = adoptGRef(soup_hsts_enforcer_db_new(dbFilename.get()));
+    soup_session_remove_feature_by_type(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER);
     soup_session_add_feature(m_soupSession.get(), SOUP_SESSION_FEATURE(enforcer.get()));
+#else
+    UNUSED_PARAM(directory);
 #endif
 }
 
 void SoupNetworkSession::getHostNamesWithHSTSCache(HashSet<String>& hostNames)
 {
 #if SOUP_CHECK_VERSION(2, 67, 91)
-    SoupHSTSEnforcer* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
-    if (!enforcer)
-        return;
+    auto* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
+    ASSERT(enforcer);
 
     GUniquePtr<GList> domains(soup_hsts_enforcer_get_domains(enforcer, FALSE));
     for (GList* iter = domains.get(); iter; iter = iter->next) {
@@ -226,9 +213,8 @@ void SoupNetworkSession::getHostNamesWithHSTSCache(HashSet<String>& hostNames)
 void SoupNetworkSession::deleteHSTSCacheForHostNames(const Vector<String>& hostNames)
 {
 #if SOUP_CHECK_VERSION(2, 67, 1)
-    SoupHSTSEnforcer* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
-    if (!enforcer)
-        return;
+    auto* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
+    ASSERT(enforcer);
 
     for (const auto& hostName : hostNames) {
         GUniquePtr<SoupHSTSPolicy> policy(soup_hsts_policy_new(hostName.utf8().data(), SOUP_HSTS_POLICY_MAX_AGE_PAST, FALSE));
@@ -242,16 +228,19 @@ void SoupNetworkSession::deleteHSTSCacheForHostNames(const Vector<String>& hostN
 void SoupNetworkSession::clearHSTSCache(WallTime modifiedSince)
 {
 #if SOUP_CHECK_VERSION(2, 67, 91)
-    SoupHSTSEnforcer* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
-    if (!enforcer)
-        return;
+    auto* enforcer = SOUP_HSTS_ENFORCER(soup_session_get_feature(m_soupSession.get(), SOUP_TYPE_HSTS_ENFORCER));
+    ASSERT(enforcer);
 
     GUniquePtr<GList> policies(soup_hsts_enforcer_get_policies(enforcer, FALSE));
     for (GList* iter = policies.get(); iter != nullptr; iter = iter->next) {
         GUniquePtr<SoupHSTSPolicy> policy(static_cast<SoupHSTSPolicy*>(iter->data));
+#if USE(SOUP2)
         auto modified = soup_date_to_time_t(policy.get()->expires) - policy.get()->max_age;
+#else
+        auto modified = g_date_time_to_unix(soup_hsts_policy_get_expires(policy.get())) - soup_hsts_policy_get_max_age(policy.get());
+#endif
         if (modified >= modifiedSince.secondsSinceEpoch().seconds()) {
-            GUniquePtr<SoupHSTSPolicy> newPolicy(soup_hsts_policy_new(policy.get()->domain, SOUP_HSTS_POLICY_MAX_AGE_PAST, FALSE));
+            GUniquePtr<SoupHSTSPolicy> newPolicy(soup_hsts_policy_new(soup_hsts_policy_get_domain(policy.get()), SOUP_HSTS_POLICY_MAX_AGE_PAST, FALSE));
             soup_hsts_enforcer_set_policy(enforcer, newPolicy.get());
         }
     }
@@ -292,15 +281,15 @@ void SoupNetworkSession::clearOldSoupCache(const String& cacheDirectory)
     }
 }
 
-void SoupNetworkSession::setupProxy()
+void SoupNetworkSession::setProxySettings(const SoupNetworkProxySettings& settings)
 {
+    m_proxySettings = settings;
+
     GRefPtr<GProxyResolver> resolver;
-    switch (proxySettings().mode) {
+    switch (m_proxySettings.mode) {
     case SoupNetworkProxySettings::Mode::Default: {
-        GRefPtr<GProxyResolver> currentResolver;
-        g_object_get(m_soupSession.get(), SOUP_SESSION_PROXY_RESOLVER, &currentResolver.outPtr(), nullptr);
         GProxyResolver* defaultResolver = g_proxy_resolver_get_default();
-        if (currentResolver.get() == defaultResolver)
+        if (defaultResolver == soup_session_get_proxy_resolver(m_soupSession.get()))
             return;
         resolver = defaultResolver;
         break;
@@ -310,22 +299,20 @@ void SoupNetworkSession::setupProxy()
         break;
     case SoupNetworkProxySettings::Mode::Custom:
         resolver = adoptGRef(g_simple_proxy_resolver_new(nullptr, nullptr));
-        if (!proxySettings().defaultProxyURL.isNull())
-            g_simple_proxy_resolver_set_default_proxy(G_SIMPLE_PROXY_RESOLVER(resolver.get()), proxySettings().defaultProxyURL.data());
-        if (proxySettings().ignoreHosts)
-            g_simple_proxy_resolver_set_ignore_hosts(G_SIMPLE_PROXY_RESOLVER(resolver.get()), proxySettings().ignoreHosts.get());
-        for (const auto& iter : proxySettings().proxyMap)
+        if (!m_proxySettings.defaultProxyURL.isNull())
+            g_simple_proxy_resolver_set_default_proxy(G_SIMPLE_PROXY_RESOLVER(resolver.get()), m_proxySettings.defaultProxyURL.data());
+        if (m_proxySettings.ignoreHosts)
+            g_simple_proxy_resolver_set_ignore_hosts(G_SIMPLE_PROXY_RESOLVER(resolver.get()), m_proxySettings.ignoreHosts.get());
+        for (const auto& iter : m_proxySettings.proxyMap)
             g_simple_proxy_resolver_set_uri_proxy(G_SIMPLE_PROXY_RESOLVER(resolver.get()), iter.key.data(), iter.value.data());
+        break;
+    case SoupNetworkProxySettings::Mode::Auto:
+        resolver = webkitAutoconfigProxyResolverNew(m_proxySettings.defaultProxyURL);
         break;
     }
 
-    g_object_set(m_soupSession.get(), SOUP_SESSION_PROXY_RESOLVER, resolver.get(), nullptr);
+    soup_session_set_proxy_resolver(m_soupSession.get(), resolver.get());
     soup_session_abort(m_soupSession.get());
-}
-
-void SoupNetworkSession::setProxySettings(const SoupNetworkProxySettings& settings)
-{
-    proxySettings() = settings;
 }
 
 void SoupNetworkSession::setInitialAcceptLanguages(const CString& languages)
@@ -335,32 +322,29 @@ void SoupNetworkSession::setInitialAcceptLanguages(const CString& languages)
 
 void SoupNetworkSession::setAcceptLanguages(const CString& languages)
 {
-    g_object_set(m_soupSession.get(), "accept-language", languages.data(), nullptr);
+    soup_session_set_accept_language(m_soupSession.get(), languages.data());
 }
 
-void SoupNetworkSession::setShouldIgnoreTLSErrors(bool ignoreTLSErrors)
+void SoupNetworkSession::setIgnoreTLSErrors(bool ignoreTLSErrors)
 {
-    gIgnoreTLSErrors = ignoreTLSErrors;
+    m_ignoreTLSErrors = ignoreTLSErrors;
 }
 
-Optional<ResourceError> SoupNetworkSession::checkTLSErrors(const URL& requestURL, GTlsCertificate* certificate, GTlsCertificateFlags tlsErrors)
+std::optional<ResourceError> SoupNetworkSession::checkTLSErrors(const URL& requestURL, GTlsCertificate* certificate, GTlsCertificateFlags tlsErrors)
 {
-    if (gIgnoreTLSErrors)
-        return WTF::nullopt;
+    if (m_ignoreTLSErrors || !tlsErrors)
+        return std::nullopt;
 
-    if (!tlsErrors)
-        return WTF::nullopt;
-
-    auto it = allowedCertificates().find(requestURL.host().toStringWithoutCopying());
-    if (it != allowedCertificates().end() && it->value.contains(certificate))
-        return WTF::nullopt;
+    auto it = m_allowedCertificates.find<ASCIICaseInsensitiveStringViewHashTranslator>(requestURL.host());
+    if (it != m_allowedCertificates.end() && it->value.contains(certificate))
+        return std::nullopt;
 
     return ResourceError::tlsError(requestURL, tlsErrors, certificate);
 }
 
 void SoupNetworkSession::allowSpecificHTTPSCertificateForHost(const CertificateInfo& certificateInfo, const String& host)
 {
-    allowedCertificates().add(host, HostTLSCertificateSet()).iterator->value.add(certificateInfo.certificate());
+    m_allowedCertificates.add(host, HostTLSCertificateSet()).iterator->value.add(certificateInfo.certificate().get());
 }
 
 } // namespace WebCore

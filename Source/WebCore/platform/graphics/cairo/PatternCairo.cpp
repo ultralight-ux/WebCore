@@ -35,18 +35,22 @@ namespace WebCore {
 
 cairo_pattern_t* Pattern::createPlatformPattern(const AffineTransform&) const
 {
-    RefPtr<cairo_surface_t> surface = tileImage().nativeImageForCurrentFrame();
-    if (!surface)
+    auto nativeImage = tileNativeImage();
+    if (!nativeImage)
         return nullptr;
 
-    cairo_pattern_t* pattern = cairo_pattern_create_for_surface(surface.get());
+    auto platformImage = nativeImage->platformImage();
+    if (!platformImage)
+        return nullptr;
+
+    cairo_pattern_t* pattern = cairo_pattern_create_for_surface(platformImage.get());
 
     // cairo merges patter space and user space itself
-    cairo_matrix_t matrix = toCairoMatrix(m_patternSpaceTransformation);
+    cairo_matrix_t matrix = toCairoMatrix(patternSpaceTransform());
     cairo_matrix_invert(&matrix);
     cairo_pattern_set_matrix(pattern, &matrix);
 
-    if (m_repeatX || m_repeatY)
+    if (repeatX() || repeatY())
         cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
     return pattern;
 }

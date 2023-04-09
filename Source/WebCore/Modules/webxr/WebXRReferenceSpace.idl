@@ -23,13 +23,15 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// https://immersive-web.github.io/webxr/#xrreferencespace
 [
-    EnabledAtRuntime=WebXR,
     Conditional=WEBXR,
+    EnabledBySetting=WebXREnabled,
     SecureContext,
     Exposed=Window,
-    JSGenerateToJSObject,
+    CustomToJSObject,
     JSGenerateToNativeObject,
+    SkipVTableValidation,
     InterfaceName=XRReferenceSpace
 ] interface WebXRReferenceSpace : WebXRSpace {
     [NewObject] WebXRReferenceSpace getOffsetReferenceSpace(WebXRRigidTransform originOffset);

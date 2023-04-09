@@ -53,10 +53,23 @@ public:
     static void clientLayoutChanged(RenderElement&);
 
     // Called from all SVG renderers styleDidChange() methods.
-    static void clientStyleChanged(RenderElement&, StyleDifference, const RenderStyle& newStyle);
+    static void clientStyleChanged(RenderElement&, StyleDifference, const RenderStyle* oldStyle, const RenderStyle& newStyle);
 
     // Called from RenderSVGResourceContainer::willBeDestroyed().
     static void resourceDestroyed(RenderSVGResourceContainer&);
+
+    class SetStyleForScope {
+        WTF_MAKE_NONCOPYABLE(SetStyleForScope);
+    public:
+        SetStyleForScope(RenderElement&, const RenderStyle& scopedStyle, const RenderStyle& newStyle);
+        ~SetStyleForScope();
+    private:
+        void setStyle(const RenderStyle&);
+
+        RenderElement& m_renderer;
+        const RenderStyle& m_scopedStyle;
+        bool m_needsNewStyle { false };
+    };
 
 private:
     void addResourcesFromRenderer(RenderElement&, const RenderStyle&);

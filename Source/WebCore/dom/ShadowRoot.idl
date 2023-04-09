@@ -24,14 +24,15 @@
 */
 
 [
-    EnabledAtRuntime=ShadowDOM,
-    JSGenerateToJSObject
+    JSGenerateToJSObject,
+    Exposed=Window
 ] interface ShadowRoot : DocumentFragment {
     readonly attribute ShadowRootMode mode;
+    readonly attribute boolean delegatesFocus;
+    [ImplementedAs=slotAssignmentMode, EnabledBySetting=ImperativeSlotAPIEnabled] readonly attribute SlotAssignmentMode slotAssignment;
     readonly attribute Element host;
-
-    // FIXME: Seems to have been dropped from the Shadow DOM API.
-    [CEReactions] attribute [TreatNullAs=EmptyString] DOMString innerHTML;
+    attribute EventHandler onslotchange;
 };
 
-ShadowRoot implements DocumentOrShadowRoot;
+ShadowRoot includes DocumentOrShadowRoot;
+ShadowRoot includes InnerHTML;

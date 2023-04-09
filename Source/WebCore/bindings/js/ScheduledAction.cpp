@@ -29,6 +29,7 @@
 #include "DOMWrapperWorld.h"
 #include "Document.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameLoader.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMWindow.h"
@@ -45,7 +46,7 @@
 namespace WebCore {
 using namespace JSC;
 
-std::unique_ptr<ScheduledAction> ScheduledAction::create(DOMWrapperWorld& isolatedWorld, JSC::Strong<JSC::Unknown>&& function)
+std::unique_ptr<ScheduledAction> ScheduledAction::create(DOMWrapperWorld& isolatedWorld, Strong<JSObject>&& function)
 {
     return std::unique_ptr<ScheduledAction>(new ScheduledAction(isolatedWorld, WTFMove(function)));
 }
@@ -55,7 +56,7 @@ std::unique_ptr<ScheduledAction> ScheduledAction::create(DOMWrapperWorld& isolat
     return std::unique_ptr<ScheduledAction>(new ScheduledAction(isolatedWorld, WTFMove(code)));
 }
 
-ScheduledAction::ScheduledAction(DOMWrapperWorld& isolatedWorld, JSC::Strong<JSC::Unknown>&& function)
+ScheduledAction::ScheduledAction(DOMWrapperWorld& isolatedWorld, Strong<JSObject>&& function)
     : m_isolatedWorld(isolatedWorld)
     , m_function(WTFMove(function))
 {
@@ -70,7 +71,7 @@ ScheduledAction::ScheduledAction(DOMWrapperWorld& isolatedWorld, String&& code)
 
 ScheduledAction::~ScheduledAction() = default;
 
-void ScheduledAction::addArguments(Vector<JSC::Strong<JSC::Unknown>>&& arguments)
+void ScheduledAction::addArguments(FixedVector<JSC::Strong<JSC::Unknown>>&& arguments)
 {
     m_arguments = WTFMove(arguments);
 }
@@ -95,9 +96,12 @@ void ScheduledAction::executeFunctionInContext(JSGlobalObject* globalObject, JSV
     JSLockHolder lock(vm);
     auto catchScope = DECLARE_CATCH_SCOPE(vm);
 
-    auto callData = getCallData(vm, m_function.get());
+    JSObject* jsFunction = m_function.get();
+    auto callData = JSC::getCallData(jsFunction);
     if (callData.type == CallData::Type::None)
         return;
+
+    auto* jsFunctionGlobalObject = jsFunction->globalObject();
 
     JSGlobalObject* lexicalGlobalObject = globalObject;
 
@@ -105,26 +109,20 @@ void ScheduledAction::executeFunctionInContext(JSGlobalObject* globalObject, JSV
     for (auto& argument : m_arguments)
         arguments.append(argument.get());
     if (UNLIKELY(arguments.hasOverflowed())) {
-        {
-            auto throwScope = DECLARE_THROW_SCOPE(vm);
-            throwOutOfMemoryError(lexicalGlobalObject, throwScope);
-        }
-        NakedPtr<JSC::Exception> exception = catchScope.exception();
-        catchScope.clearException();
-        reportException(lexicalGlobalObject, exception);
+        reportException(jsFunctionGlobalObject, JSC::Exception::create(vm, createOutOfMemoryError(lexicalGlobalObject)));
         return;
     }
 
     JSExecState::instrumentFunction(&context, callData);
 
     NakedPtr<JSC::Exception> exception;
-    JSExecState::profiledCall(lexicalGlobalObject, JSC::ProfilingReason::Other, m_function.get(), callData, thisValue, arguments, exception);
-    EXCEPTION_ASSERT(!catchScope.exception());
+    JSExecState::profiledCall(lexicalGlobalObject, ProfilingReason::Other, jsFunction, callData, thisValue, arguments, exception);
+    catchScope.assertNoExceptionExceptTermination();
     
     InspectorInstrumentation::didCallFunction(&context);
 
     if (exception)
-        reportException(lexicalGlobalObject, exception);
+        reportException(jsFunctionGlobalObject, exception);
 }
 
 void ScheduledAction::execute(Document& document)
@@ -138,7 +136,7 @@ void ScheduledAction::execute(Document& document)
         return;
 
     if (m_function)
-        executeFunctionInContext(window, window->proxy(), document);
+        executeFunctionInContext(window, &window->proxy(), document);
     else
         frame->script().executeScriptInWorldIgnoringException(m_isolatedWorld, m_code);
 }
@@ -148,10 +146,10 @@ void ScheduledAction::execute(WorkerGlobalScope& workerGlobalScope)
     // In a Worker, the execution should always happen on a worker thread.
     ASSERT(workerGlobalScope.thread().thread() == &Thread::current());
 
-    WorkerScriptController* scriptController = workerGlobalScope.script();
+    auto* scriptController = workerGlobalScope.script();
 
     if (m_function) {
-        JSWorkerGlobalScope* contextWrapper = scriptController->workerGlobalScopeWrapper();
+        auto* contextWrapper = scriptController->globalScopeWrapper();
         executeFunctionInContext(contextWrapper, contextWrapper, workerGlobalScope);
     } else {
         ScriptSourceCode code(m_code, URL(workerGlobalScope.url()));

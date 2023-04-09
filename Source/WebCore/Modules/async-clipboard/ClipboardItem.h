@@ -39,6 +39,7 @@ class Clipboard;
 class ClipboardItemDataSource;
 class DeferredPromise;
 class DOMPromise;
+class WeakPtrImplWithEventTargetData;
 class Navigator;
 class PasteboardCustomData;
 class ScriptExecutionContext;
@@ -61,7 +62,7 @@ public:
     Vector<String> types() const;
     void getType(const String&, Ref<DeferredPromise>&&);
 
-    void collectDataForWriting(Clipboard& destination, CompletionHandler<void(Optional<PasteboardCustomData>)>&&);
+    void collectDataForWriting(Clipboard& destination, CompletionHandler<void(std::optional<PasteboardCustomData>)>&&);
 
     PresentationStyle presentationStyle() const { return m_presentationStyle; };
     Navigator* navigator();
@@ -71,7 +72,7 @@ private:
     ClipboardItem(Vector<KeyValuePair<String, RefPtr<DOMPromise>>>&&, const Options&);
     ClipboardItem(Clipboard&, const PasteboardItemInfo&);
 
-    WeakPtr<Clipboard> m_clipboard;
+    WeakPtr<Clipboard, WeakPtrImplWithEventTargetData> m_clipboard;
     WeakPtr<Navigator> m_navigator;
     std::unique_ptr<ClipboardItemDataSource> m_dataSource;
     PresentationStyle m_presentationStyle { PresentationStyle::Unspecified };

@@ -35,44 +35,64 @@
 #include "ContentSecurityPolicyResponseHeaders.h"
 #include "DOMWindow.h"
 #include "DedicatedWorkerThread.h"
+#include "EventNames.h"
+#include "JSRTCRtpScriptTransformer.h"
 #include "MessageEvent.h"
+#include "RTCTransformEvent.h"
 #include "RequestAnimationFrameCallback.h"
 #include "SecurityOrigin.h"
+#include "StructuredSerializeOptions.h"
+#include "Worker.h"
+#include "WorkerObjectProxy.h"
+#include <wtf/IsoMallocInlines.h>
+
+#if ENABLE(NOTIFICATIONS)
+#include "WorkerNotificationClient.h"
+#endif
+
 #if ENABLE(OFFSCREEN_CANVAS)
 #include "WorkerAnimationController.h"
 #endif
-#include "WorkerObjectProxy.h"
-#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(DedicatedWorkerGlobalScope);
 
-Ref<DedicatedWorkerGlobalScope> DedicatedWorkerGlobalScope::create(const WorkerParameters& params, Ref<SecurityOrigin>&& origin, DedicatedWorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
+Ref<DedicatedWorkerGlobalScope> DedicatedWorkerGlobalScope::create(const WorkerParameters& params, Ref<SecurityOrigin>&& origin, DedicatedWorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider, std::unique_ptr<WorkerClient>&& workerClient)
 {
-    auto context = adoptRef(*new DedicatedWorkerGlobalScope(params, WTFMove(origin), thread, WTFMove(topOrigin), connectionProxy, socketProvider));
+    auto context = adoptRef(*new DedicatedWorkerGlobalScope(params, WTFMove(origin), thread, WTFMove(topOrigin), connectionProxy, socketProvider, WTFMove(workerClient)));
+    context->addToContextsMap();
     if (!params.shouldBypassMainWorldContentSecurityPolicy)
         context->applyContentSecurityPolicyResponseHeaders(params.contentSecurityPolicyResponseHeaders);
     return context;
 }
 
-DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(const WorkerParameters& params, Ref<SecurityOrigin>&& origin, DedicatedWorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
-    : WorkerGlobalScope(params, WTFMove(origin), thread, WTFMove(topOrigin), connectionProxy, socketProvider)
+DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(const WorkerParameters& params, Ref<SecurityOrigin>&& origin, DedicatedWorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider, std::unique_ptr<WorkerClient>&& workerClient)
+    : WorkerGlobalScope(WorkerThreadType::DedicatedWorker, params, WTFMove(origin), thread, WTFMove(topOrigin), connectionProxy, socketProvider, WTFMove(workerClient))
     , m_name(params.name)
 {
 }
 
-DedicatedWorkerGlobalScope::~DedicatedWorkerGlobalScope() = default;
+DedicatedWorkerGlobalScope::~DedicatedWorkerGlobalScope()
+{
+    // We need to remove from the contexts map very early in the destructor so that calling postTask() on this WorkerGlobalScope from another thread is safe.
+    removeFromContextsMap();
+}
 
 EventTargetInterface DedicatedWorkerGlobalScope::eventTargetInterface() const
 {
     return DedicatedWorkerGlobalScopeEventTargetInterfaceType;
 }
 
-ExceptionOr<void> DedicatedWorkerGlobalScope::postMessage(JSC::JSGlobalObject& state, JSC::JSValue messageValue, PostMessageOptions&& options)
+void DedicatedWorkerGlobalScope::prepareForDestruction()
+{
+    WorkerGlobalScope::prepareForDestruction();
+}
+
+ExceptionOr<void> DedicatedWorkerGlobalScope::postMessage(JSC::JSGlobalObject& state, JSC::JSValue messageValue, StructuredSerializeOptions&& options)
 {
     Vector<RefPtr<MessagePort>> ports;
-    auto message = SerializedScriptValue::create(state, messageValue, WTFMove(options.transfer), ports, SerializationContext::WorkerPostMessage);
+    auto message = SerializedScriptValue::create(state, messageValue, WTFMove(options.transfer), ports, SerializationForStorage::No, SerializationContext::WorkerPostMessage);
     if (message.hasException())
         return message.releaseException();
 
@@ -85,19 +105,12 @@ ExceptionOr<void> DedicatedWorkerGlobalScope::postMessage(JSC::JSGlobalObject& s
     return { };
 }
 
-ExceptionOr<void> DedicatedWorkerGlobalScope::importScripts(const Vector<String>& urls)
-{
-    auto result = Base::importScripts(urls);
-    thread().workerObjectProxy().reportPendingActivity(hasPendingActivity());
-    return result;
-}
-
 DedicatedWorkerThread& DedicatedWorkerGlobalScope::thread()
 {
     return static_cast<DedicatedWorkerThread&>(Base::thread());
 }
 
-#if ENABLE(OFFSCREEN_CANVAS)
+#if ENABLE(OFFSCREEN_CANVAS_IN_WORKERS)
 CallbackId DedicatedWorkerGlobalScope::requestAnimationFrame(Ref<RequestAnimationFrameCallback>&& callback)
 {
     if (!m_workerAnimationController)
@@ -109,6 +122,27 @@ void DedicatedWorkerGlobalScope::cancelAnimationFrame(CallbackId callbackId)
 {
     if (m_workerAnimationController)
         m_workerAnimationController->cancelAnimationFrame(callbackId);
+}
+#endif
+
+#if ENABLE(WEB_RTC)
+RefPtr<RTCRtpScriptTransformer> DedicatedWorkerGlobalScope::createRTCRtpScriptTransformer(MessageWithMessagePorts&& options)
+{
+    auto transformerOrException = RTCRtpScriptTransformer::create(*this, WTFMove(options));
+    if (transformerOrException.hasException())
+        return nullptr;
+    auto transformer = transformerOrException.releaseReturnValue();
+    dispatchEvent(RTCTransformEvent::create(eventNames().rtctransformEvent, transformer.copyRef(), Event::IsTrusted::Yes));
+    return transformer;
+}
+#endif
+
+#if ENABLE(NOTIFICATIONS)
+NotificationClient* DedicatedWorkerGlobalScope::notificationClient()
+{
+    if (!m_notificationClient)
+        m_notificationClient = WorkerNotificationClient::create(*this);
+    return m_notificationClient.get();
 }
 #endif
 

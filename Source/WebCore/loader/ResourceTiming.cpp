@@ -27,86 +27,78 @@
 #include "ResourceTiming.h"
 
 #include "CachedResource.h"
+#include "DeprecatedGlobalSettings.h"
+#include "DocumentLoadTiming.h"
 #include "PerformanceServerTiming.h"
-#include "RuntimeEnabledFeatures.h"
 #include "SecurityOrigin.h"
 #include "ServerTimingParser.h"
 #include <wtf/CrossThreadCopier.h>
 
 namespace WebCore {
 
-static bool passesTimingAllowCheck(const ResourceResponse& response, const SecurityOrigin& initiatorSecurityOrigin)
-{
-    Ref<SecurityOrigin> resourceOrigin = SecurityOrigin::create(response.url());
-    if (resourceOrigin->isSameSchemeHostPort(initiatorSecurityOrigin))
-        return true;
-
-    const String& timingAllowOriginString = response.httpHeaderField(HTTPHeaderName::TimingAllowOrigin);
-    if (timingAllowOriginString.isEmpty() || equalLettersIgnoringASCIICase(timingAllowOriginString, "null"))
-        return false;
-
-    if (timingAllowOriginString == "*")
-        return true;
-
-    const String& securityOrigin = initiatorSecurityOrigin.toString();
-    for (auto& origin : timingAllowOriginString.split(',')) {
-        if (origin.stripWhiteSpace() == securityOrigin)
-            return true;
-    }
-
-    return false;
-}
-
-ResourceTiming ResourceTiming::fromCache(const URL& url, const String& initiator, const LoadTiming& loadTiming, const ResourceResponse& response, const SecurityOrigin& securityOrigin)
-{
-    return ResourceTiming(url, initiator, loadTiming, response, securityOrigin);
-}
-
-ResourceTiming ResourceTiming::fromLoad(CachedResource& resource, const String& initiator, const LoadTiming& loadTiming, const NetworkLoadMetrics& networkLoadMetrics, const SecurityOrigin& securityOrigin)
-{
-    return ResourceTiming(resource.resourceRequest().url(), initiator, loadTiming, networkLoadMetrics, resource.response(), securityOrigin);
-}
-
-ResourceTiming ResourceTiming::fromSynchronousLoad(const URL& url, const String& initiator, const LoadTiming& loadTiming, const NetworkLoadMetrics& networkLoadMetrics, const ResourceResponse& response, const SecurityOrigin& securityOrigin)
+ResourceTiming ResourceTiming::fromMemoryCache(const URL& url, const String& initiator, const ResourceLoadTiming& loadTiming, const ResourceResponse& response, const NetworkLoadMetrics& networkLoadMetrics, const SecurityOrigin& securityOrigin)
 {
     return ResourceTiming(url, initiator, loadTiming, networkLoadMetrics, response, securityOrigin);
 }
 
-ResourceTiming::ResourceTiming(const URL& url, const String& initiator, const LoadTiming& loadTiming, const ResourceResponse& response, const SecurityOrigin& securityOrigin)
-    : m_url(url)
-    , m_initiator(initiator)
-    , m_loadTiming(loadTiming)
-    , m_allowTimingDetails(passesTimingAllowCheck(response, securityOrigin))
+ResourceTiming ResourceTiming::fromLoad(CachedResource& resource, const URL& url, const String& initiator, const ResourceLoadTiming& loadTiming, const NetworkLoadMetrics& networkLoadMetrics, const SecurityOrigin& securityOrigin)
 {
-    initServerTiming(response);
+    return ResourceTiming(url, initiator, loadTiming, networkLoadMetrics, resource.response(), securityOrigin);
 }
 
-ResourceTiming::ResourceTiming(const URL& url, const String& initiator, const LoadTiming& loadTiming, const NetworkLoadMetrics& networkLoadMetrics, const ResourceResponse& response, const SecurityOrigin& securityOrigin)
+ResourceTiming ResourceTiming::fromSynchronousLoad(const URL& url, const String& initiator, const ResourceLoadTiming& loadTiming, const NetworkLoadMetrics& networkLoadMetrics, const ResourceResponse& response, const SecurityOrigin& securityOrigin)
+{
+    return ResourceTiming(url, initiator, loadTiming, networkLoadMetrics, response, securityOrigin);
+}
+
+ResourceTiming::ResourceTiming(const URL& url, const String& initiatorType, const ResourceLoadTiming& timing, const NetworkLoadMetrics& networkLoadMetrics, const ResourceResponse& response, const SecurityOrigin& origin)
     : m_url(url)
-    , m_initiator(initiator)
-    , m_loadTiming(loadTiming)
+    , m_initiatorType(initiatorType)
+    , m_resourceLoadTiming(timing)
     , m_networkLoadMetrics(networkLoadMetrics)
-    , m_allowTimingDetails(passesTimingAllowCheck(response, securityOrigin))
+    , m_serverTiming(ServerTimingParser::parseServerTiming(response.httpHeaderField(HTTPHeaderName::ServerTiming)))
+    , m_isLoadedFromServiceWorker(response.source() == ResourceResponse::Source::ServiceWorker)
+    , m_isSameOriginRequest(!m_networkLoadMetrics.hasCrossOriginRedirect
+        && origin.protocol() == url.protocol()
+        && origin.host() == url.host()
+        && origin.port() == url.port())
 {
-    initServerTiming(response);
 }
 
-void ResourceTiming::initServerTiming(const ResourceResponse& response)
+Vector<Ref<PerformanceServerTiming>> ResourceTiming::populateServerTiming() const
 {
-    if (RuntimeEnabledFeatures::sharedFeatures().serverTimingEnabled() && m_allowTimingDetails)
-        m_serverTiming = ServerTimingParser::parseServerTiming(response.httpHeaderField(HTTPHeaderName::ServerTiming));
-}
+    // To increase privacy, this additional check was proposed at https://github.com/w3c/resource-timing/issues/342 .
+    if (!m_isSameOriginRequest)
+        return { };
 
-Vector<Ref<PerformanceServerTiming>> ResourceTiming::populateServerTiming()
-{
+    if (!DeprecatedGlobalSettings::serverTimingEnabled())
+        return { };
+
     return WTF::map(m_serverTiming, [] (auto& entry) {
-        return PerformanceServerTiming::create(WTFMove(entry.name), entry.duration, WTFMove(entry.description));
+        return PerformanceServerTiming::create(String(entry.name), entry.duration, String(entry.description));
     });
 }
 
-ResourceTiming ResourceTiming::isolatedCopy() const
+ResourceTiming ResourceTiming::isolatedCopy() const &
 {
-    return ResourceTiming(m_url.isolatedCopy(), m_initiator.isolatedCopy(), m_loadTiming.isolatedCopy(), m_networkLoadMetrics.isolatedCopy(), m_allowTimingDetails, crossThreadCopy(m_serverTiming));
+    return ResourceTiming {
+        m_url.isolatedCopy(),
+        m_initiatorType.isolatedCopy(),
+        m_resourceLoadTiming.isolatedCopy(),
+        m_networkLoadMetrics.isolatedCopy(),
+        crossThreadCopy(m_serverTiming)
+    };
+}
+
+ResourceTiming ResourceTiming::isolatedCopy() &&
+{
+    return ResourceTiming {
+        WTFMove(m_url).isolatedCopy(),
+        WTFMove(m_initiatorType).isolatedCopy(),
+        WTFMove(m_resourceLoadTiming).isolatedCopy(),
+        WTFMove(m_networkLoadMetrics).isolatedCopy(),
+        crossThreadCopy(WTFMove(m_serverTiming))
+    };
 }
 
 } // namespace WebCore

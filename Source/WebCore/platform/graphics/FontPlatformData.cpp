@@ -21,15 +21,12 @@
 #include "config.h"
 #include "FontPlatformData.h"
 
-#include <wtf/HashMap.h>
-#include <wtf/RetainPtr.h>
-#include <wtf/text/StringHash.h>
-#include <wtf/text/WTFString.h>
+#include "FontCache.h"
+#include "FontDescription.h"
+#include "RenderStyleConstants.h"
+#include "StyleFontSizeFunctions.h"
 
-#if OS(DARWIN) && USE(CG)
-#include "SharedBuffer.h"
-#include <CoreGraphics/CGFont.h>
-#endif
+#include <wtf/SortedArrayMap.h>
 
 namespace WebCore {
 
@@ -42,24 +39,16 @@ FontPlatformData::FontPlatformData()
 {
 }
 
-FontPlatformData::FontPlatformData(float size, bool syntheticBold, bool syntheticOblique, FontOrientation orientation, FontWidthVariant widthVariant, TextRenderingMode textRenderingMode)
+FontPlatformData::FontPlatformData(float size, bool syntheticBold, bool syntheticOblique, FontOrientation orientation, FontWidthVariant widthVariant, TextRenderingMode textRenderingMode, const CreationData* creationData)
     : m_size(size)
     , m_orientation(orientation)
     , m_widthVariant(widthVariant)
     , m_textRenderingMode(textRenderingMode)
+    , m_creationData(makeOptionalFromPointer(creationData))
     , m_syntheticBold(syntheticBold)
     , m_syntheticOblique(syntheticOblique)
 {
 }
-
-#if USE(CG) && PLATFORM(WIN)
-FontPlatformData::FontPlatformData(CGFontRef cgFont, float size, bool syntheticBold, bool syntheticOblique, FontOrientation orientation, FontWidthVariant widthVariant, TextRenderingMode textRenderingMode)
-    : FontPlatformData(size, syntheticBold, syntheticOblique, orientation, widthVariant, textRenderingMode)
-{
-    m_cgFont = cgFont;
-    ASSERT(m_cgFont);
-}
-#endif
 
 #if !USE(FREETYPE)
 FontPlatformData FontPlatformData::cloneWithOrientation(const FontPlatformData& source, FontOrientation orientation)
@@ -75,23 +64,43 @@ FontPlatformData FontPlatformData::cloneWithSyntheticOblique(const FontPlatformD
     copy.m_syntheticOblique = syntheticOblique;
     return copy;
 }
+#endif
 
+#if !USE(FREETYPE) && (!USE(CORE_TEXT) || !PLATFORM(COCOA))
+// FIXME: Don't other platforms also need to reinstantiate their copy.m_font for scaled size?
 FontPlatformData FontPlatformData::cloneWithSize(const FontPlatformData& source, float size)
 {
     FontPlatformData copy(source);
-    copy.m_size = size;
+    copy.updateSize(size);
     return copy;
+}
+
+void FontPlatformData::updateSize(float size)
+{
+    m_size = size;
 }
 #endif
 
-#if !PLATFORM(COCOA)
-
-String FontPlatformData::familyName() const
+void FontPlatformData::updateSizeWithFontSizeAdjust(const std::optional<float>& fontSizeAdjust)
 {
-    // FIXME: Not implemented yet.
-    return { };
+    if (!fontSizeAdjust.has_value())
+        return;
+
+    auto tmpFont = FontCache::forCurrentThread().fontForPlatformData(*this);
+    auto adjustedFontSize = Style::adjustedFontSize(size(), fontSizeAdjust.value(), tmpFont->fontMetrics());
+
+    if (adjustedFontSize == size())
+        return;
+
+    updateSize(std::min(adjustedFontSize, maximumAllowedFontSize));
 }
 
+#if !PLATFORM(COCOA) && !USE(FREETYPE)
+Vector<FontPlatformData::FontVariationAxis> FontPlatformData::variationAxes(ShouldLocalizeAxisNames) const
+{
+    // FIXME: <webkit.org/b/219614> Not implemented yet.
+    return { };
+}
 #endif
 
 }

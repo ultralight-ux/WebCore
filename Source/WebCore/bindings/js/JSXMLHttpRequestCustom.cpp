@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,19 +36,23 @@
 #include "JSDOMConvertNullable.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDocument.h"
-
+#include "WebCoreOpaqueRoot.h"
+#include "XMLHttpRequestUpload.h"
 
 namespace WebCore {
 using namespace JSC;
 
-void JSXMLHttpRequest::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSXMLHttpRequest::visitAdditionalChildren(Visitor& visitor)
 {
     if (auto* upload = wrapped().optionalUpload())
-        visitor.addOpaqueRoot(upload);
+        addWebCoreOpaqueRoot(visitor, *upload);
 
     if (auto* responseDocument = wrapped().optionalResponseXML())
-        visitor.addOpaqueRoot(responseDocument);
+        addWebCoreOpaqueRoot(visitor, *responseDocument);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSXMLHttpRequest);
 
 JSValue JSXMLHttpRequest::response(JSGlobalObject& lexicalGlobalObject) const
 {

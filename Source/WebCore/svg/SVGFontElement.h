@@ -22,8 +22,6 @@
 
 #pragma once
 
-#if ENABLE(SVG_FONTS)
-
 #include "SVGElement.h"
 #include "SVGParserUtilities.h"
 
@@ -52,11 +50,6 @@ private:
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFontElement, SVGElement>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
-
-    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(SVG_FONTS)

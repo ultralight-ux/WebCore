@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 #include "RealtimeMediaSourceSupportedConstraints.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/WorkQueue.h>
 #include <wtf/text/WTFString.h>
 
 OBJC_CLASS AVCaptureDevice;
@@ -47,11 +48,9 @@ namespace WebCore {
 class AVCaptureDeviceManager final : public CaptureDeviceManager {
     friend class NeverDestroyed<AVCaptureDeviceManager>;
 public:
-    const Vector<CaptureDevice>& captureDevices() final;
-
     static AVCaptureDeviceManager& singleton();
 
-    void refreshCaptureDevices();
+    void refreshCaptureDevices(CompletionHandler<void()>&& = [] { });
 
 private:
     static bool isAvailable();
@@ -59,15 +58,21 @@ private:
     AVCaptureDeviceManager();
     ~AVCaptureDeviceManager() final;
 
+    void computeCaptureDevices(CompletionHandler<void()>&&) final;
+    const Vector<CaptureDevice>& captureDevices() final;
+
     void registerForDeviceNotifications();
-    Vector<CaptureDevice>& captureDevicesInternal();
     void updateCachedAVCaptureDevices();
-    bool isMatchingExistingCaptureDevice(AVCaptureDevice*);
+    Vector<CaptureDevice> retrieveCaptureDevices();
+    RetainPtr<NSArray> currentCameras();
 
     RetainPtr<WebCoreAVCaptureDeviceManagerObserver> m_objcObserver;
     Vector<CaptureDevice> m_devices;
     RetainPtr<NSMutableArray> m_avCaptureDevices;
-    bool m_notifyWhenDeviceListChanges { false };
+    RetainPtr<NSArray> m_avCaptureDeviceTypes;
+    bool m_isInitialized { false };
+
+    Ref<WorkQueue> m_dispatchQueue;
 };
 
 } // namespace WebCore

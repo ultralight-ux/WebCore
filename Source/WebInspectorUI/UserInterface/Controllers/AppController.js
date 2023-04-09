@@ -29,53 +29,45 @@ WI.AppController = class AppController extends WI.AppControllerBase
     {
         super();
 
-        this._hasExtraDomains = false;
-        this._debuggableType = AppController.debuggableTypeFromHost();
-    }
-
-    // Static
-
-    static debuggableTypeFromHost()
-    {
-        let type = InspectorFrontendHost.debuggableType();
-        switch (type) {
-        case "javascript":
-            return WI.DebuggableType.JavaScript;
-        case "service-worker":
-            return WI.DebuggableType.ServiceWorker;
-        case "web":
-            return WI.DebuggableType.Web;
-        default:
-            console.assert(false, "Unexpected debuggable type", type);
-            return WI.DebuggableType.JavaScript;
-        }
+        this._debuggableType = WI.DebuggableType.fromString(InspectorFrontendHost.debuggableInfo.debuggableType);
+        console.assert(this._debuggableType);
+        if (!this._debuggableType)
+            this._debuggableType = WI.DebuggableType.JavaScript;
     }
 
     // Properties.
 
-    get hasExtraDomains() { return this._hasExtraDomains; }
     get debuggableType() { return this._debuggableType; }
 
     // API.
 
     activateExtraDomains(domains)
     {
-        if (this._hasExtraDomains)
-            throw new Error("Extra domains have already been activated, cannot activate again.");
+        // COMPATIBILITY (iOS 14.0): Inspector.activateExtraDomains was removed in favor of a declared debuggable type
 
-        this._hasExtraDomains = true;
-
-        console.assert(WI.mainTarget instanceof WI.DirectBackendTarget);
-        console.assert(WI.mainTarget.type === WI.Target.Type.JSContext);
-        console.assert(WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript);
+        console.assert(this._debuggableType === WI.DebuggableType.JavaScript);
         console.assert(WI.targets.length === 1);
 
+        let target = WI.mainTarget;
+        console.assert(target instanceof WI.DirectBackendTarget);
+        console.assert(target.type === WI.TargetType.JavaScript);
+
+        if (this._debuggableType === WI.DebuggableType.ITML || target.type === WI.TargetType.ITML)
+            throw new Error("Extra domains have already been activated, cannot activate again.");
+
+        this._debuggableType = WI.DebuggableType.ITML;
+        target._type = WI.TargetType.ITML;
+
         for (let domain of domains) {
-            let agent = InspectorBackend.activateDomain(domain);
-            if (agent.enable)
-                agent.enable();
-            for (let target of WI.targets)
-                target.activateExtraDomain(domain);
+            InspectorBackend.activateDomain(domain);
+
+            target.activateExtraDomain(domain);
+
+            let manager = WI.managers.find((manager) => manager.domains && manager.domains.includes(domain));
+            if (manager)
+                manager.activateExtraDomain(domain);
+            else if (target.hasCommand(domain + ".enable"))
+                target._agents[domain].enable();
         }
 
         // FIXME: all code within WI.activateExtraDomains should be distributed elsewhere.

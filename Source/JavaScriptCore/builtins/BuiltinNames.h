@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,8 @@
 #include "BytecodeIntrinsicRegistry.h"
 #include "CommonIdentifiers.h"
 #include "JSCBuiltins.h"
+#include <wtf/RobinHoodHashMap.h>
+#include <wtf/RobinHoodHashSet.h>
 
 namespace JSC {
 
@@ -46,7 +48,6 @@ namespace JSC {
     JSC_COMMON_BYTECODE_INTRINSIC_CONSTANTS_EACH_NAME(macro) \
     macro(add) \
     macro(applyFunction) \
-    macro(arraySpeciesCreate) \
     macro(assert) \
     macro(callFunction) \
     macro(charCodeAt) \
@@ -60,19 +61,21 @@ namespace JSC {
     macro(Number) \
     macro(Array) \
     macro(ArrayBuffer) \
+    macro(ShadowRealm) \
     macro(RegExp) \
+    macro(min) \
     macro(trunc) \
     macro(create) \
     macro(defineProperty) \
     macro(defaultPromiseThen) \
-    macro(getOwnPropertyNames) \
-    macro(ownKeys) \
     macro(Set) \
+    macro(Map) \
     macro(throwTypeErrorFunction) \
     macro(typedArrayLength) \
+    macro(typedArrayClone) \
+    macro(typedArrayContentType) \
     macro(typedArraySort) \
     macro(typedArrayGetOriginalConstructor) \
-    macro(typedArraySubarrayCreate) \
     macro(BuiltinLog) \
     macro(BuiltinDescribe) \
     macro(homeObject) \
@@ -83,13 +86,17 @@ namespace JSC {
     macro(push) \
     macro(repeatCharacter) \
     macro(starDefault) \
-    macro(InspectorInstrumentation) \
+    macro(starNamespace) \
     macro(keys) \
     macro(values) \
     macro(get) \
     macro(set) \
+    macro(clear) \
+    macro(context) \
+    macro(delete) \
+    macro(size) \
     macro(shift) \
-    macro(allocateTypedArray) \
+    macro(staticInitializerBlock) \
     macro(Int8Array) \
     macro(Int16Array) \
     macro(Int32Array) \
@@ -99,6 +106,8 @@ namespace JSC {
     macro(Uint32Array) \
     macro(Float32Array) \
     macro(Float64Array) \
+    macro(BigInt64Array) \
+    macro(BigUint64Array) \
     macro(exec) \
     macro(generator) \
     macro(generatorNext) \
@@ -111,12 +120,20 @@ namespace JSC {
     macro(nextMethod) \
     macro(asyncGeneratorQueueItemNext) \
     macro(dateTimeFormat) \
-    macro(intlSubstituteValue) \
     macro(this) \
+    macro(importMapStatus) \
+    macro(importInRealm) \
+    macro(evalInRealm) \
+    macro(moveFunctionToRealm) \
     macro(thisTimeValue) \
     macro(newTargetLocal) \
     macro(derivedConstructor) \
     macro(isTypedArrayView) \
+    macro(isSharedTypedArrayView) \
+    macro(isResizableOrGrowableSharedTypedArrayView) \
+    macro(isDetached) \
+    macro(typedArrayDefaultComparator) \
+    macro(typedArrayFromFast) \
     macro(isBoundFunction) \
     macro(hasInstanceBoundFunction) \
     macro(instanceOf) \
@@ -138,6 +155,8 @@ namespace JSC {
     macro(setBucketHead) \
     macro(setBucketNext) \
     macro(setBucketKey) \
+    macro(setPrototypeDirect) \
+    macro(setPrototypeDirectOrThrow) \
     macro(regExpBuiltinExec) \
     macro(regExpMatchFast) \
     macro(regExpProtoFlagsGetter) \
@@ -160,17 +179,39 @@ namespace JSC {
     macro(stringIncludesInternal) \
     macro(stringIndexOfInternal) \
     macro(stringSplitFast) \
-    macro(stringSubstringInternal) \
+    macro(stringSubstring) \
     macro(makeBoundFunction) \
     macro(hasOwnLengthProperty) \
+    macro(handleProxyGetTrapResult) \
     macro(importModule) \
-    macro(propertyIsEnumerable) \
+    macro(copyDataProperties) \
     macro(meta) \
     macro(webAssemblyCompileStreamingInternal) \
     macro(webAssemblyInstantiateStreamingInternal) \
     macro(instanceFieldInitializer) \
+    macro(privateBrand) \
+    macro(privateClassBrand) \
     macro(hasOwnPropertyFunction) \
-    macro(createPrivateSymbol)
+    macro(createPrivateSymbol) \
+    macro(entries) \
+    macro(outOfLineReactionCounts) \
+    macro(emptyPropertyNameEnumerator) \
+    macro(sentinelString) \
+    macro(createRemoteFunction) \
+    macro(isRemoteFunction) \
+    macro(arraySort) \
+    macro(jsonParse) \
+    macro(jsonStringify) \
+    macro(String) \
+    macro(substr) \
+    macro(endsWith) \
+    macro(getOwnPropertyDescriptor) \
+    macro(getOwnPropertyNames) \
+    macro(getOwnPropertySymbols) \
+    macro(hasOwn) \
+    macro(indexOf) \
+    macro(pop) \
+
 
 namespace Symbols {
 #define DECLARE_BUILTIN_STATIC_SYMBOLS(name) extern JS_EXPORT_PRIVATE SymbolImpl::StaticSymbolImpl name##Symbol;
@@ -190,6 +231,9 @@ class BuiltinNames {
     WTF_MAKE_NONCOPYABLE(BuiltinNames); WTF_MAKE_FAST_ALLOCATED;
     
 public:
+    using PrivateNameSet = MemoryCompactLookupOnlyRobinHoodHashSet<String>;
+    using WellKnownSymbolMap = MemoryCompactLookupOnlyRobinHoodHashMap<String, SymbolImpl*>;
+
     BuiltinNames(VM&, CommonIdentifiers*);
 
     PrivateSymbolImpl* lookUpPrivateName(const Identifier&) const;
@@ -210,6 +254,7 @@ public:
     const JSC::Identifier& dollarVMPublicName() const { return m_dollarVMName; }
     const JSC::Identifier& dollarVMPrivateName() const { return m_dollarVMPrivateName; }
     const JSC::Identifier& polyProtoName() const { return m_polyProtoPrivateName; }
+    const JSC::Identifier& intlLegacyConstructedSymbol() const { return m_intlLegacyConstructedSymbol; }
 
 private:
     void checkPublicToPrivateMapConsistency(UniquedStringImpl* privateName);
@@ -218,11 +263,10 @@ private:
     JSC_FOREACH_BUILTIN_FUNCTION_NAME(DECLARE_BUILTIN_NAMES_IN_JSC)
     JSC_COMMON_PRIVATE_IDENTIFIERS_EACH_PROPERTY_NAME(DECLARE_BUILTIN_NAMES_IN_JSC)
     JSC_COMMON_PRIVATE_IDENTIFIERS_EACH_WELL_KNOWN_SYMBOL(DECLARE_BUILTIN_SYMBOLS_IN_JSC)
+    const JSC::Identifier m_intlLegacyConstructedSymbol;
     const JSC::Identifier m_dollarVMName;
     const JSC::Identifier m_dollarVMPrivateName;
     const JSC::Identifier m_polyProtoPrivateName;
-    using PrivateNameSet = HashSet<String>;
-    using WellKnownSymbolMap = HashMap<String, SymbolImpl*>;
     PrivateNameSet m_privateNameSet;
     WellKnownSymbolMap m_wellKnownSymbolsMap;
 };

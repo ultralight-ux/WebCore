@@ -82,26 +82,26 @@ inline bool isVerticalPiece(ImagePiece piece)
     return piece == LeftPiece || piece == RightPiece || piece == MiddlePiece;
 }
 
-inline Optional<PhysicalBoxSide> imagePieceHorizontalSide(ImagePiece piece)
+inline std::optional<BoxSide> imagePieceHorizontalSide(ImagePiece piece)
 {
     if (piece == TopLeftPiece || piece == TopPiece || piece == TopRightPiece)
-        return PhysicalBoxSide::Top;
+        return BoxSide::Top;
 
     if (piece == BottomLeftPiece || piece == BottomPiece || piece == BottomRightPiece)
-        return PhysicalBoxSide::Bottom;
+        return BoxSide::Bottom;
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-inline Optional<PhysicalBoxSide> imagePieceVerticalSide(ImagePiece piece)
+inline std::optional<BoxSide> imagePieceVerticalSide(ImagePiece piece)
 {
     if (piece == TopLeftPiece || piece == LeftPiece || piece == BottomLeftPiece)
-        return PhysicalBoxSide::Left;
+        return BoxSide::Left;
 
     if (piece == TopRightPiece || piece == RightPiece || piece == BottomRightPiece)
-        return PhysicalBoxSide::Right;
+        return BoxSide::Right;
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 class NinePieceImage {
@@ -112,7 +112,7 @@ public:
     };
 
     NinePieceImage(Type = Type::Normal);
-    NinePieceImage(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
+    NinePieceImage(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, bool overridesBorderWidths, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
 
     bool operator==(const NinePieceImage& other) const { return m_data == other.m_data; }
     bool operator!=(const NinePieceImage& other) const { return m_data != other.m_data; }
@@ -129,6 +129,9 @@ public:
 
     const LengthBox& borderSlices() const { return m_data->borderSlices; }
     void setBorderSlices(LengthBox slices) { m_data.access().borderSlices = WTFMove(slices); }
+
+    bool overridesBorderWidths() const { return m_data->overridesBorderWidths; }
+    void setOverridesBorderWidths(bool v) { m_data.access().overridesBorderWidths = v; }
 
     const LengthBox& outset() const { return m_data->outset; }
     void setOutset(LengthBox outset) { m_data.access().outset = WTFMove(outset); }
@@ -148,6 +151,7 @@ public:
     void copyBorderSlicesFrom(const NinePieceImage& other)
     {
         m_data.access().borderSlices = other.m_data->borderSlices;
+        m_data.access().overridesBorderWidths = other.m_data->overridesBorderWidths;
     }
     
     void copyOutsetFrom(const NinePieceImage& other)
@@ -161,11 +165,11 @@ public:
         m_data.access().verticalRule = other.m_data->verticalRule;
     }
 
-    static LayoutUnit computeOutset(const Length& outsetSide, LayoutUnit borderSide)
+    static LayoutUnit computeOutset(const Length& outset, LayoutUnit borderWidth)
     {
-        if (outsetSide.isRelative())
-            return LayoutUnit(outsetSide.value() * borderSide);
-        return LayoutUnit(outsetSide.value());
+        if (outset.isRelative())
+            return LayoutUnit(outset.value() * borderWidth);
+        return LayoutUnit(outset.value());
     }
 
     static LayoutUnit computeSlice(Length, LayoutUnit width, LayoutUnit slice, LayoutUnit extent);
@@ -183,28 +187,29 @@ public:
     static FloatSize computeMiddleTileScale(const Vector<FloatSize>& scales, const Vector<FloatRect>& destinationRects, const Vector<FloatRect>& sourceRects, NinePieceImageRule hRule, NinePieceImageRule vRule);
     static Vector<FloatSize> computeTileScales(const Vector<FloatRect>& destinationRects, const Vector<FloatRect>& sourceRects, NinePieceImageRule hRule, NinePieceImageRule vRule);
 
-    void paint(GraphicsContext&, RenderElement*, const RenderStyle&, const LayoutRect& destination, const LayoutSize& source, float deviceScaleFactor, CompositeOperator) const;
+    void paint(GraphicsContext&, const RenderElement*, const RenderStyle&, const LayoutRect& destination, const LayoutSize& source, float deviceScaleFactor, CompositeOperator) const;
 
 private:
     struct Data : RefCounted<Data> {
         static Ref<Data> create();
-        static Ref<Data> create(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
+        static Ref<Data> create(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, bool overridesBorderWidths, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
         Ref<Data> copy() const;
 
         bool operator==(const Data&) const;
         bool operator!=(const Data& other) const { return !(*this == other); }
 
         bool fill { false };
+        bool overridesBorderWidths { false };
         NinePieceImageRule horizontalRule { NinePieceImageRule::Stretch };
         NinePieceImageRule verticalRule { NinePieceImageRule::Stretch };
         RefPtr<StyleImage> image;
-        LengthBox imageSlices { { 100, Percent }, { 100, Percent }, { 100, Percent }, { 100, Percent } };
-        LengthBox borderSlices { { 1, Relative }, { 1, Relative }, { 1, Relative }, { 1, Relative } };
-        LengthBox outset { 0 };
+        LengthBox imageSlices { { 100, LengthType::Percent }, { 100, LengthType::Percent }, { 100, LengthType::Percent }, { 100, LengthType::Percent } };
+        LengthBox borderSlices { { 1, LengthType::Relative }, { 1, LengthType::Relative }, { 1, LengthType::Relative }, { 1, LengthType::Relative } };
+        LengthBox outset { LengthType::Relative };
 
     private:
         Data();
-        Data(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
+        Data(RefPtr<StyleImage>&&, LengthBox imageSlices, bool fill, LengthBox borderSlices, bool overridesBorderWidths, LengthBox outset, NinePieceImageRule horizontalRule, NinePieceImageRule verticalRule);
         Data(const Data&);
     };
 
@@ -215,5 +220,6 @@ private:
 };
 
 WTF::TextStream& operator<<(WTF::TextStream&, const NinePieceImage&);
+WTF::TextStream& operator<<(WTF::TextStream&, NinePieceImageRule);
 
 } // namespace WebCore

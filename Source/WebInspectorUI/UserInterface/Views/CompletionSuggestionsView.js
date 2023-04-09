@@ -32,6 +32,7 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
         this._delegate = delegate || null;
         this._preventBlur = preventBlur || false;
 
+        this._completions = [];
         this._selectedIndex = NaN;
         this._moveIntervalIdentifier = null;
 
@@ -73,11 +74,13 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
         this._selectedIndex = index;
 
         selectedItemElement = this._selectedItemElement;
-        if (!selectedItemElement)
-            return;
+        if (selectedItemElement) {
+            selectedItemElement.classList.add("selected");
+            selectedItemElement.scrollIntoViewIfNeeded(false);
+        }
 
-        selectedItemElement.classList.add("selected");
-        selectedItemElement.scrollIntoViewIfNeeded(false);
+        if (this._completions[this._selectedIndex])
+            this._delegate?.completionSuggestionsSelectedCompletion?.(this, WI.CSSCompletions.getCompletionText(this._completions[this._selectedIndex]));
     }
 
     selectNext()
@@ -88,10 +91,6 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
             this.selectedIndex = 0;
         else
             ++this.selectedIndex;
-
-        var selectedItemElement = this._selectedItemElement;
-        if (selectedItemElement && this._delegate && typeof this._delegate.completionSuggestionsSelectedCompletion === "function")
-            this._delegate.completionSuggestionsSelectedCompletion(this, selectedItemElement.textContent);
     }
 
     selectPrevious()
@@ -100,10 +99,6 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
             this.selectedIndex = this._containerElement.children.length - 1;
         else
             --this.selectedIndex;
-
-        var selectedItemElement = this._selectedItemElement;
-        if (selectedItemElement && this._delegate && typeof this._delegate.completionSuggestionsSelectedCompletion === "function")
-            this._delegate.completionSuggestionsSelectedCompletion(this, selectedItemElement.textContent);
     }
 
     isHandlingClickEvent()
@@ -113,41 +108,32 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
 
     show(anchorBounds)
     {
-        let scrollTop = this._containerElement.scrollTop;
-
         // Measure the container so we can know the intrinsic size of the items.
-        this._containerElement.style.position = "absolute";
-        document.body.appendChild(this._containerElement);
-
-        var containerWidth = this._containerElement.offsetWidth;
-        var containerHeight = this._containerElement.offsetHeight;
-
-        this._containerElement.removeAttribute("style");
-        this._element.appendChild(this._containerElement);
+        let intrinsicSize = WI.measureElement(this._containerElement);
+        let containerWidth = Math.ceil(intrinsicSize.width);
+        let containerHeight = Math.ceil(intrinsicSize.height);
 
         // Lay out the suggest-box relative to the anchorBounds.
-        var margin = 10;
-        var horizontalPadding = 22;
-        var absoluteMaximumHeight = 160;
+        let margin = 10;
+        let absoluteMaximumHeight = 160;
 
-        var x = anchorBounds.origin.x;
-        var y = anchorBounds.origin.y + anchorBounds.size.height;
+        let x = anchorBounds.origin.x;
+        let y = anchorBounds.origin.y + anchorBounds.size.height;
 
-        var maximumWidth = window.innerWidth - anchorBounds.origin.x - margin;
-        var width = Math.min(containerWidth, maximumWidth - horizontalPadding) + horizontalPadding;
-        var paddedWidth = containerWidth + horizontalPadding;
+        let maximumWidth = window.innerWidth - anchorBounds.origin.x - margin;
+        let width = Math.min(containerWidth, maximumWidth);
 
-        if (width < paddedWidth) {
+        if (width < containerWidth) {
             // Shift the suggest box to the left to accommodate the content without trimming to the BODY edge.
             maximumWidth = window.innerWidth - margin;
-            width = Math.min(containerWidth, maximumWidth - horizontalPadding) + horizontalPadding;
+            width = Math.min(containerWidth, maximumWidth);
             x = document.body.offsetWidth - width;
         }
 
-        var aboveHeight = anchorBounds.origin.y;
-        var underHeight = window.innerHeight - anchorBounds.origin.y - anchorBounds.size.height;
-        var maximumHeight = Math.min(absoluteMaximumHeight, Math.max(underHeight, aboveHeight) - margin);
-        var height = Math.min(containerHeight, maximumHeight);
+        let aboveHeight = anchorBounds.origin.y;
+        let underHeight = window.innerHeight - anchorBounds.origin.y - anchorBounds.size.height;
+        let maximumHeight = Math.min(absoluteMaximumHeight, Math.max(underHeight, aboveHeight) - margin);
+        let height = Math.min(containerHeight, maximumHeight);
 
         // Position the suggestions below the anchor. If there is no room, position the suggestions above.
         if (underHeight - height < 0)
@@ -158,10 +144,8 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
         this._element.style.width = width + "px";
         this._element.style.height = height + "px";
 
-        document.body.appendChild(this._element);
-
-        if (scrollTop)
-            this._containerElement.scrollTop = scrollTop;
+        if (!this._element.parentNode)
+            document.body.appendChild(this._element);
     }
 
     hide()
@@ -186,19 +170,23 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
     update(completions, selectedIndex)
     {
         this._containerElement.removeChildren();
+        this._completions = completions;
 
         if (typeof selectedIndex === "number")
             this._selectedIndex = selectedIndex;
 
-        for (var i = 0; i < completions.length; ++i) {
+        for (let [index, completion] of completions.entries()) {
             var itemElement = document.createElement("div");
             itemElement.classList.add("item");
-            itemElement.classList.toggle("selected", i === this._selectedIndex);
-            itemElement.textContent = completions[i];
-            this._containerElement.appendChild(itemElement);
+            itemElement.classList.toggle("selected", index === this._selectedIndex);
 
-            if (this._delegate && typeof this._delegate.completionSuggestionsViewCustomizeCompletionElement === "function")
-                this._delegate.completionSuggestionsViewCustomizeCompletionElement(this, itemElement, completions[i]);
+            if (typeof completion === "string")
+                itemElement.textContent = completion;
+            else if (completion instanceof WI.QueryResult)
+                itemElement.appendChild(this._createMatchedCompletionFragment(completion.value, completion.matchingTextRanges));
+
+            this._containerElement.appendChild(itemElement);
+            this._delegate?.completionSuggestionsViewCustomizeCompletionElement?.(this, itemElement, completion);
         }
     }
 
@@ -212,6 +200,31 @@ WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
         var element = this._containerElement.children[this._selectedIndex] || null;
         console.assert(element);
         return element;
+    }
+
+    _createMatchedCompletionFragment(completionText, matchingTextRanges)
+    {
+        let completionFragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        for (let textRange of matchingTextRanges) {
+            console.assert(textRange.startColumn >= 0 && textRange.startColumn < completionText.length, textRange);
+            console.assert(textRange.endColumn > 0 && textRange.endColumn <= completionText.length, textRange);
+            console.assert(textRange.startColumn < textRange.endColumn);
+
+            if (textRange.startColumn > lastIndex)
+                completionFragment.append(completionText.substring(lastIndex, textRange.startColumn));
+
+            let matchedSpan = document.createElement("span");
+            matchedSpan.classList.add("matched");
+            matchedSpan.append(completionText.substring(textRange.startColumn, textRange.endColumn));
+            completionFragment.append(matchedSpan);
+            lastIndex = textRange.endColumn;
+        }
+
+        if (lastIndex < completionText.length)
+            completionFragment.append(completionText.substring(lastIndex, completionText.length));
+
+        return completionFragment;
     }
 
     _mouseDown(event)

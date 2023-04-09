@@ -39,21 +39,21 @@ class SlowPathGenerator {
 public:
     SlowPathGenerator(SpeculativeJIT* jit)
         : m_currentNode(jit->m_currentNode)
-        , m_streamIndex(jit->m_stream->size())
+        , m_streamIndex(jit->m_stream.size())
         , m_origin(jit->m_origin) 
     {
     }
     virtual ~SlowPathGenerator() { }
     void generate(SpeculativeJIT* jit)
     {
-        m_label = jit->m_jit.label();
+        m_label = jit->label();
         jit->m_currentNode = m_currentNode;
         jit->m_outOfLineStreamIndex = m_streamIndex;
         jit->m_origin = m_origin;
         generateInternal(jit);
-        jit->m_outOfLineStreamIndex = WTF::nullopt;
+        jit->m_outOfLineStreamIndex = std::nullopt;
         if (ASSERT_ENABLED)
-            jit->m_jit.abortWithReason(DFGSlowPathGeneratorFellThrough);
+            jit->abortWithReason(DFGSlowPathGeneratorFellThrough);
     }
     MacroAssembler::Label label() const { return m_label; }
     virtual MacroAssembler::Call call() const
@@ -63,6 +63,7 @@ public:
     }
 
     const NodeOrigin& origin() const  { return m_origin; }
+    Node* currentNode() const { return m_currentNode; }
 
 protected:
     virtual void generateInternal(SpeculativeJIT*) = 0;
@@ -78,19 +79,19 @@ public:
     JumpingSlowPathGenerator(JumpType from, SpeculativeJIT* jit)
         : SlowPathGenerator(jit)
         , m_from(from)
-        , m_to(jit->m_jit.label())
+        , m_to(jit->label())
     {
     }
     
 protected:
     void linkFrom(SpeculativeJIT* jit)
     {
-        m_from.link(&jit->m_jit);
+        m_from.link(jit);
     }
     
     void jumpTo(SpeculativeJIT* jit)
     {
-        jit->m_jit.jump().linkTo(m_to, &jit->m_jit);
+        jit->jump().linkTo(m_to, jit);
     }
 
     JumpType m_from;
@@ -144,7 +145,7 @@ protected:
                 jit->silentFill(m_plans[i]);
         }
         if (m_exceptionCheckRequirement == ExceptionCheckRequirement::CheckNeeded)
-            jit->m_jit.exceptionCheck();
+            jit->exceptionCheck();
         this->jumpTo(jit);
     }
 
@@ -227,7 +228,7 @@ private:
     {
         this->linkFrom(jit);
         for (unsigned i = numberOfAssignments; i--;)
-            jit->m_jit.move(m_source[i], m_destination[i]);
+            jit->move(m_source[i], m_destination[i]);
         this->jumpTo(jit);
     }
 
@@ -261,6 +262,63 @@ inline std::unique_ptr<SlowPathGenerator> slowPathMove(
     DestinationType destinationArray[2] = { destination1, destination2 };
     return makeUnique<AssigningSlowPathGenerator<JumpType, DestinationType, SourceType, 2>>(
         from, jit, destinationArray, sourceArray);
+}
+
+template<typename JumpType, typename FunctionType, typename ResultType, typename... Arguments>
+class CallResultAndArgumentsSlowPathICGenerator final : public CallSlowPathGenerator<JumpType, ResultType> {
+public:
+    CallResultAndArgumentsSlowPathICGenerator(
+        JumpType from, SpeculativeJIT* jit, JITCompiler::LinkableConstant stubInfoConstant, GPRReg stubInfoGPR, CCallHelpers::Address slowPathOperationAddress, FunctionType function,
+        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, Arguments... arguments)
+        : CallSlowPathGenerator<JumpType, ResultType>(from, jit, spillMode, requirement, result)
+        , m_stubInfoGPR(stubInfoGPR)
+        , m_slowPathOperationAddress(slowPathOperationAddress)
+        , m_function(function)
+        , m_arguments(std::forward<Arguments>(arguments)...)
+        , m_stubInfoConstant(stubInfoConstant)
+    {
+    }
+
+private:
+    template<size_t... ArgumentsIndex>
+    void unpackAndGenerate(SpeculativeJIT* jit, std::index_sequence<ArgumentsIndex...>)
+    {
+        this->setUp(jit);
+        m_stubInfoConstant.materialize(*jit, m_stubInfoGPR);
+        if constexpr (std::is_same<ResultType, NoResultTag>::value)
+            jit->callOperation<FunctionType>(m_slowPathOperationAddress, std::get<ArgumentsIndex>(m_arguments)...);
+        else
+            jit->callOperation<FunctionType>(m_slowPathOperationAddress, extractResult(this->m_result), std::get<ArgumentsIndex>(m_arguments)...);
+        this->tearDown(jit);
+    }
+
+    void generateInternal(SpeculativeJIT* jit) final
+    {
+        unpackAndGenerate(jit, std::make_index_sequence<std::tuple_size<std::tuple<Arguments...>>::value>());
+    }
+
+    GPRReg m_stubInfoGPR;
+    CCallHelpers::Address m_slowPathOperationAddress;
+    FunctionType m_function;
+    std::tuple<Arguments...> m_arguments;
+    JITCompiler::LinkableConstant m_stubInfoConstant;
+};
+
+template<typename JumpType, typename FunctionType, typename ResultType, typename... Arguments>
+inline std::unique_ptr<SlowPathGenerator> slowPathICCall(
+    JumpType from, SpeculativeJIT* jit, JITCompiler::LinkableConstant stubInfoConstant, GPRReg stubInfoGPR, CCallHelpers::Address slowPathOperationAddress, FunctionType function,
+    SpillRegistersMode spillMode, ExceptionCheckRequirement requirement,
+    ResultType result, Arguments... arguments)
+{
+    return makeUnique<CallResultAndArgumentsSlowPathICGenerator<JumpType, FunctionType, ResultType, Arguments...>>(from, jit, stubInfoConstant, stubInfoGPR, slowPathOperationAddress, function, spillMode, requirement, result, arguments...);
+}
+
+template<typename JumpType, typename FunctionType, typename ResultType, typename... Arguments>
+inline std::unique_ptr<SlowPathGenerator> slowPathICCall(
+    JumpType from, SpeculativeJIT* jit, JITCompiler::LinkableConstant stubInfoConstant, GPRReg stubInfoGPR, CCallHelpers::Address slowPathOperationAddress, FunctionType function,
+    ResultType result, Arguments... arguments)
+{
+    return slowPathICCall(from, jit, stubInfoConstant, stubInfoGPR, slowPathOperationAddress, function, NeedToSpill, ExceptionCheckRequirement::CheckNeeded, result, arguments...);
 }
 
 } } // namespace JSC::DFG

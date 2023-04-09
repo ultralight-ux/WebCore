@@ -31,6 +31,7 @@
 
 #if ENABLE(MATHML)
 
+#include "ElementInlines.h"
 #include "EventHandler.h"
 #include "FrameLoader.h"
 #include "HTMLAnchorElement.h"
@@ -50,8 +51,8 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(MathMLElement);
 
 using namespace MathMLNames;
 
-MathMLElement::MathMLElement(const QualifiedName& tagName, Document& document)
-    : StyledElement(tagName, document, CreateMathMLElement)
+MathMLElement::MathMLElement(const QualifiedName& tagName, Document& document, ConstructionType constructionType)
+    : StyledElement(tagName, document, constructionType)
 {
 }
 
@@ -92,7 +93,7 @@ void MathMLElement::parseAttribute(const QualifiedName& name, const AtomString& 
             downcast<RenderTableCell>(renderer())->colSpanOrRowSpanChanged();
     } else if (name == HTMLNames::tabindexAttr) {
         if (value.isEmpty())
-            clearTabIndexExplicitlyIfNeeded();
+            setTabIndexExplicitly(std::nullopt);
         else if (auto optionalTabIndex = parseHTMLInteger(value))
             setTabIndexExplicitly(optionalTabIndex.value());
     } else {
@@ -106,21 +107,38 @@ void MathMLElement::parseAttribute(const QualifiedName& name, const AtomString& 
     }
 }
 
-bool MathMLElement::isPresentationAttribute(const QualifiedName& name) const
+bool MathMLElement::hasPresentationalHintsForAttribute(const QualifiedName& name) const
 {
-    if (name == backgroundAttr || name == colorAttr || name == dirAttr || name == fontfamilyAttr || name == fontsizeAttr || name == fontstyleAttr || name == fontweightAttr || name == mathbackgroundAttr || name == mathcolorAttr || name == mathsizeAttr)
+    if (name == backgroundAttr || name == colorAttr || name == dirAttr || name == fontfamilyAttr || name == fontsizeAttr || name == fontstyleAttr || name == fontweightAttr || name == mathbackgroundAttr || name == mathcolorAttr || name == mathsizeAttr || name == displaystyleAttr)
         return true;
-    return StyledElement::isPresentationAttribute(name);
+    return StyledElement::hasPresentationalHintsForAttribute(name);
+}
+
+static inline bool isDisallowedMathSizeAttribute(const AtomString& value)
+{
+    // FIXME(https://webkit.org/b/245927): The CSS parser sometimes accept non-zero <number> font-size values on MathML elements, so explicitly disallow them.
+    bool ok;
+    value.toDouble(&ok);
+    if (ok && value != "0"_s)
+        return true;
+
+    // Keywords from CSS font-size are disallowed.
+    return equalIgnoringASCIICase(value, "medium"_s)
+        || value.endsWithIgnoringASCIICase("large"_s)
+        || value.endsWithIgnoringASCIICase("small"_s)
+        || equalIgnoringASCIICase(value, "smaller"_s)
+        || equalIgnoringASCIICase(value, "larger"_s)
+        || equalIgnoringASCIICase(value, "math"_s);
 }
 
 static String convertMathSizeIfNeeded(const AtomString& value)
 {
-    if (value == "small")
-        return "0.75em";
-    if (value == "normal")
-        return "1em";
-    if (value == "big")
-        return "1.5em";
+    if (value == "small"_s)
+        return "0.75em"_s;
+    if (value == "normal"_s)
+        return "1em"_s;
+    if (value == "big"_s)
+        return "1.5em"_s;
 
     // FIXME: mathsize accepts any MathML length, including named spaces (see parseMathMLLength).
     // FIXME: Might be better to use double than float.
@@ -132,38 +150,46 @@ static String convertMathSizeIfNeeded(const AtomString& value)
     return makeString(FormattedNumber::fixedWidth(unitlessValue * 100, 3), '%');
 }
 
-void MathMLElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
+void MathMLElement::collectPresentationalHintsForAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == mathbackgroundAttr)
-        addPropertyToPresentationAttributeStyle(style, CSSPropertyBackgroundColor, value);
-    else if (name == mathsizeAttr)
-        addPropertyToPresentationAttributeStyle(style, CSSPropertyFontSize, convertMathSizeIfNeeded(value));
-    else if (name == mathcolorAttr)
-        addPropertyToPresentationAttributeStyle(style, CSSPropertyColor, value);
-    else if (name == dirAttr) {
-        if (document().settings().coreMathMLEnabled() || hasTagName(mathTag) || hasTagName(mrowTag) || hasTagName(mstyleTag) || isMathMLToken())
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyDirection, value);
+        addPropertyToPresentationalHintStyle(style, CSSPropertyBackgroundColor, value);
+    else if (name == mathsizeAttr) {
+        if (document().settings().coreMathMLEnabled()) {
+            if (!isDisallowedMathSizeAttribute(value))
+                addPropertyToPresentationalHintStyle(style, CSSPropertyFontSize, value);
+        } else
+            addPropertyToPresentationalHintStyle(style, CSSPropertyFontSize, convertMathSizeIfNeeded(value));
+    } else if (name == mathcolorAttr)
+        addPropertyToPresentationalHintStyle(style, CSSPropertyColor, value);
+    else if (name == dirAttr)
+        addPropertyToPresentationalHintStyle(style, CSSPropertyDirection, value);
+    else if (name == displaystyleAttr) {
+        if (equalLettersIgnoringASCIICase(value, "false"_s))
+            addPropertyToPresentationalHintStyle(style, CSSPropertyMathStyle, CSSValueCompact);
+        else if (equalLettersIgnoringASCIICase(value, "true"_s))
+            addPropertyToPresentationalHintStyle(style, CSSPropertyMathStyle, CSSValueNormal);
     } else {
         if (document().settings().coreMathMLEnabled()) {
-            StyledElement::collectStyleForPresentationAttribute(name, value, style);
+            StyledElement::collectPresentationalHintsForAttribute(name, value, style);
             return;
         }
         // FIXME: The following are deprecated attributes that should lose if there is a conflict with a non-deprecated attribute.
         if (name == fontsizeAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyFontSize, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyFontSize, value);
         else if (name == backgroundAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyBackgroundColor, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyBackgroundColor, value);
         else if (name == colorAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyColor, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyColor, value);
         else if (name == fontstyleAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyFontStyle, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyFontStyle, value);
         else if (name == fontweightAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyFontWeight, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyFontWeight, value);
         else if (name == fontfamilyAttr)
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyFontFamily, value);
+            addPropertyToPresentationalHintStyle(style, CSSPropertyFontFamily, value);
         else {
-            ASSERT(!isPresentationAttribute(name));
-            StyledElement::collectStyleForPresentationAttribute(name, value, style);
+            ASSERT(!hasPresentationalHintsForAttribute(name));
+            StyledElement::collectPresentationalHintsForAttribute(name, value, style);
         }
     }
 }
@@ -174,9 +200,9 @@ bool MathMLElement::childShouldCreateRenderer(const Node& child) const
     return is<MathMLElement>(child);
 }
 
-bool MathMLElement::willRespondToMouseClickEvents()
+bool MathMLElement::willRespondToMouseClickEventsWithEditability(Editability editability) const
 {
-    return isLink() || StyledElement::willRespondToMouseClickEvents();
+    return isLink() || StyledElement::willRespondToMouseClickEventsWithEditability(editability);
 }
 
 void MathMLElement::defaultEventHandler(Event& event)
@@ -192,7 +218,7 @@ void MathMLElement::defaultEventHandler(Event& event)
             const auto& url = stripLeadingAndTrailingHTMLSpaces(href);
             event.setDefaultHandled();
             if (auto* frame = document().frame())
-                frame->loader().changeLocation(document().completeURL(url), "_self", &event, LockHistory::No, LockBackForwardList::No, ReferrerPolicy::EmptyString, document().shouldOpenExternalURLsPolicyToPropagate());
+                frame->loader().changeLocation(document().completeURL(url), selfTargetFrameName(), &event, ReferrerPolicy::EmptyString, document().shouldOpenExternalURLsPolicyToPropagate());
             return;
         }
     }

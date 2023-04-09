@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,6 +53,7 @@ public:
     PlatformCALayer* superlayer() const override;
     void removeFromSuperlayer() override;
     void setSublayers(const PlatformCALayerList&) override;
+    PlatformCALayerList sublayersForLogging() const override;
     void removeAllSublayers() override;
     void appendSublayer(PlatformCALayer&) override;
     void insertSublayer(PlatformCALayer&, size_t index) override;
@@ -113,12 +114,14 @@ public:
     bool wantsDeepColorBackingStore() const override;
     void setWantsDeepColorBackingStore(bool) override;
 
-    bool supportsSubpixelAntialiasedText() const override;
-    void setSupportsSubpixelAntialiasedText(bool) override;
-
     bool hasContents() const override;
     CFTypeRef contents() const override;
     void setContents(CFTypeRef) override;
+    void clearContents() override;
+#if HAVE(IOSURFACE)
+    void setContents(const WebCore::IOSurface&) override;
+    void setContents(const WTF::MachSendRight&) override;
+#endif
 
     void setContentsRect(const FloatRect&) override;
 
@@ -154,7 +157,7 @@ public:
     float cornerRadius() const override;
     void setCornerRadius(float) override;
 
-    void setEdgeAntialiasingMask(unsigned) override;
+    void setAntialiasesEdges(bool) override;
 
     FloatRoundedRect shapeRoundedRect() const override;
     void setShapeRoundedRect(const FloatRoundedRect&) override;
@@ -176,7 +179,18 @@ public:
     void setScrollingNodeID(ScrollingNodeID nodeID) override { m_scrollingNodeID = nodeID; }
 #endif
 
-    GraphicsLayer::EmbeddedViewID embeddedViewID() const override;
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    bool isSeparated() const override;
+    void setIsSeparated(bool) override;
+
+#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
+    bool isSeparatedPortal() const override;
+    void setIsSeparatedPortal(bool) override;
+
+    bool isDescendentOfSeparatedPortal() const override;
+    void setIsDescendentOfSeparatedPortal(bool) override;
+#endif
+#endif
 
     TiledBacking* tiledBacking() override;
 
@@ -211,7 +225,6 @@ private:
 #endif
     EventRegion m_eventRegion;
     bool m_wantsDeepColorBackingStore { false };
-    bool m_supportsSubpixelAntialiasedText { false };
     bool m_backingStoreAttached { true };
 };
 

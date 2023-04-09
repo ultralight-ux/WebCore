@@ -45,7 +45,7 @@ namespace WebCore {
 
     enum class ContentSecurityPolicyEnforcement {
         DoNotEnforce,
-        EnforceChildSrcDirective,
+        EnforceWorkerSrcDirective,
         EnforceConnectSrcDirective,
         EnforceScriptSrcDirective,
     };
@@ -58,13 +58,13 @@ namespace WebCore {
     struct ThreadableLoaderOptions : ResourceLoaderOptions {
         ThreadableLoaderOptions();
         explicit ThreadableLoaderOptions(FetchOptions&&);
-        ThreadableLoaderOptions(const ResourceLoaderOptions&, ContentSecurityPolicyEnforcement, String&& initiator, ResponseFilteringPolicy);
+        ThreadableLoaderOptions(const ResourceLoaderOptions&, ContentSecurityPolicyEnforcement, String&& initiatorType, ResponseFilteringPolicy);
         ~ThreadableLoaderOptions();
 
         ThreadableLoaderOptions isolatedCopy() const;
 
         ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement { ContentSecurityPolicyEnforcement::EnforceConnectSrcDirective };
-        String initiator; // This cannot be an AtomString, as isolatedCopy() wouldn't create an object that's safe for passing to another thread.
+        String initiatorType; // This cannot be an AtomString, as isolatedCopy() wouldn't create an object that's safe for passing to another thread.
         ResponseFilteringPolicy filteringPolicy { ResponseFilteringPolicy::Disable };
     };
 
@@ -74,8 +74,9 @@ namespace WebCore {
         WTF_MAKE_NONCOPYABLE(ThreadableLoader);
     public:
         static void loadResourceSynchronously(ScriptExecutionContext&, ResourceRequest&&, ThreadableLoaderClient&, const ThreadableLoaderOptions&);
-        static RefPtr<ThreadableLoader> create(ScriptExecutionContext&, ThreadableLoaderClient&, ResourceRequest&&, const ThreadableLoaderOptions&, String&& referrer = String());
+        static RefPtr<ThreadableLoader> create(ScriptExecutionContext&, ThreadableLoaderClient&, ResourceRequest&&, const ThreadableLoaderOptions&, String&& referrer = String(), String&& taskMode = { });
 
+        virtual void computeIsDone() = 0;
         virtual void cancel() = 0;
         void ref() { refThreadableLoader(); }
         void deref() { derefThreadableLoader(); }

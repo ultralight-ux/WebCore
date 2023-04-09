@@ -26,18 +26,26 @@
 
 #pragma once
 
+#include "ExceptionOr.h"
 #include "TreeScopeOrderedMap.h"
 #include <memory>
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
 #include <wtf/text/AtomString.h>
 
+namespace JSC {
+class JSValue;
+}
+
 namespace WebCore {
 
+class CSSStyleSheet;
+class CSSStyleSheetObservableArray;
 class ContainerNode;
 class Document;
 class Element;
 class FloatPoint;
+class JSDOMGlobalObject;
 class HTMLImageElement;
 class HTMLLabelElement;
 class HTMLMapElement;
@@ -104,13 +112,17 @@ public:
     // for an anchor with the given name. ID matching is always case sensitive, but
     // Anchor name matching is case sensitive in strict mode and not case sensitive in
     // quirks mode for historical compatibility reasons.
-    Element* findAnchor(const String& name);
+    Element* findAnchor(StringView name);
 
     ContainerNode& rootNode() const { return m_rootNode; }
 
     IdTargetObserverRegistry& idTargetObserverRegistry() const { return *m_idTargetObserverRegistry.get(); }
 
     RadioButtonGroups& radioButtonGroups();
+
+    JSC::JSValue adoptedStyleSheetWrapper(JSDOMGlobalObject&);
+    const Vector<RefPtr<CSSStyleSheet>>& adoptedStyleSheets() const;
+    ExceptionOr<void> setAdoptedStyleSheets(Vector<RefPtr<CSSStyleSheet>>&&);
 
 protected:
     TreeScope(ShadowRoot&, Document&);
@@ -140,6 +152,7 @@ private:
     std::unique_ptr<IdTargetObserverRegistry> m_idTargetObserverRegistry;
     
     std::unique_ptr<RadioButtonGroups> m_radioButtonGroups;
+    Ref<CSSStyleSheetObservableArray> m_adoptedStyleSheets;
 };
 
 inline bool TreeScope::hasElementWithId(const AtomStringImpl& id) const

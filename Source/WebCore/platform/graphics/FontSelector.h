@@ -31,6 +31,7 @@
 
 namespace WebCore {
 
+class FontCache;
 class FontCascadeDescription;
 class FontDescription;
 class FontSelectorClient;
@@ -43,7 +44,7 @@ public:
     virtual bool isLoading() const = 0;
 };
 
-class FontSelector : public RefCounted<FontSelector> {
+class FontSelector : public RefCounted<FontSelector>, public CanMakeWeakPtr<FontSelector> {
 public:
     virtual ~FontSelector() = default;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,8 +31,8 @@
 
 namespace JSC {
 
-const ClassInfo JSDataView::s_info = {
-    "DataView", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDataView)};
+const ClassInfo JSDataView::s_info = { "DataView"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDataView) };
+const ClassInfo JSResizableOrGrowableSharedDataView::s_info = { "DataView"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSResizableOrGrowableSharedDataView) };
 
 JSDataView::JSDataView(VM& vm, ConstructionContext& context, ArrayBuffer* buffer)
     : Base(vm, context)
@@ -42,48 +42,63 @@ JSDataView::JSDataView(VM& vm, ConstructionContext& context, ArrayBuffer* buffer
 
 JSDataView* JSDataView::create(
     JSGlobalObject* globalObject, Structure* structure, RefPtr<ArrayBuffer>&& buffer,
-    unsigned byteOffset, unsigned byteLength)
+    size_t byteOffset, std::optional<size_t> byteLength)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     ASSERT(buffer);
-    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, byteLength, sizeof(uint8_t))) {
-        throwVMError(globalObject, scope, createRangeError(globalObject, "Length out of range of buffer"_s));
+    if (buffer->isDetached()) {
+        throwTypeError(globalObject, scope, typedArrayBufferHasBeenDetachedErrorMessage);
         return nullptr;
     }
+
+    ASSERT(byteLength || buffer->isResizableOrGrowableShared());
+
+    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, byteLength.value_or(0), sizeof(uint8_t))) {
+        throwRangeError(globalObject, scope, "Length out of range of buffer"_s);
+        return nullptr;
+    }
+
     if (!ArrayBufferView::verifyByteOffsetAlignment(byteOffset, sizeof(uint8_t))) {
-        throwException(globalObject, scope, createRangeError(globalObject, "Byte offset is not aligned"_s));
+        throwRangeError(globalObject, scope, "Byte offset is not aligned"_s);
         return nullptr;
     }
+
     ConstructionContext context(
         structure, buffer.copyRef(), byteOffset, byteLength, ConstructionContext::DataView);
     ASSERT(context);
     JSDataView* result =
-        new (NotNull, allocateCell<JSDataView>(vm.heap)) JSDataView(vm, context, buffer.get());
+        new (NotNull, allocateCell<JSDataView>(vm)) JSDataView(vm, context, buffer.get());
     result->finishCreation(vm);
     return result;
 }
 
-JSDataView* JSDataView::createUninitialized(JSGlobalObject*, Structure*, unsigned)
+JSDataView* JSDataView::createUninitialized(JSGlobalObject*, Structure*, size_t)
 {
     UNREACHABLE_FOR_PLATFORM();
     return nullptr;
 }
 
-JSDataView* JSDataView::create(JSGlobalObject*, Structure*, unsigned)
+JSDataView* JSDataView::create(JSGlobalObject*, Structure*, size_t)
 {
     UNREACHABLE_FOR_PLATFORM();
     return nullptr;
 }
 
-bool JSDataView::set(JSGlobalObject*, unsigned, JSObject*, unsigned, unsigned)
+bool JSDataView::setFromTypedArray(JSGlobalObject*, size_t, JSArrayBufferView*, size_t, size_t, CopyType)
 {
     UNREACHABLE_FOR_PLATFORM();
     return false;
 }
 
-bool JSDataView::setIndex(JSGlobalObject*, unsigned, JSValue)
+bool JSDataView::setFromArrayLike(JSGlobalObject*, size_t, JSObject*, size_t, size_t)
+{
+    UNREACHABLE_FOR_PLATFORM();
+    return false;
+}
+
+bool JSDataView::setIndex(JSGlobalObject*, size_t, JSValue)
 {
     UNREACHABLE_FOR_PLATFORM();
     return false;
@@ -91,95 +106,22 @@ bool JSDataView::setIndex(JSGlobalObject*, unsigned, JSValue)
 
 RefPtr<DataView> JSDataView::possiblySharedTypedImpl()
 {
-    return DataView::create(possiblySharedBuffer(), byteOffset(), length());
+    return DataView::create(possiblySharedBuffer(), byteOffsetRaw(), isAutoLength() ? std::nullopt : std::optional { lengthRaw() });
 }
 
 RefPtr<DataView> JSDataView::unsharedTypedImpl()
 {
-    return DataView::create(unsharedBuffer(), byteOffset(), length());
+    return DataView::create(unsharedBuffer(), byteOffsetRaw(), isAutoLength() ? std::nullopt : std::optional { lengthRaw() });
 }
 
-bool JSDataView::getOwnPropertySlot(
-    JSObject* object, JSGlobalObject* globalObject, PropertyName propertyName, PropertySlot& slot)
+Structure* JSDataView::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
-    VM& vm = globalObject->vm();
-    JSDataView* thisObject = jsCast<JSDataView*>(object);
-    if (propertyName == vm.propertyNames->byteLength) {
-        slot.setValue(thisObject, PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly, jsNumber(thisObject->m_length));
-        return true;
-    }
-    if (propertyName == vm.propertyNames->byteOffset) {
-        slot.setValue(thisObject, PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly, jsNumber(thisObject->byteOffset()));
-        return true;
-    }
-
-    return Base::getOwnPropertySlot(thisObject, globalObject, propertyName, slot);
+    return Structure::create(vm, globalObject, prototype, TypeInfo(DataViewType, StructureFlags), info(), NonArray);
 }
 
-bool JSDataView::put(
-    JSCell* cell, JSGlobalObject* globalObject, PropertyName propertyName, JSValue value,
-    PutPropertySlot& slot)
+Structure* JSResizableOrGrowableSharedDataView::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
-    VM& vm = globalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSDataView* thisObject = jsCast<JSDataView*>(cell);
-
-    if (UNLIKELY(isThisValueAltered(slot, thisObject)))
-        RELEASE_AND_RETURN(scope, ordinarySetSlow(globalObject, thisObject, propertyName, value, slot.thisValue(), slot.isStrictMode()));
-
-    if (propertyName == vm.propertyNames->byteLength
-        || propertyName == vm.propertyNames->byteOffset)
-        return typeError(globalObject, scope, slot.isStrictMode(), "Attempting to write to read-only typed array property."_s);
-
-    RELEASE_AND_RETURN(scope, Base::put(thisObject, globalObject, propertyName, value, slot));
-}
-
-bool JSDataView::defineOwnProperty(
-    JSObject* object, JSGlobalObject* globalObject, PropertyName propertyName,
-    const PropertyDescriptor& descriptor, bool shouldThrow)
-{
-    VM& vm = globalObject->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSDataView* thisObject = jsCast<JSDataView*>(object);
-    if (propertyName == vm.propertyNames->byteLength
-        || propertyName == vm.propertyNames->byteOffset)
-        return typeError(globalObject, scope, shouldThrow, "Attempting to define read-only typed array property."_s);
-
-    RELEASE_AND_RETURN(scope, Base::defineOwnProperty(thisObject, globalObject, propertyName, descriptor, shouldThrow));
-}
-
-bool JSDataView::deleteProperty(
-    JSCell* cell, JSGlobalObject* globalObject, PropertyName propertyName, DeletePropertySlot& slot)
-{
-    VM& vm = globalObject->vm();
-    JSDataView* thisObject = jsCast<JSDataView*>(cell);
-    if (propertyName == vm.propertyNames->byteLength
-        || propertyName == vm.propertyNames->byteOffset)
-        return false;
-
-    return Base::deleteProperty(thisObject, globalObject, propertyName, slot);
-}
-
-void JSDataView::getOwnNonIndexPropertyNames(
-    JSObject* object, JSGlobalObject* globalObject, PropertyNameArray& array, EnumerationMode mode)
-{
-    VM& vm = globalObject->vm();
-    JSDataView* thisObject = jsCast<JSDataView*>(object);
-    
-    if (mode.includeDontEnumProperties()) {
-        array.add(vm.propertyNames->byteOffset);
-        array.add(vm.propertyNames->byteLength);
-    }
-    
-    Base::getOwnNonIndexPropertyNames(thisObject, globalObject, array, mode);
-}
-
-Structure* JSDataView::createStructure(
-    VM& vm, JSGlobalObject* globalObject, JSValue prototype)
-{
-    return Structure::create(
-        vm, globalObject, prototype, TypeInfo(DataViewType, StructureFlags), info(),
-        NonArray);
+    return Structure::create(vm, globalObject, prototype, TypeInfo(DataViewType, StructureFlags), info(), NonArray);
 }
 
 } // namespace JSC

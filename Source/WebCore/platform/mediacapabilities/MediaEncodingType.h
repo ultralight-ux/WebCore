@@ -27,9 +27,9 @@
 
 namespace WebCore {
 
-enum class MediaEncodingType {
+enum class MediaEncodingType : bool {
     Record,
-    Transmission,
+    WebRTC,
 };
 
 }

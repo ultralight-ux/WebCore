@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(WEBASSEMBLY)
+#if ENABLE(WEBASSEMBLY_B3JIT)
 
 #include "CompilationResult.h"
 #include "WasmB3IRGenerator.h"
@@ -45,8 +45,8 @@ class CallLinkInfo;
 namespace Wasm {
 
 class BBQCallee;
-class CodeBlock;
-class EmbedderEntrypointCallee;
+class CalleeGroup;
+class JSEntrypointCallee;
 
 class BBQPlan final : public EntryPlan {
 public:
@@ -54,18 +54,18 @@ public:
 
     using Base::Base;
 
-    BBQPlan(Context*, Ref<ModuleInformation>, uint32_t functionIndex, CodeBlock*, CompletionTask&&);
+    BBQPlan(VM&, Ref<ModuleInformation>, uint32_t functionIndex, std::optional<bool> hasExceptionHandlers, CalleeGroup*, CompletionTask&&);
 
     bool hasWork() const final
     {
-        if (m_asyncWork == AsyncWork::Validation)
+        if (m_compilerMode == CompilerMode::Validation)
             return m_state < State::Validated;
         return m_state < State::Compiled;
     }
 
     void work(CompilationEffort) final;
 
-    using CalleeInitializer = Function<void(uint32_t, RefPtr<EmbedderEntrypointCallee>&&, Ref<BBQCallee>&&)>;
+    using CalleeInitializer = Function<void(uint32_t, RefPtr<JSEntrypointCallee>&&, Ref<BBQCallee>&&)>;
     void initializeCallees(const CalleeInitializer&);
 
     bool didReceiveFunctionData(unsigned, const FunctionData&) final;
@@ -75,23 +75,30 @@ public:
         return Base::parseAndValidateModule(m_source.data(), m_source.size());
     }
 
+    static bool planGeneratesLoopOSREntrypoints(const ModuleInformation&);
+
 private:
     bool prepareImpl() final;
+    void dumpDisassembly(CompilationContext&, LinkBuffer&);
     void compileFunction(uint32_t functionIndex) final;
-    void didCompleteCompilation(const AbstractLocker&) final;
+    void didCompleteCompilation() WTF_REQUIRES_LOCK(m_lock) final;
 
-    std::unique_ptr<InternalFunction> compileFunction(uint32_t functionIndex, CompilationContext&, Vector<UnlinkedWasmToWasmCall>&, TierUpCount*);
+    std::unique_ptr<InternalFunction> compileFunction(uint32_t functionIndex, Callee&, CompilationContext&, Vector<UnlinkedWasmToWasmCall>&, TierUpCount*);
 
     Vector<std::unique_ptr<InternalFunction>> m_wasmInternalFunctions;
-    HashMap<uint32_t, std::unique_ptr<InternalFunction>, DefaultHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> m_embedderToWasmInternalFunctions;
+    Vector<std::unique_ptr<LinkBuffer>> m_wasmInternalFunctionLinkBuffers;
+    Vector<Vector<CodeLocationLabel<ExceptionHandlerPtrTag>>> m_exceptionHandlerLocations;
+    HashMap<uint32_t, std::tuple<RefPtr<JSEntrypointCallee>, std::unique_ptr<LinkBuffer>, std::unique_ptr<InternalFunction>>, DefaultHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> m_jsToWasmInternalFunctions;
     Vector<CompilationContext> m_compilationContexts;
-    Vector<std::unique_ptr<TierUpCount>> m_tierUpCounts;
+    Vector<RefPtr<BBQCallee>> m_callees;
+    Vector<Vector<CodeLocationLabel<WasmEntryPtrTag>>> m_allLoopEntrypoints;
 
-    RefPtr<CodeBlock> m_codeBlock { nullptr };
+    RefPtr<CalleeGroup> m_calleeGroup { nullptr };
     uint32_t m_functionIndex;
+    std::optional<bool> m_hasExceptionHandlers;
 };
 
 
 } } // namespace JSC::Wasm
 
-#endif // ENABLE(WEBASSEMBLY)
+#endif // ENABLE(WEBASSEMBLY_B3JIT)

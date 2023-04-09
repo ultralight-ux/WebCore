@@ -25,34 +25,66 @@
 
 WI.TabBar = class TabBar extends WI.View
 {
-    constructor(element, tabBarItems)
+    constructor(element)
     {
         super(element);
 
         this.element.classList.add("tab-bar");
-        this.element.setAttribute("role", "tablist");
         this.element.addEventListener("mousedown", this._handleMouseDown.bind(this));
-        this.element.addEventListener("click", this._handleClick.bind(this));
-        this.element.addEventListener("mouseleave", this._handleMouseLeave.bind(this));
-        this.element.addEventListener("contextmenu", this._handleContextMenu.bind(this));
 
-        this.element.createChild("div", "top-border");
+        this.element.createChild("div", "border top");
+
+        const navigationBarBeforeElement = null;
+        this._navigationBarBefore = new WI.NavigationBar(navigationBarBeforeElement, {sizesToFit: true});
+        this.addSubview(this._navigationBarBefore);
+
+        this._tabContainer = this.element.appendChild(document.createElement("div"));
+        this._tabContainer.className = "tabs";
+        this._tabContainer.setAttribute("role", "tablist");
+        this._tabContainer.addEventListener("mousedown", this._handleTabContainerMouseDown.bind(this));
+        this._tabContainer.addEventListener("mouseleave", this._handleTabContainerMouseLeave.bind(this));
+        this._tabContainer.addEventListener("contextmenu", this._handleTabContainerContextMenu.bind(this));
+
+        const navigationBarAfterElement = null;
+        this._navigationBarAfter = new WI.NavigationBar(navigationBarAfterElement, {sizesToFit: true});
+        this.addSubview(this._navigationBarAfter);
+
+        this.element.createChild("div", "border bottom");
 
         this._tabBarItems = [];
         this._hiddenTabBarItems = [];
 
-        if (tabBarItems) {
-            for (let tabBarItem in tabBarItems)
-                this.addTabBarItem(tabBarItem);
-        }
+        const showHiddenTabsRepresentedObject = null;
+        const showHiddenTabsDisplayName = null;
+        this._showHiddenTabsTabBarItem = new WI.PinnedTabBarItem(showHiddenTabsRepresentedObject, "Images/Overflow.svg", showHiddenTabsDisplayName, WI.UIString("Show hidden tabs\u2026"));
+        this._showHiddenTabsTabBarItem.hidden = true;
+        this.addTabBarItem(this._showHiddenTabsTabBarItem, {suppressAnimations: true});
 
-        this._tabPickerTabBarItem = new WI.PinnedTabBarItem("Images/TabPicker.svg", WI.UIString("Show hidden tabs"));
-        this._tabPickerTabBarItem.element.classList.add("tab-picker", "hidden");
-        this._tabPickerTabBarItem.element.addEventListener("contextmenu", this._handleTabPickerTabContextMenu.bind(this));
-        this.addTabBarItem(this._tabPickerTabBarItem, {suppressAnimations: true});
+        const openClosedTabsRepresentedObject = null;
+        const openClosedTabsDisplayName = null;
+        this._openClosedTabsTabBarItem = new WI.PinnedTabBarItem(openClosedTabsRepresentedObject, "Images/Plus15.svg", openClosedTabsDisplayName, WI.UIString("Open closed tabs\u2026"));
+        this._openClosedTabsTabBarItem.hidden = true;
+        this.addTabBarItem(this._openClosedTabsTabBarItem, {suppressAnimations: true});
+
+        this._mouseDownPageX = NaN;
+        this._isDragging = false;
     }
 
     // Public
+
+    addNavigationItemBefore(navigationItem)
+    {
+        this._navigationBarBefore.addNavigationItem(navigationItem);
+
+        this.needsLayout();
+    }
+
+    addNavigationItemAfter(navigationItem)
+    {
+        this._navigationBarAfter.addNavigationItem(navigationItem);
+
+        this.needsLayout();
+    }
 
     addTabBarItem(tabBarItem, options = {})
     {
@@ -86,7 +118,7 @@ WI.TabBar = class TabBar extends WI.View
         else
             index = Number.constrain(index, this.normalTabCount, this._tabBarItems.length);
 
-        if (this.element.classList.contains("animating")) {
+        if (this._tabContainer.classList.contains("animating")) {
             requestAnimationFrame(removeStyles.bind(this));
             options.suppressAnimations = true;
         }
@@ -97,40 +129,44 @@ WI.TabBar = class TabBar extends WI.View
 
         this._tabBarItems.splice(index, 0, tabBarItem);
 
-        var nextSibling = this._tabBarItems[index + 1];
-        let nextSiblingElement = nextSibling ? nextSibling.element : this._tabBarItems.lastValue.element;
+        let nextSibling = this._tabBarItems[index + 1] || this._tabBarItems.lastValue;
 
-        if (this.element.contains(nextSiblingElement))
-            this.element.insertBefore(tabBarItem.element, nextSiblingElement);
-        else
-            this.element.appendChild(tabBarItem.element);
-
-        this.element.classList.toggle("single-tab", !this._hasMoreThanOneNormalTab());
+        if (this._tabContainer.contains(nextSibling.element)) {
+            if (!(tabBarItem instanceof WI.PinnedTabBarItem) && nextSibling instanceof WI.PinnedTabBarItem)
+                this._tabContainer.insertBefore(tabBarItem.element, this._pinnedButtons()[0].element);
+            else
+                this._tabContainer.insertBefore(tabBarItem.element, nextSibling.element);
+        } else {
+            if (tabBarItem instanceof WI.PinnedTabBarItem)
+                this._tabContainer.appendChild(tabBarItem.element);
+            else
+                this._tabContainer.insertBefore(tabBarItem.element, this._pinnedButtons()[0].element);
+        }
 
         tabBarItem.element.style.left = null;
         tabBarItem.element.style.width = null;
 
         function animateTabs()
         {
-            this.element.classList.add("animating");
-            this.element.classList.add("inserting-tab");
+            this._tabContainer.classList.add("animating");
+            this._tabContainer.classList.add("inserting-tab");
 
             this._applyTabBarItemSizesAndPositions(afterTabSizesAndPositions);
 
-            this.element.addEventListener("webkitTransitionEnd", removeStylesListener);
+            this._tabContainer.addEventListener("transitionend", removeStylesListener);
         }
 
         function removeStyles()
         {
-            this.element.classList.remove("static-layout");
-            this.element.classList.remove("animating");
-            this.element.classList.remove("inserting-tab");
+            this._tabContainer.classList.remove("static-layout");
+            this._tabContainer.classList.remove("animating");
+            this._tabContainer.classList.remove("inserting-tab");
 
             tabBarItem.element.classList.remove("being-inserted");
 
             this._clearTabBarItemSizesAndPositions();
 
-            this.element.removeEventListener("webkitTransitionEnd", removeStylesListener);
+            this._tabContainer.removeEventListener("transitionend", removeStylesListener);
         }
 
         if (!options.suppressAnimations) {
@@ -147,7 +183,7 @@ WI.TabBar = class TabBar extends WI.View
             else
                 beforeTabSizesAndPositions.set(tabBarItem, {left: 0, width: 0});
 
-            this.element.classList.add("static-layout");
+            this._tabContainer.classList.add("static-layout");
             tabBarItem.element.classList.add("being-inserted");
 
             this._applyTabBarItemSizesAndPositions(beforeTabSizesAndPositions);
@@ -169,7 +205,7 @@ WI.TabBar = class TabBar extends WI.View
         if (!tabBarItem || tabBarItem instanceof WI.PinnedTabBarItem)
             return null;
 
-        if (!tabBarItem.isEphemeral && this.normalTabCount === 1)
+        if (this.normalTabCount === 1)
             return null;
 
         tabBarItem.parentTabBar = null;
@@ -183,7 +219,7 @@ WI.TabBar = class TabBar extends WI.View
             this.selectedTabBarItem = nextTabBarItem;
         }
 
-        if (this.element.classList.contains("animating")) {
+        if (this._tabContainer.classList.contains("animating")) {
             requestAnimationFrame(removeStyles.bind(this));
             options.suppressAnimations = true;
         }
@@ -198,10 +234,9 @@ WI.TabBar = class TabBar extends WI.View
         this._tabBarItems.remove(tabBarItem);
         tabBarItem.element.remove();
 
-        var hasMoreThanOneNormalTab = this._hasMoreThanOneNormalTab();
-        this.element.classList.toggle("single-tab", !hasMoreThanOneNormalTab);
+        this._openClosedTabsTabBarItem.hidden = !this._closedTabClasses().length;
 
-        if (!hasMoreThanOneNormalTab || wasLastNormalTab || !options.suppressExpansion) {
+        if (!this._hasMoreThanOneNormalTab() || wasLastNormalTab || !options.suppressExpansion) {
             if (!options.suppressAnimations) {
                 this._tabAnimatedClosedSinceMouseEnter = true;
                 this._finishExpandingTabsAfterClose(beforeTabSizesAndPositions);
@@ -216,15 +251,15 @@ WI.TabBar = class TabBar extends WI.View
 
         function animateTabs()
         {
-            this.element.classList.add("animating");
-            this.element.classList.add("closing-tab");
+            this._tabContainer.classList.add("animating");
+            this._tabContainer.classList.add("closing-tab");
 
             // For RTL, we need to place extra space between pinned tab and first normal tab.
             // From left to right there is pinned tabs, extra space, then normal tabs. Compute
             // how much extra space we need to additionally add for normal tab items.
             let extraSpaceBetweenNormalAndPinnedTabs = 0;
             if (WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL) {
-                extraSpaceBetweenNormalAndPinnedTabs = this.element.getBoundingClientRect().width;
+                extraSpaceBetweenNormalAndPinnedTabs = this._tabContainer.getBoundingClientRect().width;
                 for (let currentTabBarItem of this._tabBarItemsFromLeftToRight())
                     extraSpaceBetweenNormalAndPinnedTabs -= currentTabBarItem.element.getBoundingClientRect().width;
             }
@@ -248,7 +283,7 @@ WI.TabBar = class TabBar extends WI.View
             if (lastNormalTabBarItem !== this._selectedTabBarItem)
                 lastNormalTabBarItem.element.style.width = (parseFloat(lastNormalTabBarItem.element.style.width) + 1) + "px";
 
-            this.element.addEventListener("webkitTransitionEnd", removeStylesListener);
+            this._tabContainer.addEventListener("transitionend", removeStylesListener);
         }
 
         function removeStyles()
@@ -257,16 +292,16 @@ WI.TabBar = class TabBar extends WI.View
             if (this._selectedTabBarItem && this._selectedTabBarItem !== lastNormalTabBarItem)
                 this._selectedTabBarItem.element.style.width = (parseFloat(this._selectedTabBarItem.element.style.width) - 1) + "px";
 
-            this.element.classList.remove("animating");
-            this.element.classList.remove("closing-tab");
+            this._tabContainer.classList.remove("animating");
+            this._tabContainer.classList.remove("closing-tab");
 
             this.updateLayout();
 
-            this.element.removeEventListener("webkitTransitionEnd", removeStylesListener);
+            this._tabContainer.removeEventListener("transitionend", removeStylesListener);
         }
 
         if (!options.suppressAnimations) {
-            this.element.classList.add("static-layout");
+            this._tabContainer.classList.add("static-layout");
 
             this._tabAnimatedClosedSinceMouseEnter = true;
 
@@ -336,14 +371,21 @@ WI.TabBar = class TabBar extends WI.View
 
     set selectedTabBarItem(tabBarItemOrIndex)
     {
+        this.selectTabBarItem(tabBarItemOrIndex);
+    }
+
+    selectTabBarItem(tabBarItemOrIndex, options = {})
+    {
         let tabBarItem = this._findTabBarItem(tabBarItemOrIndex);
-        if (tabBarItem === this._tabPickerTabBarItem) {
+        if (this._pinnedButtons().includes(tabBarItem)) {
             // Get the last normal tab item if the item is not selectable.
             tabBarItem = this._tabBarItems[this.normalTabCount - 1];
         }
 
         if (this._selectedTabBarItem === tabBarItem)
             return;
+
+        let previousTabBarItem = this._selectedTabBarItem;
 
         if (this._selectedTabBarItem)
             this._selectedTabBarItem.selected = false;
@@ -352,11 +394,12 @@ WI.TabBar = class TabBar extends WI.View
 
         if (this._selectedTabBarItem) {
             this._selectedTabBarItem.selected = true;
-            if (this._selectedTabBarItem.element.classList.contains("hidden"))
+            if (this._selectedTabBarItem.hidden)
                 this.needsLayout();
         }
 
-        this.dispatchEventToListeners(WI.TabBar.Event.TabBarItemSelected);
+        let initiatorHint = options.initiatorHint || WI.TabBrowser.TabNavigationInitiator.Unknown;
+        this.dispatchEventToListeners(WI.TabBar.Event.TabBarItemSelected, {previousTabBarItem, initiatorHint});
     }
 
     get tabBarItems()
@@ -364,81 +407,127 @@ WI.TabBar = class TabBar extends WI.View
         return this._tabBarItems;
     }
 
+    get visibleTabBarItemsFromLeftToRight()
+    {
+         return this._tabBarItemsFromLeftToRight().filter((item) => !item.hidden);
+    }
+
+    get tabCount()
+    {
+        return this._tabBarItems.filter((item) => item.representedObject instanceof WI.TabContentView).length;
+    }
+
     get normalTabCount()
     {
         return this._tabBarItems.filter((item) => !(item instanceof WI.PinnedTabBarItem)).length;
     }
 
-    get saveableTabCount()
+    resetCachedWidths()
     {
-        return this._tabBarItems.filter((item) => item.representedObject && item.representedObject.constructor.shouldSaveTab()).length;
+        for (let tabBarItem of this._tabBarItems)
+            tabBarItem[WI.TabBar.CachedWidthSymbol] = 0;
     }
 
     // Protected
 
     layout()
     {
-        if (this.element.classList.contains("static-layout"))
+        if (this._tabContainer.classList.contains("static-layout"))
             return;
 
-        this.element.classList.add("calculate-width");
-        this.element.classList.remove("collapsed");
+        let undocked = WI.dockConfiguration === WI.DockConfiguration.Undocked;
 
-        function forceItemHidden(item, hidden) {
-            item.element.classList.toggle("hidden", !!hidden);
+        function measureWidth(tabBarItem) {
+            if (!tabBarItem[WI.TabBar.CachedWidthSymbol])
+                tabBarItem[WI.TabBar.CachedWidthSymbol] = tabBarItem.element.realOffsetWidth;
+            return tabBarItem[WI.TabBar.CachedWidthSymbol];
         }
 
-        for (let item of this._tabBarItems)
-            forceItemHidden(item, item === this._tabPickerTabBarItem);
+        let availableSpace = this._tabContainer.realOffsetWidth;
 
-        function measureItemWidth(item) {
-            if (!item[WI.TabBar.CachedWidthSymbol])
-                item[WI.TabBar.CachedWidthSymbol] = item.element.realOffsetWidth;
-            return item[WI.TabBar.CachedWidthSymbol];
-        }
-
-        let recalculateItemWidths = () => {
-            return this._tabBarItems.reduce((total, item) => {
-                item[WI.TabBar.CachedWidthSymbol] = undefined;
-                return total + measureItemWidth(item);
-            }, 0);
-        };
+        this._tabContainer.classList.add("calculate-width");
 
         this._hiddenTabBarItems = [];
 
-        let totalItemWidth = recalculateItemWidths();
-        let barWidth = this.element.realOffsetWidth;
+        let normalTabBarItems = [];
+        for (let tabBarItem of this._tabBarItemsFromLeftToRight()) {
+            switch (tabBarItem) {
+            case this._showHiddenTabsTabBarItem:
+                tabBarItem.hidden = true;
+                continue;
 
-        if (totalItemWidth > barWidth) {
-            this.element.classList.add("collapsed");
-            totalItemWidth = recalculateItemWidths();
-            if (totalItemWidth > barWidth) {
-                forceItemHidden(this._tabPickerTabBarItem, false);
-                totalItemWidth += measureItemWidth(this._tabPickerTabBarItem);
-            }
-
-            let tabBarItems = this._tabBarItemsFromLeftToRight();
-            let index = tabBarItems.length;
-            while (totalItemWidth > barWidth && --index >= 0) {
-                let item = tabBarItems[index];
-                if (item === this.selectedTabBarItem || item instanceof WI.PinnedTabBarItem)
+            case this._openClosedTabsTabBarItem:
+                tabBarItem.hidden = !this._closedTabClasses().length;
+                if (tabBarItem.hidden)
                     continue;
-
-                totalItemWidth -= measureItemWidth(item);
-                forceItemHidden(item, true);
-
-                this._hiddenTabBarItems.push(item);
+                else
+                    break; // Make sure to calculate its width below.
             }
+
+            tabBarItem.hidden = false;
+
+            if (tabBarItem instanceof WI.PinnedTabBarItem) {
+                availableSpace -= measureWidth(tabBarItem);
+                continue;
+            }
+
+            normalTabBarItems.push(tabBarItem);
+
+            // When undocked, `WI.TabBarItem` grow to fill any available space. As a result, if a
+            // `WI.TabBarItem` is added or removed, the width of all `WI.TabBarItem` will change.
+            if (undocked)
+                tabBarItem[WI.TabBar.CachedWidthSymbol] = 0;
         }
 
-        this.element.classList.remove("calculate-width");
+        // Wait to measure widths until all `WI.TabBarItem` are un-hidden for the reason above.
+        let normalTabBarItemsWidth = normalTabBarItems.reduce((accumulator, tabBarItem) => accumulator + measureWidth(tabBarItem), 0);
+        if (Math.round(normalTabBarItemsWidth) >= Math.floor(availableSpace)) {
+            this._showHiddenTabsTabBarItem.hidden = false;
+            availableSpace -= measureWidth(this._showHiddenTabsTabBarItem);
+
+            let index = normalTabBarItems.length - 1;
+            do {
+                let tabBarItem = normalTabBarItems[index];
+                if (tabBarItem === this._selectedTabBarItem)
+                    continue;
+
+                normalTabBarItemsWidth -= measureWidth(tabBarItem);
+
+                tabBarItem.hidden = true;
+                this._hiddenTabBarItems.push(tabBarItem);
+            } while (normalTabBarItemsWidth >= availableSpace && --index >= 0);
+        }
+
+        // Tabs are marked as hidden from right to left, meaning that the right-most item will be
+        // first in the list. Reverse the list so that the right-most item is last.
+        this._hiddenTabBarItems.reverse();
+
+        this._tabContainer.classList.remove("calculate-width");
+    }
+
+    didLayoutSubtree()
+    {
+        super.didLayoutSubtree();
+
+        this._tabContainer.classList.toggle("hide-border-start", this._navigationBarBefore.navigationItems.every((item) => item.hidden));
+        this._tabContainer.classList.toggle("hide-border-end", this._navigationBarAfter.navigationItems.every((item) => item.hidden));
     }
 
     // Private
 
+    _pinnedButtons()
+    {
+        return [this._showHiddenTabsTabBarItem, this._openClosedTabsTabBarItem];
+    }
+
     _tabBarItemsFromLeftToRight()
     {
         return WI.resolvedLayoutDirection() === WI.LayoutDirection.LTR ? this._tabBarItems : this._tabBarItems.slice().reverse();
+    }
+
+    _closedTabClasses()
+    {
+        return Array.from(WI.knownTabClasses()).filter((tabClass) => WI.isNewTabWithTypeAllowed(tabClass.Type));
     }
 
     _findTabBarItem(tabBarItemOrIndex)
@@ -473,11 +562,17 @@ WI.TabBar = class TabBar extends WI.View
     {
         var tabBarItemSizesAndPositions = new Map;
 
-        const barRect = this.element.getBoundingClientRect();
+        let barRect = this._tabContainer.getBoundingClientRect();
 
-        for (var tabBarItem of this._tabBarItems) {
-            var boundingRect = tabBarItem.element.getBoundingClientRect();
-            tabBarItemSizesAndPositions.set(tabBarItem, {left: boundingRect.left - barRect.left, width: boundingRect.width});
+        for (let tabBarItem of this._tabBarItems) {
+            if (tabBarItem.hidden)
+                continue;
+
+            let boundingRect = tabBarItem.element.getBoundingClientRect();
+            tabBarItemSizesAndPositions.set(tabBarItem, {
+                left: boundingRect.left - barRect.left,
+                width: boundingRect.width,
+            });
         }
 
         return tabBarItemSizesAndPositions;
@@ -488,6 +583,7 @@ WI.TabBar = class TabBar extends WI.View
         for (var [tabBarItem, sizeAndPosition] of tabBarItemSizesAndPositions) {
             if (skipTabBarItem && tabBarItem === skipTabBarItem)
                 continue;
+
             tabBarItem.element.style.left = sizeAndPosition.left + "px";
             tabBarItem.element.style.width = sizeAndPosition.width + "px";
         }
@@ -498,6 +594,7 @@ WI.TabBar = class TabBar extends WI.View
         for (var tabBarItem of this._tabBarItems) {
             if (skipTabBarItem && tabBarItem === skipTabBarItem)
                 continue;
+
             tabBarItem.element.style.left = null;
             tabBarItem.element.style.width = null;
         }
@@ -512,36 +609,36 @@ WI.TabBar = class TabBar extends WI.View
             if (!beforeTabSizesAndPositions)
                 beforeTabSizesAndPositions = this._recordTabBarItemSizesAndPositions();
 
-            this.element.classList.remove("static-layout");
+            this._tabContainer.classList.remove("static-layout");
             this._clearTabBarItemSizesAndPositions();
 
             var afterTabSizesAndPositions = this._recordTabBarItemSizesAndPositions();
 
             this._applyTabBarItemSizesAndPositions(beforeTabSizesAndPositions);
-            this.element.classList.add("static-layout");
+            this._tabContainer.classList.add("static-layout");
 
             function animateTabs()
             {
-                this.element.classList.add("static-layout");
-                this.element.classList.add("animating");
-                this.element.classList.add("expanding-tabs");
+                this._tabContainer.classList.add("static-layout");
+                this._tabContainer.classList.add("animating");
+                this._tabContainer.classList.add("expanding-tabs");
 
                 this._applyTabBarItemSizesAndPositions(afterTabSizesAndPositions);
 
-                this.element.addEventListener("webkitTransitionEnd", removeStylesListener);
+                this._tabContainer.addEventListener("transitionend", removeStylesListener);
             }
 
             function removeStyles()
             {
-                this.element.classList.remove("static-layout");
-                this.element.classList.remove("animating");
-                this.element.classList.remove("expanding-tabs");
+                this._tabContainer.classList.remove("static-layout");
+                this._tabContainer.classList.remove("animating");
+                this._tabContainer.classList.remove("expanding-tabs");
 
                 this._clearTabBarItemSizesAndPositions();
 
                 this.updateLayout();
 
-                this.element.removeEventListener("webkitTransitionEnd", removeStylesListener);
+                this._tabContainer.removeEventListener("transitionend", removeStylesListener);
 
                 resolve();
             }
@@ -553,6 +650,25 @@ WI.TabBar = class TabBar extends WI.View
     }
 
     _handleMouseDown(event)
+    {
+        if (event.button !== 0 || event.ctrlKey)
+            return;
+
+        if (event.target !== this.element)
+            return;
+
+        switch (WI.dockConfiguration) {
+        case WI.DockConfiguration.Bottom:
+            WI.resizeDockedFrameMouseDown(event);
+            break;
+
+        case WI.DockConfiguration.Undocked:
+            WI.moveUndockedWindowMouseDown(event);
+            break;
+        }
+    }
+
+    _handleTabContainerMouseDown(event)
     {
         // Only consider left mouse clicks for tab movement.
         if (event.button !== 0 || event.ctrlKey)
@@ -569,35 +685,19 @@ WI.TabBar = class TabBar extends WI.View
         if (tabBarItem.disabled)
             return;
 
-        if (tabBarItem === this._tabPickerTabBarItem) {
-            if (!this._hiddenTabBarItems.length)
-                return;
+        switch (tabBarItem) {
+        case this._showHiddenTabsTabBarItem:
+            this._handleShowHiddenTabsTabBarItemMouseDown(event);
+            return;
 
-            if (this._ignoreTabPickerMouseDown)
-                return;
-
-            this._ignoreTabPickerMouseDown = true;
-
-            let contextMenu = WI.ContextMenu.createFromEvent(event);
-            contextMenu.addBeforeShowCallback(() => {
-                this._ignoreTabPickerMouseDown = false;
-            });
-
-            for (let item of this._hiddenTabBarItems) {
-                contextMenu.appendItem(item.title, () => {
-                    this.selectedTabBarItem = item;
-                });
-            }
-
-            contextMenu.show();
+        case this._openClosedTabsTabBarItem:
+            this._handleAddClosedTabsTabBarItemMouseDown(event);
             return;
         }
 
-        let closeButtonElement = event.target.closest("." + WI.TabBarItem.CloseButtonStyleClassName);
-        if (closeButtonElement)
-            return;
-
-        this.selectedTabBarItem = tabBarItem;
+        this.selectTabBarItem(tabBarItem, {
+            initiatorHint: WI.TabBrowser.TabNavigationInitiator.TabClick
+        });
 
         if (tabBarItem instanceof WI.PinnedTabBarItem || !this._hasMoreThanOneNormalTab())
             return;
@@ -611,7 +711,7 @@ WI.TabBar = class TabBar extends WI.View
             break;
         }
 
-        this._mouseIsDown = true;
+        this._mouseDownPageX = event.pageX;
 
         this._mouseMovedEventListener = this._handleMouseMoved.bind(this);
         this._mouseUpEventListener = this._handleMouseUp.bind(this);
@@ -624,75 +724,109 @@ WI.TabBar = class TabBar extends WI.View
         event.stopPropagation();
     }
 
-    _handleClick(event)
+    _handleShowHiddenTabsTabBarItemMouseDown(event)
     {
-        var itemElement = event.target.closest("." + WI.TabBarItem.StyleClassName);
-        if (!itemElement)
+        if (!this._hiddenTabBarItems.length)
             return;
 
-        var tabBarItem = itemElement[WI.TabBarItem.ElementReferenceSymbol];
-        if (!tabBarItem)
+        if (this._ignoreShowHiddenTabsTabBarItemMouseDown)
             return;
 
-        if (tabBarItem.disabled)
-            return;
+        this._ignoreShowHiddenTabsTabBarItemMouseDown = true;
 
-        const clickedMiddleButton = event.button === 1;
+        let contextMenu = WI.ContextMenu.createFromEvent(event);
+        contextMenu.addBeforeShowCallback(() => {
+            this._ignoreShowHiddenTabsTabBarItemMouseDown = false;
+        });
 
-        var closeButtonElement = event.target.closest("." + WI.TabBarItem.CloseButtonStyleClassName);
-        if (closeButtonElement || clickedMiddleButton) {
-            // Disallow closing the only tab.
-            if (this.element.classList.contains("single-tab"))
-                return;
-
-            if (!event.altKey) {
-                this.removeTabBarItem(tabBarItem, {suppressExpansion: true});
-                return;
-            }
-
-            for (let i = this._tabBarItems.length - 1; i >= 0; --i) {
-                let item = this._tabBarItems[i];
-                if (item === tabBarItem || item instanceof WI.PinnedTabBarItem)
-                    continue;
-                this.removeTabBarItem(item);
-            }
+        for (let item of this._hiddenTabBarItems) {
+            contextMenu.appendItem(item.displayName, () => {
+                this.selectTabBarItem(item, {
+                    initiator: WI.TabBrowser.TabNavigationInitiator.ContextMenu
+                });
+            });
         }
+
+        contextMenu.show();
+    }
+
+    _handleAddClosedTabsTabBarItemMouseDown(event)
+    {
+        let closedTabClasses = this._closedTabClasses();
+        if (!closedTabClasses.length)
+            return;
+
+        if (this._ignoreAddClosedTabsTabBarItemMouseDown)
+            return;
+
+        this._ignoreAddClosedTabsTabBarItemMouseDown = true;
+
+        let contextMenu = WI.ContextMenu.createFromEvent(event);
+        contextMenu.addBeforeShowCallback(() => {
+            this._ignoreAddClosedTabsTabBarItemMouseDown = false;
+        });
+
+        for (let closedTabClass of closedTabClasses) {
+            // Tab types that are not restorable (i.e., extension tab) should not be added in the generic code path.
+            if (!closedTabClass.shouldSaveTab())
+                continue;
+
+            contextMenu.appendItem(closedTabClass.tabInfo().displayName, () => {
+                WI.createNewTabWithType(closedTabClass.Type, {shouldShowNewTab: true});
+            });
+        }
+
+        WI.sharedApp.extensionController.addContextMenuItemsForClosedExtensionTabs(contextMenu);
+
+        contextMenu.show();
     }
 
     _handleMouseMoved(event)
     {
         console.assert(event.button === 0);
-        console.assert(this._mouseIsDown);
-        if (!this._mouseIsDown)
+        console.assert(typeof this._mouseDownPageX === "number" && !isNaN(this._mouseDownPageX));
+        if (isNaN(this._mouseDownPageX))
             return;
 
         console.assert(this._selectedTabBarItem);
         if (!this._selectedTabBarItem)
             return;
 
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (!this.element.classList.contains("static-layout")) {
-            this._applyTabBarItemSizesAndPositions(this._recordTabBarItemSizesAndPositions());
-            this.element.classList.add("static-layout");
-            this.element.classList.add("dragging-tab");
-        }
-
         if (this._mouseOffset === undefined)
             this._mouseOffset = event.pageX - this._selectedTabBarItem.element.totalOffsetLeft;
 
-        var tabBarMouseOffset = event.pageX - this.element.totalOffsetLeft;
+        if (!this._isDragging) {
+            const dragThreshold = 12;
+            if (Math.abs(this._mouseDownPageX - event.pageX) < dragThreshold)
+                return;
+
+            this._isDragging = true;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!this._tabContainer.classList.contains("static-layout")) {
+            this._applyTabBarItemSizesAndPositions(this._recordTabBarItemSizesAndPositions());
+            this._tabContainer.classList.add("static-layout");
+            this._tabContainer.classList.add("dragging-tab");
+        }
+
+        let containerOffset = this._tabContainer.totalOffsetLeft;
+
+        let tabBarMouseOffset = event.pageX - containerOffset;
         var newLeft = tabBarMouseOffset - this._mouseOffset;
 
         this._selectedTabBarItem.element.style.left = newLeft + "px";
 
-        var selectedTabMidX = newLeft + (this._selectedTabBarItem.element.realOffsetWidth / 2);
+        let selectedTabMidX = containerOffset + newLeft + (this._selectedTabBarItem.element.realOffsetWidth / 2);
 
         var currentIndex = this._tabBarItems.indexOf(this._selectedTabBarItem);
         var newIndex = currentIndex;
 
         for (let tabBarItem of this._tabBarItems) {
+            if (tabBarItem.hidden)
+                continue;
             if (tabBarItem === this._selectedTabBarItem)
                 continue;
 
@@ -717,29 +851,37 @@ WI.TabBar = class TabBar extends WI.View
         let nextSibling = this._tabBarItems[newIndex + 1];
         let nextSiblingElement = nextSibling ? nextSibling.element : null;
 
-        this.element.insertBefore(this._selectedTabBarItem.element, nextSiblingElement);
+        this._tabContainer.insertBefore(this._selectedTabBarItem.element, nextSiblingElement);
 
         // FIXME: Animate the tabs that move to make room for the selected tab. This was causing me trouble when I tried.
 
-        let left = 0;
+        function inlineStyleValue(element, property) {
+            return element.getComputedCSSPropertyNumberValue(property) || 0;
+        }
+
+        let accumulatedLeft = 0;
         for (let tabBarItem of this._tabBarItemsFromLeftToRight()) {
-            if (tabBarItem !== this._selectedTabBarItem && parseFloat(tabBarItem.element.style.left) !== left)
-                tabBarItem.element.style.left = left + "px";
-            left += parseFloat(tabBarItem.element.style.width);
+            if (tabBarItem.hidden)
+                continue;
+
+            if (tabBarItem !== this._selectedTabBarItem && inlineStyleValue(tabBarItem.element, "left") !== accumulatedLeft)
+                tabBarItem.element.style.left = accumulatedLeft + "px";
+
+            accumulatedLeft += inlineStyleValue(tabBarItem.element, "width");
         }
     }
 
     _handleMouseUp(event)
     {
         console.assert(event.button === 0);
-        console.assert(this._mouseIsDown);
-        if (!this._mouseIsDown)
+        console.assert(typeof this._mouseDownPageX === "number" && !isNaN(this._mouseDownPageX));
+        if (isNaN(this._mouseDownPageX))
             return;
 
-        this.element.classList.remove("dragging-tab");
+        this._tabContainer.classList.remove("dragging-tab");
 
         if (!this._tabAnimatedClosedSinceMouseEnter) {
-            this.element.classList.remove("static-layout");
+            this._tabContainer.classList.remove("static-layout");
             this._clearTabBarItemSizesAndPositions();
         } else {
             let left = 0;
@@ -750,7 +892,8 @@ WI.TabBar = class TabBar extends WI.View
             }
         }
 
-        this._mouseIsDown = false;
+        this._isDragging = false;
+        this._mouseDownPageX = NaN;
         this._mouseOffset = undefined;
 
         document.removeEventListener("mousemove", this._mouseMovedEventListener, true);
@@ -765,27 +908,27 @@ WI.TabBar = class TabBar extends WI.View
         this.dispatchEventToListeners(WI.TabBar.Event.TabBarItemsReordered);
     }
 
-    _handleMouseLeave(event)
+    _handleTabContainerMouseLeave(event)
     {
-        if (this._mouseIsDown || !this._tabAnimatedClosedSinceMouseEnter || !this.element.classList.contains("static-layout") || this.element.classList.contains("animating"))
+        if (!isNaN(this._mouseDownPageX) || !this._tabAnimatedClosedSinceMouseEnter || !this._tabContainer.classList.contains("static-layout") || this._tabContainer.classList.contains("animating"))
             return;
 
         // This event can still fire when the mouse is inside the element if DOM nodes are added, removed or generally change inside.
         // Check if the mouse really did leave the element by checking the bounds.
         // FIXME: Is this a WebKit bug or correct behavior?
-        const barRect = this.element.getBoundingClientRect();
+        let barRect = this._tabContainer.getBoundingClientRect();
         if (event.pageY > barRect.top && event.pageY < barRect.bottom && event.pageX > barRect.left && event.pageX < barRect.right)
             return;
 
         this._finishExpandingTabsAfterClose();
     }
 
-    _handleContextMenu(event)
+    _handleTabContainerContextMenu(event)
     {
         let contextMenu = WI.ContextMenu.createFromEvent(event);
 
         for (let tabClass of WI.knownTabClasses()) {
-            if (!tabClass.isTabAllowed() || tabClass.tabInfo().isEphemeral)
+            if (!tabClass.isTabAllowed() || !tabClass.shouldSaveTab())
                 continue;
 
             let openTabBarItem = null;
@@ -802,26 +945,15 @@ WI.TabBar = class TabBar extends WI.View
 
             let checked = !!openTabBarItem;
             let disabled = checked && this.normalTabCount === 1;
-            contextMenu.appendCheckboxItem(tabClass.tabInfo().title, () => {
+            contextMenu.appendCheckboxItem(tabClass.tabInfo().displayName, () => {
                 if (openTabBarItem)
                     this.removeTabBarItem(openTabBarItem);
                 else
                     WI.createNewTabWithType(tabClass.Type, {shouldShowNewTab: true});
             }, checked, disabled);
         }
-    }
 
-    _handleTabPickerTabContextMenu(event)
-    {
-        if (!this._hiddenTabBarItems.length)
-            return;
-
-        let contextMenu = WI.ContextMenu.createFromEvent(event);
-        for (let item of this._hiddenTabBarItems) {
-            contextMenu.appendItem(item.title, () => {
-                this.selectedTabBarItem = item;
-            });
-        }
+        WI.sharedApp.extensionController.addContextMenuItemsForAllExtensionTabs(contextMenu);
     }
 };
 
@@ -832,5 +964,4 @@ WI.TabBar.Event = {
     TabBarItemAdded: "tab-bar-tab-bar-item-added",
     TabBarItemRemoved: "tab-bar-tab-bar-item-removed",
     TabBarItemsReordered: "tab-bar-tab-bar-items-reordered",
-    OpenDefaultTab: "tab-bar-open-default-tab"
 };

@@ -25,8 +25,10 @@
 
 #pragma once
 
+#include "JSBigInt.h"
 #include "JSCJSValue.h"
 #include "MathCommon.h"
+#include "TypedArrayAdaptersForwardDeclarations.h"
 #include "TypedArrayType.h"
 #include <wtf/MathExtras.h>
 
@@ -39,19 +41,19 @@ struct IntegralTypedArrayAdaptor {
     typedef TypeArg Type;
     typedef ViewTypeArg ViewType;
     typedef JSViewTypeArg JSViewType;
-    static const TypedArrayType typeValue = typeValueArg;
-    constexpr static const TypeArg minValue = std::numeric_limits<TypeArg>::lowest();
-    constexpr static const TypeArg maxValue = std::numeric_limits<TypeArg>::max();
+    static constexpr TypedArrayType typeValue = typeValueArg;
+    static constexpr TypeArg minValue = std::numeric_limits<TypeArg>::lowest();
+    static constexpr TypeArg maxValue = std::numeric_limits<TypeArg>::max();
+    static constexpr bool canConvertToJSQuickly = true;
+    static constexpr TypedArrayContentType contentType = JSC::contentType(typeValue);
+    static constexpr bool isInteger = true;
+    static constexpr bool isFloat = false;
+    static constexpr bool isBigInt = false;
 
-    static JSValue toJSValue(Type value)
+    static JSValue toJSValue(JSGlobalObject*, Type value)
     {
-        static_assert(!std::is_floating_point<Type>::value, "");
+        static_assert(!std::is_floating_point<Type>::value);
         return jsNumber(value);
-    }
-    
-    static double toDouble(Type value)
-    {
-        return static_cast<double>(value);
     }
     
     static Type toNativeFromInt32(int32_t value)
@@ -71,6 +73,11 @@ struct IntegralTypedArrayAdaptor {
             result = toInt32(value);
         return static_cast<Type>(result);
     }
+
+    static constexpr Type toNativeFromUndefined()
+    {
+        return 0;
+    }
     
     template<typename OtherAdaptor>
     static typename OtherAdaptor::Type convertTo(Type value)
@@ -80,26 +87,26 @@ struct IntegralTypedArrayAdaptor {
         return OtherAdaptor::toNativeFromInt32(value);
     }
 
-    static Optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
+    static std::optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
     {
         if ((value >= 0 && static_cast<uint32_t>(value) > static_cast<uint32_t>(maxValue)) || value < static_cast<int32_t>(minValue))
-            return WTF::nullopt;
+            return std::nullopt;
         return static_cast<Type>(value);
     }
 
-    static Optional<Type> toNativeFromUint32WithoutCoercion(uint32_t value)
+    static std::optional<Type> toNativeFromUint32WithoutCoercion(uint32_t value)
     {
         if (value > static_cast<uint32_t>(maxValue))
-            return WTF::nullopt;
+            return std::nullopt;
 
         return static_cast<Type>(value);
     }
 
-    static Optional<Type> toNativeFromDoubleWithoutCoercion(double value)
+    static std::optional<Type> toNativeFromDoubleWithoutCoercion(double value)
     {
         Type integer = static_cast<Type>(value);
         if (static_cast<double>(integer) != value)
-            return WTF::nullopt;
+            return std::nullopt;
 
         if (value < 0)
             return toNativeFromInt32WithoutCoercion(static_cast<int32_t>(value));
@@ -115,18 +122,18 @@ struct FloatTypedArrayAdaptor {
     typedef TypeArg Type;
     typedef ViewTypeArg ViewType;
     typedef JSViewTypeArg JSViewType;
-    static const TypedArrayType typeValue = typeValueArg;
-    constexpr static const TypeArg minValue = std::numeric_limits<TypeArg>::lowest();
-    constexpr static const TypeArg maxValue = std::numeric_limits<TypeArg>::max();
+    static constexpr TypedArrayType typeValue = typeValueArg;
+    static constexpr TypeArg minValue = std::numeric_limits<TypeArg>::lowest();
+    static constexpr TypeArg maxValue = std::numeric_limits<TypeArg>::max();
+    static constexpr bool canConvertToJSQuickly = true;
+    static constexpr TypedArrayContentType contentType = JSC::contentType(typeValue);
+    static constexpr bool isInteger = false;
+    static constexpr bool isFloat = true;
+    static constexpr bool isBigInt = false;
 
-    static JSValue toJSValue(Type value)
+    static JSValue toJSValue(JSGlobalObject*, Type value)
     {
         return jsDoubleNumber(purifyNaN(value));
-    }
-
-    static double toDouble(Type value)
-    {
-        return static_cast<double>(value);
     }
 
     static Type toNativeFromInt32(int32_t value)
@@ -144,18 +151,23 @@ struct FloatTypedArrayAdaptor {
         return static_cast<Type>(value);
     }
 
+    static Type toNativeFromUndefined()
+    {
+        return PNaN;
+    }
+
     template<typename OtherAdaptor>
     static typename OtherAdaptor::Type convertTo(Type value)
     {
         return OtherAdaptor::toNativeFromDouble(value);
     }
 
-    static Optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
+    static std::optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
     {
         return static_cast<Type>(value);
     }
 
-    static Optional<Type> toNativeFromDoubleWithoutCoercion(double value)
+    static std::optional<Type> toNativeFromDoubleWithoutCoercion(double value)
     {
         if (std::isnan(value) || std::isinf(value))
             return static_cast<Type>(value);
@@ -163,35 +175,64 @@ struct FloatTypedArrayAdaptor {
         Type valueResult = static_cast<Type>(value);
 
         if (static_cast<double>(valueResult) != value)
-            return WTF::nullopt;
+            return std::nullopt;
 
         if (value < minValue || value > maxValue)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return valueResult;
     }
 };
 
-struct Int8Adaptor;
-struct Int16Adaptor;
-struct Int32Adaptor;
-struct Uint8Adaptor;
-struct Uint8ClampedAdaptor;
-struct Uint16Adaptor;
-struct Uint32Adaptor;
-struct Float32Adaptor;
-struct Float64Adaptor;
+template<
+    typename TypeArg, typename ViewTypeArg, typename JSViewTypeArg,
+    TypedArrayType typeValueArg>
+struct BigIntTypedArrayAdaptor {
+    typedef TypeArg Type;
+    typedef ViewTypeArg ViewType;
+    typedef JSViewTypeArg JSViewType;
+    static constexpr TypedArrayType typeValue = typeValueArg;
+    static constexpr TypeArg minValue = std::numeric_limits<TypeArg>::lowest();
+    static constexpr TypeArg maxValue = std::numeric_limits<TypeArg>::max();
+    static constexpr bool canConvertToJSQuickly = false;
+    static constexpr TypedArrayContentType contentType = JSC::contentType(typeValue);
+    static constexpr bool isInteger = true;
+    static constexpr bool isFloat = false;
+    static constexpr bool isBigInt = true;
 
-template<typename Adaptor> class GenericTypedArrayView;
-typedef GenericTypedArrayView<Int8Adaptor> Int8Array;
-typedef GenericTypedArrayView<Int16Adaptor> Int16Array;
-typedef GenericTypedArrayView<Int32Adaptor> Int32Array;
-typedef GenericTypedArrayView<Uint8Adaptor> Uint8Array;
-typedef GenericTypedArrayView<Uint8ClampedAdaptor> Uint8ClampedArray;
-typedef GenericTypedArrayView<Uint16Adaptor> Uint16Array;
-typedef GenericTypedArrayView<Uint32Adaptor> Uint32Array;
-typedef GenericTypedArrayView<Float32Adaptor> Float32Array;
-typedef GenericTypedArrayView<Float64Adaptor> Float64Array;
+    static JSValue toJSValue(JSGlobalObject* globalObject, Type value)
+    {
+        ASSERT(globalObject);
+        return JSBigInt::makeHeapBigIntOrBigInt32(globalObject, value);
+    }
+
+    static Type toNativeFromInt32(int32_t value)
+    {
+        return static_cast<Type>(value);
+    }
+
+    static Type toNativeFromUint32(uint32_t value)
+    {
+        return static_cast<Type>(value);
+    }
+
+    static Type toNativeFromDouble(double value)
+    {
+        return static_cast<Type>(value);
+    }
+
+    static Type toNativeFromUndefined()
+    {
+        // This function is a stub since undefined->BigInt conversion throws an error.
+        return 0;
+    }
+
+    template<typename OtherAdaptor>
+    static typename OtherAdaptor::Type convertTo(Type value)
+    {
+        return static_cast<typename OtherAdaptor::Type>(value);
+    }
+};
 
 template<typename Adaptor> class JSGenericTypedArrayView;
 using JSInt8Array = JSGenericTypedArrayView<Int8Adaptor>;
@@ -203,6 +244,19 @@ using JSUint16Array = JSGenericTypedArrayView<Uint16Adaptor>;
 using JSUint32Array = JSGenericTypedArrayView<Uint32Adaptor>;
 using JSFloat32Array = JSGenericTypedArrayView<Float32Adaptor>;
 using JSFloat64Array = JSGenericTypedArrayView<Float64Adaptor>;
+using JSBigInt64Array = JSGenericTypedArrayView<BigInt64Adaptor>;
+using JSBigUint64Array = JSGenericTypedArrayView<BigUint64Adaptor>;
+using JSResizableOrGrowableSharedInt8Array = JSGenericResizableOrGrowableSharedTypedArrayView<Int8Adaptor>;
+using JSResizableOrGrowableSharedInt16Array = JSGenericResizableOrGrowableSharedTypedArrayView<Int16Adaptor>;
+using JSResizableOrGrowableSharedInt32Array = JSGenericResizableOrGrowableSharedTypedArrayView<Int32Adaptor>;
+using JSResizableOrGrowableSharedUint8Array = JSGenericResizableOrGrowableSharedTypedArrayView<Uint8Adaptor>;
+using JSResizableOrGrowableSharedUint8ClampedArray = JSGenericResizableOrGrowableSharedTypedArrayView<Uint8ClampedAdaptor>;
+using JSResizableOrGrowableSharedUint16Array = JSGenericResizableOrGrowableSharedTypedArrayView<Uint16Adaptor>;
+using JSResizableOrGrowableSharedUint32Array = JSGenericResizableOrGrowableSharedTypedArrayView<Uint32Adaptor>;
+using JSResizableOrGrowableSharedFloat32Array = JSGenericResizableOrGrowableSharedTypedArrayView<Float32Adaptor>;
+using JSResizableOrGrowableSharedFloat64Array = JSGenericResizableOrGrowableSharedTypedArrayView<Float64Adaptor>;
+using JSResizableOrGrowableSharedBigInt64Array = JSGenericResizableOrGrowableSharedTypedArrayView<BigInt64Adaptor>;
+using JSResizableOrGrowableSharedBigUint64Array = JSGenericResizableOrGrowableSharedTypedArrayView<BigUint64Adaptor>;
 
 struct Int8Adaptor : IntegralTypedArrayAdaptor<int8_t, Int8Array, JSInt8Array, TypeInt8> { };
 struct Int16Adaptor : IntegralTypedArrayAdaptor<int16_t, Int16Array, JSInt16Array, TypeInt16> { };
@@ -212,23 +266,25 @@ struct Uint16Adaptor : IntegralTypedArrayAdaptor<uint16_t, Uint16Array, JSUint16
 struct Uint32Adaptor : IntegralTypedArrayAdaptor<uint32_t, Uint32Array, JSUint32Array, TypeUint32> { };
 struct Float32Adaptor : FloatTypedArrayAdaptor<float, Float32Array, JSFloat32Array, TypeFloat32> { };
 struct Float64Adaptor : FloatTypedArrayAdaptor<double, Float64Array, JSFloat64Array, TypeFloat64> { };
+struct BigInt64Adaptor : BigIntTypedArrayAdaptor<int64_t, BigInt64Array, JSBigInt64Array, TypeBigInt64> { };
+struct BigUint64Adaptor : BigIntTypedArrayAdaptor<uint64_t, BigUint64Array, JSBigUint64Array, TypeBigUint64> { };
 
 struct Uint8ClampedAdaptor {
     typedef uint8_t Type;
     typedef Uint8ClampedArray ViewType;
     typedef JSUint8ClampedArray JSViewType;
-    static const TypedArrayType typeValue = TypeUint8Clamped;
-    constexpr static const uint8_t minValue = std::numeric_limits<uint8_t>::lowest();
-    constexpr static const uint8_t maxValue = std::numeric_limits<uint8_t>::max();
+    static constexpr TypedArrayType typeValue = TypeUint8Clamped;
+    static constexpr uint8_t minValue = std::numeric_limits<uint8_t>::lowest();
+    static constexpr uint8_t maxValue = std::numeric_limits<uint8_t>::max();
+    static constexpr bool canConvertToJSQuickly = true;
+    static constexpr TypedArrayContentType contentType = JSC::contentType(typeValue);
+    static constexpr bool isInteger = true;
+    static constexpr bool isFloat = false;
+    static constexpr bool isBigInt = false;
 
-    static JSValue toJSValue(uint8_t value)
+    static JSValue toJSValue(JSGlobalObject*, uint8_t value)
     {
         return jsNumber(value);
-    }
-
-    static double toDouble(uint8_t value)
-    {
-        return static_cast<double>(value);
     }
 
     static Type toNativeFromInt32(int32_t value)
@@ -250,25 +306,30 @@ struct Uint8ClampedAdaptor {
         return static_cast<uint8_t>(lrint(value));
     }
 
+    static constexpr Type toNativeFromUndefined()
+    {
+        return 0;
+    }
+
     template<typename OtherAdaptor>
     static typename OtherAdaptor::Type convertTo(uint8_t value)
     {
         return OtherAdaptor::toNativeFromInt32(value);
     }
     
-    static Optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
+    static std::optional<Type> toNativeFromInt32WithoutCoercion(int32_t value)
     {
         if (value > maxValue || value < minValue)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return static_cast<Type>(value);
     }
 
-    static Optional<Type> toNativeFromDoubleWithoutCoercion(double value)
+    static std::optional<Type> toNativeFromDoubleWithoutCoercion(double value)
     {
         uint8_t integer = static_cast<uint8_t>(value);
         if (static_cast<double>(integer) != value)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return integer;
     }

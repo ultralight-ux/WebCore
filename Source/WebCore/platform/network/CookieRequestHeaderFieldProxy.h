@@ -37,55 +37,9 @@ struct CookieRequestHeaderFieldProxy {
     URL firstParty;
     SameSiteInfo sameSiteInfo;
     URL url;
-    Optional<FrameIdentifier> frameID;
-    Optional<PageIdentifier> pageID;
+    std::optional<FrameIdentifier> frameID;
+    std::optional<PageIdentifier> pageID;
     IncludeSecureCookies includeSecureCookies { IncludeSecureCookies::No };
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<CookieRequestHeaderFieldProxy> decode(Decoder&);
 };
-
-template<class Encoder>
-void CookieRequestHeaderFieldProxy::encode(Encoder& encoder) const
-{
-    encoder << firstParty;
-    encoder << sameSiteInfo;
-    encoder << url;
-    encoder << frameID;
-    encoder << pageID;
-    encoder << includeSecureCookies;
-}
-
-template<class Decoder>
-Optional<CookieRequestHeaderFieldProxy> CookieRequestHeaderFieldProxy::decode(Decoder& decoder)
-{
-    URL firstParty;
-    if (!decoder.decode(firstParty))
-        return WTF::nullopt;
-
-    SameSiteInfo sameSiteInfo;
-    if (!decoder.decode(sameSiteInfo))
-        return WTF::nullopt;
-
-    URL url;
-    if (!decoder.decode(url))
-        return WTF::nullopt;
-
-    Optional<Optional<FrameIdentifier>> frameID;
-    decoder >> frameID;
-    if (!frameID)
-        return WTF::nullopt;
-
-    Optional<Optional<PageIdentifier>> pageID;
-    decoder >> pageID;
-    if (!pageID)
-        return WTF::nullopt;
-
-    IncludeSecureCookies includeSecureCookies;
-    if (!decoder.decode(includeSecureCookies))
-        return WTF::nullopt;
-
-    return CookieRequestHeaderFieldProxy { WTFMove(firstParty), WTFMove(sameSiteInfo), WTFMove(url), *frameID, *pageID, includeSecureCookies };
-}
 
 } // namespace WebCore

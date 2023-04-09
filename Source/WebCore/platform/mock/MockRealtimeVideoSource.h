@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,19 +48,24 @@ class GraphicsContext;
 
 class MockRealtimeVideoSource : public RealtimeVideoCaptureSource, private OrientationNotifier::Observer {
 public:
-    static CaptureSourceOrError create(String&& deviceID, String&& name, String&& hashSalt, const MediaConstraints*);
+    static CaptureSourceOrError create(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&&, const MediaConstraints*, PageIdentifier);
+    ~MockRealtimeVideoSource();
+
+    static void setIsInterrupted(bool);
 
     ImageBuffer* imageBuffer() const;
 
 protected:
-    MockRealtimeVideoSource(String&& deviceID, String&& name, String&& hashSalt);
+    MockRealtimeVideoSource(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&&, PageIdentifier);
 
     virtual void updateSampleBuffer() = 0;
 
     Seconds elapsedTime();
     void settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>) override;
-    MediaSample::VideoRotation sampleRotation() const final { return m_deviceOrientation; }
+    VideoFrame::Rotation videoFrameRotation() const final { return m_deviceOrientation; }
     void generatePresets() override;
+
+    IntSize captureSize() const;
 
 private:
     const RealtimeMediaSourceCapabilities& capabilities() final;
@@ -69,11 +74,10 @@ private:
     void startProducingData() final;
     void stopProducingData() final;
     bool isCaptureSource() const final { return true; }
-    CaptureDevice::DeviceType deviceType() const final { return CaptureDevice::DeviceType::Camera; }
-    bool supportsSizeAndFrameRate(Optional<int> width, Optional<int> height, Optional<double>) final;
-    void setSizeAndFrameRate(Optional<int> width, Optional<int> height, Optional<double>) final;
+    CaptureDevice::DeviceType deviceType() const final { return mockCamera() ? CaptureDevice::DeviceType::Camera : CaptureDevice::DeviceType::Screen; }
+    bool supportsSizeAndFrameRate(std::optional<int> width, std::optional<int> height, std::optional<double>) final;
+    void setSizeAndFrameRate(std::optional<int> width, std::optional<int> height, std::optional<double>) final;
     void setFrameRateWithPreset(double, RefPtr<VideoPreset>) final;
-    IntSize captureSize() const;
 
 
     bool isMockSource() const final { return true; }
@@ -91,8 +95,8 @@ private:
 
     void delaySamples(Seconds) final;
 
-    bool mockCamera() const { return WTF::holds_alternative<MockCameraProperties>(m_device.properties); }
-    bool mockDisplay() const { return WTF::holds_alternative<MockDisplayProperties>(m_device.properties); }
+    bool mockCamera() const { return std::holds_alternative<MockCameraProperties>(m_device.properties); }
+    bool mockDisplay() const { return std::holds_alternative<MockDisplayProperties>(m_device.properties); }
     bool mockScreen() const { return mockDisplayType(CaptureDevice::DeviceType::Screen); }
     bool mockWindow() const { return mockDisplayType(CaptureDevice::DeviceType::Window); }
     bool mockDisplayType(CaptureDevice::DeviceType) const;
@@ -101,7 +105,7 @@ private:
     float m_bipBopFontSize { 0 };
     float m_statsFontSize { 0 };
 
-    mutable std::unique_ptr<ImageBuffer> m_imageBuffer;
+    mutable RefPtr<ImageBuffer> m_imageBuffer;
 
     Path m_path;
     DashArray m_dashWidths;
@@ -111,14 +115,14 @@ private:
     MonotonicTime m_delayUntil;
 
     unsigned m_frameNumber { 0 };
-    RunLoop::Timer<MockRealtimeVideoSource> m_emitFrameTimer;
-    Optional<RealtimeMediaSourceCapabilities> m_capabilities;
-    Optional<RealtimeMediaSourceSettings> m_currentSettings;
+    RunLoop::Timer m_emitFrameTimer;
+    std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    std::optional<RealtimeMediaSourceSettings> m_currentSettings;
     RealtimeMediaSourceSupportedConstraints m_supportedConstraints;
     Color m_fillColor { Color::black };
     MockMediaDevice m_device;
     RefPtr<VideoPreset> m_preset;
-    MediaSample::VideoRotation m_deviceOrientation { MediaSample::VideoRotation::None };
+    VideoFrame::Rotation m_deviceOrientation { VideoFrame::Rotation::None };
 };
 
 } // namespace WebCore

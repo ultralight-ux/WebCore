@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "ImageBackingStore.h"
+#include <Ultralight/Bitmap.h>
 
 #if USE(ULTRALIGHT)
 
@@ -17,7 +18,7 @@ static void OnDestroyImage(void* user_data, void* data)
     delete userData;
 }
 
-NativeImagePtr ImageBackingStore::image() const
+PlatformImagePtr ImageBackingStore::image() const
 {
     if (m_image) {
         if (m_pixelsDirty) {

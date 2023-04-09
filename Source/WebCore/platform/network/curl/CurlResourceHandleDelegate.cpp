@@ -4,7 +4,6 @@
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
  * All rights reserved.
  * Copyright (C) 2017 NAVER Corp.
- * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,9 +36,9 @@
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceHandleInternal.h"
+#include "SecurityOrigin.h"
 
 #include <wtf/CompletionHandler.h>
-#include <wtf/MemoryProfiler.h>
 
 #if USE(CURL)
 
@@ -88,11 +87,11 @@ void CurlResourceHandleDelegate::curlDidSendData(CurlRequest&, unsigned long lon
 
 static void handleCookieHeaders(ResourceHandleInternal* d, const ResourceRequest& request, const CurlResponse& response)
 {
-    static const auto setCookieHeader = "set-cookie: ";
+    static constexpr auto setCookieHeader = "set-cookie: "_s;
 
     for (const auto& header : response.headers) {
         if (header.startsWithIgnoringASCIICase(setCookieHeader)) {
-            const auto contents = header.right(header.length() - strlen(setCookieHeader));
+            const auto contents = header.right(header.length() - setCookieHeader.length());
             d->m_context->storageSession()->setCookiesFromHTTPResponse(request.firstPartyForCookies(), response.url, contents);
         }
     }
@@ -100,7 +99,6 @@ static void handleCookieHeaders(ResourceHandleInternal* d, const ResourceRequest
 
 void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& receivedResponse)
 {
-    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
     ASSERT(!d()->m_defersLoading);
 
@@ -108,7 +106,8 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
         return;
 
     m_response = ResourceResponse(receivedResponse);
-    m_response.setCertificateInfo(WTFMove(receivedResponse.certificateInfo));
+
+    updateNetworkLoadMetrics(receivedResponse.networkLoadMetrics);
     m_response.setDeprecatedNetworkLoadMetrics(Box<NetworkLoadMetrics>::create(WTFMove(receivedResponse.networkLoadMetrics)));
 
     handleCookieHeaders(d(), request.resourceRequest(), receivedResponse);
@@ -132,33 +131,33 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
         if (CurlCacheManager::singleton().getCachedResponse(cacheUrl.string(), m_response)) {
             if (d()->m_addedCacheValidationHeaders) {
                 m_response.setHTTPStatusCode(200);
-                m_response.setHTTPStatusText("OK");
+                m_response.setHTTPStatusText("OK"_s);
             }
         }
     }
 
     CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
 
-    m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = makeRef(m_handle)] {
+    m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = Ref { m_handle }] {
         m_handle.continueAfterDidReceiveResponse();
     });
 }
 
-void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
+void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& metrics)
 {
-    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
         return;
 
+    updateNetworkLoadMetrics(metrics);
+
     CurlCacheManager::singleton().didFinishLoading(m_handle);
-    client()->didFinishLoading(&m_handle);
+    client()->didFinishLoading(&m_handle, WTFMove(metrics));
 }
 
 void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceError&& resourceError, CertificateInfo&&)
 {
-    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
@@ -170,22 +169,35 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceErro
 
 void CurlResourceHandleDelegate::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
 {
-    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
         return;
 
-    Ref<SharedBuffer> buffer = SharedBuffer::create();
+    SharedBufferBuilder bufferBuilder;
     RefPtr<SharedBuffer> tempBuffer;
     while (queue.try_dequeue(tempBuffer)) {
-        buffer->append(*tempBuffer);
+        bufferBuilder.append(*tempBuffer);
     }
 
-    if (buffer->size()) {
-        CurlCacheManager::singleton().didReceiveData(m_handle, buffer->data(), buffer->size());
+    if (bufferBuilder.size()) {
+        Ref<SharedBuffer> buffer = bufferBuilder.takeAsContiguous();
+        CurlCacheManager::singleton().didReceiveData(m_handle, buffer.get());
         client()->didReceiveBuffer(&m_handle, WTFMove(buffer), buffer->size());
     }
+}
+
+void CurlResourceHandleDelegate::updateNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetrics)
+{
+    if (!d()->m_startTime)
+        d()->m_startTime = networkLoadMetrics.fetchStart;
+
+    m_handle.checkTAO(m_response);
+
+    networkLoadMetrics.redirectStart = m_handle.startTimeBeforeRedirects();
+    networkLoadMetrics.redirectCount = m_handle.redirectCount();
+    networkLoadMetrics.failsTAOCheck = m_handle.failsTAOCheck();
+    networkLoadMetrics.hasCrossOriginRedirect = m_handle.hasCrossOriginRedirect();
 }
 
 } // namespace WebCore

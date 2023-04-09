@@ -29,7 +29,7 @@
 
 #include "ApplePaySetupConfiguration.h"
 #include <WebCore/ActiveDOMObject.h>
-#include <WebCore/JSDOMPromiseDeferred.h>
+#include <WebCore/JSDOMPromiseDeferredForward.h>
 #include <wtf/Forward.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
@@ -38,15 +38,11 @@
 namespace WebCore {
 
 class ApplePaySetupFeature;
-class DeferredPromise;
 class Document;
 
 class ApplePaySetup : public ActiveDOMObject, public RefCounted<ApplePaySetup> {
 public:
-    static Ref<ApplePaySetup> create(ScriptExecutionContext& context, ApplePaySetupConfiguration&& configuration)
-    {
-        return adoptRef(*new ApplePaySetup(context, WTFMove(configuration)));
-    }
+    static Ref<ApplePaySetup> create(ScriptExecutionContext&, ApplePaySetupConfiguration&&);
 
     using SetupFeaturesPromise = DOMPromiseDeferred<IDLSequence<IDLInterface<ApplePaySetupFeature>>>;
     void getSetupFeatures(Document&, SetupFeaturesPromise&&);
@@ -63,8 +59,8 @@ private:
     void suspend(ReasonForSuspension) final;
 
     ApplePaySetupConfiguration m_configuration;
-    Optional<SetupFeaturesPromise> m_setupFeaturesPromise;
-    Optional<BeginPromise> m_beginPromise;
+    std::optional<SetupFeaturesPromise> m_setupFeaturesPromise;
+    std::optional<BeginPromise> m_beginPromise;
     RefPtr<PendingActivity<ApplePaySetup>> m_pendingActivity;
 };
 

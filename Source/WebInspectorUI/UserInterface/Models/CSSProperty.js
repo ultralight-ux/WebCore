@@ -27,6 +27,8 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 {
     constructor(index, text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange)
     {
+        WI.CSSProperty._initializePropertyNameCounts();
+
         super();
 
         this._ownerStyle = null;
@@ -34,19 +36,135 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         this._overridingProperty = null;
         this._initialState = null;
         this._modified = false;
+        this._isUpdatingText = false;
+        this._isNewProperty = false;
 
         this.update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, true);
     }
 
     // Static
 
+    static isVariable(name)
+    {
+        return name.startsWith("--") && name.length > 2;
+    }
+
     static isInheritedPropertyName(name)
     {
         console.assert(typeof name === "string");
         if (WI.CSSKeywordCompletions.InheritedProperties.has(name))
             return true;
-        // Check if the name is a CSS variable.
-        return name.startsWith("--");
+        return WI.CSSProperty.isVariable(name);
+    }
+
+    // FIXME: <https://webkit.org/b/226647> This naively collects variable-like names used in values. It should be hardened.
+    static findVariableNames(string)
+    {
+        const prefix = "var(--";
+        let prefixCursor = 0;
+        let cursor = 0;
+        let nameStartIndex = 0;
+        let names = [];
+
+        function isTerminatingChar(char) {
+            return char === ")" || char === "," || char === " " || char === "\n" || char === "\t";
+        }
+
+        while (cursor < string.length) {
+            if (nameStartIndex && isTerminatingChar(string.charAt(cursor))) {
+                names.push("--" + string.substring(nameStartIndex, cursor));
+                nameStartIndex = 0;
+            }
+
+            if (prefixCursor === prefix.length) {
+                prefixCursor = 0;
+                nameStartIndex = cursor;
+            }
+
+            if (string.charAt(cursor) === prefix.charAt(prefixCursor))
+                prefixCursor++;
+
+            cursor++;
+        }
+
+        return names;
+    }
+
+    static sortPreferringNonPrefixed(a, b)
+    {
+        let aIsPrefixed = a[0] === "-" && a[1] !== "-";
+        let bIsPrefixed = b[0] === "-" && b[1] !== "-";
+        if (!aIsPrefixed && bIsPrefixed)
+            return -1;
+        if (aIsPrefixed && !bIsPrefixed)
+            return 1;
+
+        return a.extendedLocaleCompare(b);
+    }
+
+    static sortByPropertyNameUsageCount(propertyNameA, propertyNameB)
+    {
+        let countA = WI.CSSProperty._cachedNameCounts[propertyNameA];
+        let countB = WI.CSSProperty._cachedNameCounts[propertyNameB];
+
+        const minimumCount = 100;
+        let validA = countA >= minimumCount;
+        let validB = countB >= minimumCount;
+
+        if (validA && !validB)
+            return -1;
+        if (!validA && validB)
+            return 1;
+
+        if (validA && validB) {
+            if (countA !== countB)
+                return countB - countA;
+
+            let canonicalPropertyNameA = WI.cssManager.canonicalNameForPropertyName(propertyNameA);
+            let canonicalPropertyNameB = WI.cssManager.canonicalNameForPropertyName(propertyNameB);
+            if (canonicalPropertyNameA !== propertyNameA || canonicalPropertyNameB !== propertyNameB)
+                return WI.CSSProperty.sortByPropertyNameUsageCount(canonicalPropertyNameA, canonicalPropertyNameB);
+        }
+
+        return 0;
+    }
+
+    static indexOfCompletionForMostUsedPropertyName(completions)
+    {
+        let highestRankCompletions = completions;
+        if (highestRankCompletions.every((completion) => completion instanceof WI.QueryResult)) {
+            let highestRankValue = -1;
+            for (let completion of completions) {
+                if (completion.rank > highestRankValue) {
+                    highestRankValue = completion.rank;
+                    highestRankCompletions = [];
+                }
+
+                if (completion.rank === highestRankValue)
+                    highestRankCompletions.push(completion);
+            }
+        }
+        let mostUsedHighestRankCompletion = highestRankCompletions.min((a, b) => WI.CSSProperty.sortByPropertyNameUsageCount(WI.CSSCompletions.getCompletionText(a), WI.CSSCompletions.getCompletionText(b)));
+        return completions.indexOf(mostUsedHighestRankCompletion);
+    }
+
+    static _initializePropertyNameCounts()
+    {
+        if (WI.CSSProperty._cachedNameCounts)
+            return;
+
+        WI.CSSProperty._cachedNameCounts = {};
+
+        WI.CSSProperty._storedNameCountsQueue = new Promise((resolve, reject) => {
+            WI.objectStores.cssPropertyNameCounts.getAllKeys().then((propertyNames) => {
+                Promise.allSettled(propertyNames.map(async (propertyName) => {
+                    let storedCount = await WI.objectStores.cssPropertyNameCounts.get(propertyName);
+
+                    WI.CSSProperty._cachedNameCounts[propertyName] = (WI.CSSProperty._cachedNameCounts[propertyName] || 0) + storedCount;
+                }))
+                .then(resolve, reject);
+            });
+        });
     }
 
     // Public
@@ -106,17 +224,29 @@ WI.CSSProperty = class CSSProperty extends WI.Object
             this._overridingProperty = null;
 
         this._text = text;
-        this._name = name;
         this._rawValue = value;
+        this._value = undefined;
         this._priority = priority;
         this._enabled = enabled;
         this._implicit = implicit;
         this._anonymous = anonymous;
         this._inherited = WI.CSSProperty.isInheritedPropertyName(name);
         this._valid = valid;
-        this._variable = name.startsWith("--");
+        this._isVariable = WI.CSSProperty.isVariable(name);
         this._styleSheetTextRange = styleSheetTextRange || null;
 
+        this._rawValueNewlineIndent = "";
+        if (this._rawValue) {
+            let match = this._rawValue.match(/^[^\n]+\n(\s*)/);
+            if (match)
+                this._rawValueNewlineIndent = match[1];
+        }
+        this._rawValue = this._rawValue.replace(/\n\s+/g, "\n");
+
+        this._isShorthand = undefined;
+        this._shorthandPropertyNames = undefined;
+
+        this._updateName(name);
         this._relatedShorthandProperty = null;
         this._relatedLonghandProperties = [];
 
@@ -134,20 +264,14 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         this._markModified();
 
         // Setting name or value to an empty string removes the entire CSSProperty.
-        this._name = "";
+        this._updateName("");
         const forceRemove = true;
         this._updateStyleText(forceRemove);
     }
 
-    replaceWithText(text)
-    {
-        this._markModified();
-
-        this._updateOwnerStyleText(this._text, text, true);
-    }
-
     commentOut(disabled)
     {
+        console.assert(this.editable);
         if (this._enabled === !disabled)
             return;
 
@@ -167,20 +291,29 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     set text(newText)
     {
+        newText = newText.trim();
         if (this._text === newText)
             return;
 
         this._markModified();
-        this._updateOwnerStyleText(this._text, newText);
         this._text = newText;
+        this._isUpdatingText = true;
+        this._updateOwnerStyleText();
+        this._isUpdatingText = false;
     }
 
     get formattedText()
     {
+        if (this._isUpdatingText)
+            return this._text;
+
         if (!this._name)
             return "";
 
-        return `${this._name}: ${this._rawValue};`;
+        let text = `${this._name}: ${this._rawValue};`;
+        if (!this._enabled)
+            text = "/* " + text + " */";
+        return text;
     }
 
     get modified()
@@ -207,8 +340,19 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         if (name === this._name)
             return;
 
+        if (!name) {
+            // Deleting property name causes CSSProperty to be detached from CSSStyleDeclaration.
+            console.assert(!isNaN(this._index), this);
+            this._indexBeforeDetached = this._index;
+        } else if (!isNaN(this._indexBeforeDetached) && isNaN(this._index)) {
+            // Reattach CSSProperty.
+            console.assert(!this._ownerStyle.properties.includes(this), this);
+            this._ownerStyle.insertProperty(this, this._indexBeforeDetached);
+            this._indexBeforeDetached = NaN;
+        }
+
         this._markModified();
-        this._name = name;
+        this._updateName(name);
         this._updateStyleText();
     }
 
@@ -319,7 +463,7 @@ WI.CSSProperty = class CSSProperty extends WI.Object
     get anonymous() { return this._anonymous; }
     get inherited() { return this._inherited; }
     get valid() { return this._valid; }
-    get variable() { return this._variable; }
+    get isVariable() { return this._isVariable; }
     get styleSheetTextRange() { return this._styleSheetTextRange; }
 
     get initialState()
@@ -378,6 +522,31 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         this._relatedLonghandProperties = [];
     }
 
+    get isShorthand()
+    {
+        if (this._isShorthand === undefined) {
+            this._isShorthand = WI.CSSKeywordCompletions.LonghandNamesForShorthandProperty.has(this._name);
+            if (this._isShorthand) {
+                let longhands = WI.CSSKeywordCompletions.LonghandNamesForShorthandProperty.get(this._name);
+                if (longhands && longhands.length === 1)
+                    this._isShorthand = false;
+            }
+        }
+        return this._isShorthand;
+    }
+
+    get shorthandPropertyNames()
+    {
+        if (!this._shorthandPropertyNames) {
+            this._shorthandPropertyNames = WI.CSSKeywordCompletions.ShorthandNamesForLongHandProperty.get(this._name) || [];
+            this._shorthandPropertyNames.remove("all");
+        }
+        return this._shorthandPropertyNames;
+    }
+
+    get isNewProperty() { return this._isNewProperty; }
+    set isNewProperty(value) { this._isNewProperty = value; }
+
     hasOtherVendorNameOrKeyword()
     {
         if ("_hasOtherVendorNameOrKeyword" in this)
@@ -421,79 +590,69 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     // Private
 
+    _updateName(name)
+    {
+        if (name === this._name)
+            return;
+
+        let changeCount = (propertyName, delta) => {
+            if (this._implicit || this._anonymous || !this._enabled)
+                return;
+
+            if (!propertyName || WI.CSSProperty.isVariable(propertyName))
+                return;
+
+            let cachedCount = WI.CSSProperty._cachedNameCounts[propertyName];
+
+            // Allow property counts to be updated if the property name has already been counted before.
+            // This can happen when inspecting a device that has different CSS properties enabled.
+            if (isNaN(cachedCount) && !WI.cssManager.propertyNameCompletions.isValidPropertyName(propertyName))
+                return;
+
+            console.assert(delta > 0 || cachedCount >= delta, cachedCount, delta);
+            WI.CSSProperty._cachedNameCounts[propertyName] = Math.max(0, (cachedCount || 0) + delta);
+
+            WI.CSSProperty._storedNameCountsQueue = WI.CSSProperty._storedNameCountsQueue.finally(async () => {
+                let storedCount = await WI.objectStores.cssPropertyNameCounts.get(propertyName);
+
+                console.assert(delta > 0 || storedCount >= delta, storedCount, delta);
+                await WI.objectStores.cssPropertyNameCounts.put(Math.max(0, (storedCount || 0) + delta), propertyName);
+            });
+
+            if (propertyName !== this.canonicalName)
+                changeCount(this.canonicalName, delta);
+        };
+
+        changeCount(this._name, -1);
+        this._name = name;
+        changeCount(this._name, 1);
+    }
+
     _updateStyleText(forceRemove = false)
     {
         let text = "";
 
-        if (this._name && this._rawValue)
-            text = this._name + ": " + this._rawValue + ";";
-
-        let oldText = this._text;
-        this._text = text;
-        this._updateOwnerStyleText(oldText, this._text, forceRemove);
-    }
-
-    _updateOwnerStyleText(oldText, newText, forceRemove = false)
-    {
-        if (oldText === newText) {
-            if (forceRemove) {
-                const lineDelta = 0;
-                const columnDelta = 0;
-                this._ownerStyle.shiftPropertiesAfter(this, lineDelta, columnDelta, forceRemove);
-                this._ownerStyle.updatePropertiesModifiedState();
-            }
-            return;
+        if (this._name && this._rawValue) {
+            let value = this._rawValue.replace(/\n/g, "\n" + this._rawValueNewlineIndent);
+            text = this._name + ": " + value + ";";
         }
 
+        this._text = text;
+
+        if (forceRemove)
+            this._ownerStyle.removeProperty(this);
+
+        this._updateOwnerStyleText();
+    }
+
+    _updateOwnerStyleText()
+    {
         console.assert(this._ownerStyle);
         if (!this._ownerStyle)
             return;
 
-        this._prependSemicolonIfNeeded();
-
-        let styleText = this._ownerStyle.text || "";
-
-        // _styleSheetTextRange is the position of the property within the stylesheet.
-        // range is the position of the property within the rule.
-        let range = this._styleSheetTextRange.relativeTo(this._ownerStyle.styleSheetTextRange.startLine, this._ownerStyle.styleSheetTextRange.startColumn);
-
-        // Append a line break to count the last line of styleText towards endOffset.
-        range.resolveOffsets(styleText + "\n");
-
-        console.assert(oldText === styleText.slice(range.startOffset, range.endOffset), "_styleSheetTextRange data is invalid.");
-
-        if (WI.settings.enableStyleEditingDebugMode.value) {
-            let prefix = styleText.slice(0, range.startOffset);
-            let postfix = styleText.slice(range.endOffset);
-            console.info(`${prefix}%c${oldText}%c${newText}%c${postfix}`, `background: hsl(356, 100%, 90%); color: black`, `background: hsl(100, 100%, 91%); color: black`, `background: transparent`);
-        }
-
-        let newStyleText = styleText.slice(0, range.startOffset) + newText + styleText.slice(range.endOffset);
-
-        let lineDelta = newText.lineCount - oldText.lineCount;
-        let columnDelta = newText.lastLine.length - oldText.lastLine.length;
-        this._styleSheetTextRange = this._styleSheetTextRange.cloneAndModify(0, 0, lineDelta, columnDelta);
-
-        this._ownerStyle.text = newStyleText;
-
-        let propertyWasRemoved = !newText;
-        this._ownerStyle.shiftPropertiesAfter(this, lineDelta, columnDelta, propertyWasRemoved);
+        this._ownerStyle.text = this._ownerStyle.generateFormattedText({multiline: this._ownerStyle.type === WI.CSSStyleDeclaration.Type.Rule});
         this._ownerStyle.updatePropertiesModifiedState();
-    }
-
-    _prependSemicolonIfNeeded()
-    {
-        for (let i = this.index - 1; i >= 0; --i) {
-            let property = this._ownerStyle.properties[i];
-            if (!property.enabled)
-                continue;
-
-            let match = property.text.match(/[^;\s](\s*)$/);
-            if (match)
-                property.text = property.text.trimRight() + ";" + match[1];
-
-            break;
-        }
     }
 
     _markModified()
@@ -502,6 +661,9 @@ WI.CSSProperty = class CSSProperty extends WI.Object
             this._ownerStyle.markModified();
     }
 };
+
+WI.CSSProperty._cachedNameCounts = null;
+WI.CSSProperty._storedNameCountsQueue = null;
 
 WI.CSSProperty.Event = {
     Changed: "css-property-changed",

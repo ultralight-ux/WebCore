@@ -27,6 +27,6 @@
 
 namespace JSC {
 
-enum PutKind { Direct, NotDirect, DirectPrivateFieldCreate, DirectPrivateFieldPut };
+enum class PutKind : uint8_t { Direct, NotDirect, DirectPrivateFieldDefine, DirectPrivateFieldSet };
 
 } // namespace JSC

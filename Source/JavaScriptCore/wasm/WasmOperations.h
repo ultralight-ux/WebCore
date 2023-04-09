@@ -28,9 +28,10 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "IndexingType.h"
+#include "JITOperationValidation.h"
 #include "JSCJSValue.h"
-#include "SlowPathReturnType.h"
 #include "WasmExceptionType.h"
+#include "WasmOSREntryData.h"
 
 namespace JSC {
 
@@ -43,33 +44,78 @@ class Context;
 namespace Wasm {
 
 class Instance;
-class Signature;
+class TypeDefinition;
 
-void JIT_OPERATION operationWasmTriggerOSREntryNow(Probe::Context&) WTF_INTERNAL;
-void JIT_OPERATION operationWasmTriggerTierUpNow(Instance*, uint32_t functionIndex) WTF_INTERNAL;
-void JIT_OPERATION operationWasmThrowBadI64(JSWebAssemblyInstance*) WTF_INTERNAL;
-void JIT_OPERATION operationWasmUnwind(CallFrame*) WTF_INTERNAL;
+typedef int64_t EncodedWasmValue;
 
-double JIT_OPERATION operationConvertToF64(CallFrame*, JSValue) WTF_INTERNAL;
-int32_t JIT_OPERATION operationConvertToI32(CallFrame*, JSValue) WTF_INTERNAL;
-float JIT_OPERATION operationConvertToF32(CallFrame*, JSValue) WTF_INTERNAL;
+#if ENABLE(WEBASSEMBLY_B3JIT)
+void loadValuesIntoBuffer(Probe::Context&, const StackMap&, uint64_t* buffer, SavedFPWidth);
+JSC_DECLARE_JIT_OPERATION(operationWasmTriggerOSREntryNow, void, (Probe::Context&));
+JSC_DECLARE_JIT_OPERATION(operationWasmTriggerTierUpNow, void, (Instance*, uint32_t functionIndex));
+#endif
+JSC_DECLARE_JIT_OPERATION(operationWasmUnwind, void*, (Instance*));
 
-void JIT_OPERATION operationIterateResults(CallFrame*, Instance*, const Signature*, JSValue, uint64_t*, uint64_t*) WTF_INTERNAL;
-JSArray* JIT_OPERATION operationAllocateResultsArray(CallFrame*, Wasm::Instance*, const Signature*, IndexingType, JSValue*) WTF_INTERNAL;
+JSC_DECLARE_JIT_OPERATION(operationConvertToI64, int64_t, (Instance*, EncodedJSValue));
+JSC_DECLARE_JIT_OPERATION(operationConvertToF64, double, (Instance*, EncodedJSValue));
+JSC_DECLARE_JIT_OPERATION(operationConvertToI32, int32_t, (Instance*, EncodedJSValue));
+JSC_DECLARE_JIT_OPERATION(operationConvertToF32, float, (Instance*, EncodedJSValue));
+JSC_DECLARE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (Instance*, EncodedJSValue));
+JSC_DECLARE_JIT_OPERATION(operationConvertToBigInt, EncodedJSValue, (Instance*, EncodedWasmValue));
 
-void JIT_OPERATION operationWasmWriteBarrierSlowPath(JSCell*, VM*) WTF_INTERNAL;
-uint32_t JIT_OPERATION operationPopcount32(int32_t) WTF_INTERNAL;
-uint64_t JIT_OPERATION operationPopcount64(int64_t) WTF_INTERNAL;
-int32_t JIT_OPERATION operationGrowMemory(void*, Instance*, int32_t) WTF_INTERNAL;
+JSC_DECLARE_JIT_OPERATION(operationIterateResults, void, (Instance*, const TypeDefinition*, EncodedJSValue, uint64_t*, uint64_t*));
+JSC_DECLARE_JIT_OPERATION(operationAllocateResultsArray, JSArray*, (Wasm::Instance*, const TypeDefinition*, IndexingType, JSValue*));
 
-EncodedJSValue JIT_OPERATION operationGetWasmTableElement(Instance*, unsigned, int32_t) WTF_INTERNAL;
-bool JIT_OPERATION operationSetWasmTableElement(Instance*, unsigned, int32_t, EncodedJSValue encValue) WTF_INTERNAL;
-EncodedJSValue JIT_OPERATION operationWasmRefFunc(Instance*, uint32_t) WTF_INTERNAL;
-int32_t JIT_OPERATION operationWasmTableGrow(Instance*, unsigned, EncodedJSValue fill, int32_t delta) WTF_INTERNAL;
-bool JIT_OPERATION operationWasmTableFill(Instance*, unsigned, int32_t offset, EncodedJSValue fill, int32_t count) WTF_INTERNAL;
-int32_t JIT_OPERATION operationGetWasmTableSize(Instance*, unsigned) WTF_INTERNAL;
+JSC_DECLARE_JIT_OPERATION(operationWasmWriteBarrierSlowPath, void, (JSCell*, VM*));
+JSC_DECLARE_JIT_OPERATION(operationPopcount32, uint32_t, (int32_t));
+JSC_DECLARE_JIT_OPERATION(operationPopcount64, uint64_t, (int64_t));
+JSC_DECLARE_JIT_OPERATION(operationGrowMemory, int32_t, (Instance*, int32_t));
+JSC_DECLARE_JIT_OPERATION(operationWasmMemoryFill, size_t, (Instance*, uint32_t dstAddress, uint32_t targetValue, uint32_t count));
+JSC_DECLARE_JIT_OPERATION(operationWasmMemoryCopy, size_t, (Instance*, uint32_t dstAddress, uint32_t srcAddress, uint32_t count));
 
-void* JIT_OPERATION operationWasmToJSException(CallFrame*, Wasm::ExceptionType, Instance*) WTF_INTERNAL;
+JSC_DECLARE_JIT_OPERATION(operationGetWasmTableElement, EncodedJSValue, (Instance*, unsigned, int32_t));
+JSC_DECLARE_JIT_OPERATION(operationSetWasmTableElement, uint32_t, (Instance*, unsigned, uint32_t, EncodedJSValue encValue));
+JSC_DECLARE_JIT_OPERATION(operationWasmRefFunc, EncodedJSValue, (Instance*, uint32_t));
+JSC_DECLARE_JIT_OPERATION(operationWasmTableInit, size_t, (Instance*, unsigned elementIndex, unsigned tableIndex, uint32_t dstOffset, uint32_t srcOffset, uint32_t length));
+JSC_DECLARE_JIT_OPERATION(operationWasmElemDrop, void, (Instance*, unsigned elementIndex));
+JSC_DECLARE_JIT_OPERATION(operationWasmTableGrow, int32_t, (Instance*, unsigned, EncodedJSValue fill, uint32_t delta));
+JSC_DECLARE_JIT_OPERATION(operationWasmTableFill, size_t, (Instance*, unsigned, uint32_t offset, EncodedJSValue fill, uint32_t count));
+JSC_DECLARE_JIT_OPERATION(operationWasmTableCopy, size_t, (Instance*, unsigned dstTableIndex, unsigned srcTableIndex, int32_t dstOffset, int32_t srcOffset, int32_t length));
+JSC_DECLARE_JIT_OPERATION(operationGetWasmTableSize, int32_t, (Instance*, unsigned));
+
+JSC_DECLARE_JIT_OPERATION(operationMemoryAtomicWait32, int32_t, (Instance* instance, unsigned base, unsigned offset, int32_t value, int64_t timeout));
+JSC_DECLARE_JIT_OPERATION(operationMemoryAtomicWait64, int32_t, (Instance* instance, unsigned base, unsigned offset, int64_t value, int64_t timeout));
+JSC_DECLARE_JIT_OPERATION(operationMemoryAtomicNotify, int32_t, (Instance*, unsigned, unsigned, int32_t));
+JSC_DECLARE_JIT_OPERATION(operationWasmMemoryInit, size_t, (Instance*, unsigned dataSegmentIndex, uint32_t dstAddress, uint32_t srcAddress, uint32_t length));
+JSC_DECLARE_JIT_OPERATION(operationWasmDataDrop, void, (Instance*, unsigned dataSegmentIndex));
+
+JSC_DECLARE_JIT_OPERATION(operationWasmStructNew, EncodedJSValue, (Instance*, uint32_t, bool, uint64_t*));
+JSC_DECLARE_JIT_OPERATION(operationWasmStructNewEmpty, EncodedJSValue, (Instance*, uint32_t));
+JSC_DECLARE_JIT_OPERATION(operationWasmStructGet, EncodedJSValue, (EncodedJSValue, uint32_t));
+JSC_DECLARE_JIT_OPERATION(operationWasmStructSet, void, (Instance*, EncodedJSValue, uint32_t, EncodedJSValue));
+
+JSC_DECLARE_JIT_OPERATION(operationWasmThrow, void*, (Instance*, unsigned exceptionIndex, uint64_t*));
+JSC_DECLARE_JIT_OPERATION(operationWasmRethrow, void*, (Instance*, EncodedJSValue thrownValue));
+
+JSC_DECLARE_JIT_OPERATION(operationWasmToJSException, void*, (Instance*, Wasm::ExceptionType));
+
+struct ThrownExceptionInfo {
+    EncodedJSValue thrownValue;
+    void* payload;
+};
+
+JSC_DECLARE_JIT_OPERATION(operationWasmArrayNew, EncodedJSValue, (Instance* instance, uint32_t typeIndex, uint32_t size, EncodedJSValue encValue));
+JSC_DECLARE_JIT_OPERATION(operationWasmArrayGet, EncodedJSValue, (Instance* instance, uint32_t typeIndex, EncodedJSValue encValue, uint32_t index));
+JSC_DECLARE_JIT_OPERATION(operationWasmArraySet, void, (Instance* instance, uint32_t typeIndex, EncodedJSValue encValue, uint32_t index, EncodedJSValue value));
+
+#if USE(JSVALUE64)
+JSC_DECLARE_JIT_OPERATION(operationWasmRetrieveAndClearExceptionIfCatchable, ThrownExceptionInfo, (Instance*));
+#else
+/* On 32-bit platforms, we can't return both an EncodedJSValue and the payload
+ * together (not enough return registers are available in the ABI and we don't
+ * handle stack arguments when calling C functions), so, instead, return the
+ * payload and return the thrown value via an out pointer */
+JSC_DECLARE_JIT_OPERATION(operationWasmRetrieveAndClearExceptionIfCatchable, void*, (Instance*, EncodedJSValue*));
+#endif // USE(JSVALUE64)
 
 } } // namespace JSC::Wasm
 

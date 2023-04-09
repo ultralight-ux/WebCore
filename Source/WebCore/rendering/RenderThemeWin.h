@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Kenneth Rohde Christiansen
  *
  * This library is free software; you can redistribute it and/or
@@ -54,19 +54,19 @@ public:
     // A method asking if the theme's controls actually care about redrawing when hovered.
     bool supportsHover(const RenderStyle&) const override;
 
-    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
-    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
-    Color platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
-    Color platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const override;
+    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const override;
+    Color platformActiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const override;
+    Color platformInactiveSelectionForegroundColor(OptionSet<StyleColorOptions>) const override;
 
-    Color systemColor(CSSValueID, OptionSet<StyleColor::Options>) const override;
+    Color systemColor(CSSValueID, OptionSet<StyleColorOptions>) const override;
 
-    bool paintCheckbox(const RenderObject& o, const PaintInfo& i, const IntRect& r) override
-    { return paintButton(o, i, r); }
+    bool paintCheckbox(const RenderObject& o, const PaintInfo& i, const FloatRect& r) override
+    { return paintButton(o, i, IntRect(r)); }
     void setCheckboxSize(RenderStyle&) const override;
 
-    bool paintRadio(const RenderObject& o, const PaintInfo& i, const IntRect& r) override
-    { return paintButton(o, i, r); }
+    bool paintRadio(const RenderObject& o, const PaintInfo& i, const FloatRect& r) override
+    { return paintButton(o, i, IntRect(r)); }
     void setRadioSize(RenderStyle& style) const override
     { return setCheckboxSize(style); }
 
@@ -84,7 +84,7 @@ public:
     bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override;
     void adjustMenuListButtonStyle(RenderStyle&, const Element*) const override;
 
-    bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
+    void paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
 
     bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override;
     bool paintSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) override;
@@ -121,15 +121,12 @@ public:
 
 #if ENABLE(VIDEO)
     String mediaControlsStyleSheet() override;
-    String mediaControlsScript() override;
+    Vector<String, 2> mediaControlsScripts() override;
 #endif
 
-#if ENABLE(METER_ELEMENT)
-    IntSize meterSizeForBounds(const RenderMeter&, const IntRect&) const override;
-    bool supportsMeter(ControlPart) const override;
+    bool supportsMeter(StyleAppearance, const HTMLMeterElement&) const override;
     void adjustMeterStyle(RenderStyle&, const Element*) const override;
     bool paintMeter(const RenderObject&, const PaintInfo&, const IntRect&) override;
-#endif
 
 private:
     enum ControlSubPart {
@@ -141,11 +138,6 @@ private:
     RenderThemeWin();
     virtual ~RenderThemeWin();
 
-    bool canPaint(const PaintInfo&) const final { return true; }
-
-    // System fonts.
-    void updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription&) const override;
-
     void addIntrinsicMargins(RenderStyle&) const;
     void close();
 
@@ -155,7 +147,7 @@ private:
     unsigned determineButtonState(const RenderObject&);
     unsigned determineSpinButtonState(const RenderObject&, ControlSubPart = None);
 
-    bool supportsFocus(ControlPart) const;
+    bool supportsFocus(StyleAppearance) const;
 
     ThemeData getThemeData(const RenderObject&, ControlSubPart = None);
     ThemeData getClassicThemeData(const RenderObject&, ControlSubPart = None);

@@ -3,7 +3,6 @@
 
 #include "GraphicsContext.h"
 #include "NotImplemented.h"
-#include "PlatformContextUltralight.h"
 #include <Ultralight/private/Canvas.h>
 #include <Ultralight/private/Paint.h>
 #include <algorithm>
@@ -17,7 +16,7 @@ void Gradient::stopsChanged()
 
 void Gradient::createUltralightGradient()
 {
-    sortStops();
+    m_stops.sort();
 
     m_gradient = WTF::switchOn(
         m_data,
@@ -48,9 +47,8 @@ void Gradient::createUltralightGradient()
     if (!m_gradient)
         return;
 
-    // TODO: Apply this transformation in shader instead of applying it to p0/p1
-    FloatPoint mapped_p0 = m_gradientSpaceTransformation.mapPoint(FloatPoint(m_gradient->p0.x, m_gradient->p0.y));
-    FloatPoint mapped_p1 = m_gradientSpaceTransformation.mapPoint(FloatPoint(m_gradient->p1.x, m_gradient->p1.y));
+    FloatPoint mapped_p0 = FloatPoint(m_gradient->p0.x, m_gradient->p0.y);
+    FloatPoint mapped_p1 = FloatPoint(m_gradient->p1.x, m_gradient->p1.y);
     m_gradient->p0 = ultralight::Point(mapped_p0.x(), mapped_p0.y());
     m_gradient->p1 = ultralight::Point(mapped_p1.x(), mapped_p1.y());
 
@@ -62,8 +60,8 @@ void Gradient::createUltralightGradient()
 
     m_gradient->num_stops = num_stops;
     for (size_t i = 0; i < num_stops; ++i) {
-        m_gradient->stops[i].stop = m_stops[i].offset;
-        m_gradient->stops[i].color = ToColor(m_stops[i].color);
+        m_gradient->stops[i].stop = m_stops.stops()[i].offset;
+        m_gradient->stops[i].color = m_stops.stops()[i].color;
     }
 }
 
@@ -73,7 +71,7 @@ void Gradient::fill(GraphicsContext& context, const FloatRect& rect)
         createUltralightGradient();
 
     if (m_gradient)
-        context.platformContext()->canvas()->DrawGradient(m_gradient.get(), rect);
+        context.platformContext()->DrawGradient(m_gradient.get(), rect);
 }
 
 } // namespace WebCore

@@ -63,7 +63,7 @@ set(WEBINSPECTORUI_DIR "${CMAKE_SOURCE_DIR}/Source/WebInspectorUI")
 INSTALL(DIRECTORY "${WEBINSPECTORUI_DIR}/UserInterface/" DESTINATION "inspector")
 INSTALL(FILES "${WEBINSPECTORUI_DIR}/Localizations/en.lproj/localizedStrings.js"
               DESTINATION "inspector")
-INSTALL(FILES "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector/InspectorBackendCommands.js"
+INSTALL(FILES "${JavaScriptCore_DERIVED_SOURCES_DIR}/inspector/InspectorBackendCommands.js"
               DESTINATION "inspector/Protocol")
 
 if (PORT MATCHES "UltralightWin")

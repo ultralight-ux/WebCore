@@ -48,72 +48,201 @@ WI.FileUtilities = class FileUtilities {
         return "web-inspector:///" + encodeURIComponent(FileUtilities.sanitizeFilename(filename));
     }
 
-    static save(saveData, forceSaveAs)
+    static canSave(saveMode)
     {
-        console.assert(saveData);
-        if (!saveData)
-            return;
+        console.assert(Object.values(WI.FileUtilities.SaveMode).includes(saveMode), saveMode);
+        return InspectorFrontendHost.canSave(saveMode);
+    }
 
-        if (typeof saveData.customSaveHandler === "function") {
-            saveData.customSaveHandler(forceSaveAs);
+    static async save(saveMode, fileVariants, forceSaveAs)
+    {
+        console.assert(WI.FileUtilities.canSave(saveMode), saveMode);
+
+        console.assert(fileVariants);
+        if (!fileVariants) {
+            InspectorFrontendHost.beep();
             return;
         }
 
-        console.assert(saveData.content);
-        if (!saveData.content)
-            return;
+        let isFileVariantsMode = saveMode === WI.FileUtilities.SaveMode.FileVariants;
+        if (isFileVariantsMode)
+            forceSaveAs = true;
 
-        let url = saveData.url || "";
-        let suggestedName = parseURL(url).lastPathComponent;
-        if (!suggestedName) {
-            suggestedName = WI.UIString("Untitled");
-            let dataURLTypeMatch = /^data:([^;]+)/.exec(url);
-            if (dataURLTypeMatch) {
-                let fileExtension = WI.fileExtensionForMIMEType(dataURLTypeMatch[1]);
-                if (fileExtension)
-                    suggestedName += "." + fileExtension;
+        if (typeof fileVariants.customSaveHandler === "function") {
+            fileVariants.customSaveHandler(forceSaveAs);
+            return;
+        }
+
+        if (!isFileVariantsMode && !Array.isArray(fileVariants))
+            fileVariants = [fileVariants];
+
+        console.assert(Array.isArray(fileVariants), fileVariants);
+        if (!Array.isArray(fileVariants)) {
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        let promises = fileVariants.map((fileVariant) => {
+            let content = fileVariant.content;
+            console.assert(content, fileVariant);
+            if (!content)
+                return null;
+
+            let displayType = fileVariant.displayType || "";
+            console.assert(!isFileVariantsMode || fileVariant.displayType, fileVariant);
+            if (!fileVariant.displayType && isFileVariantsMode)
+                return null;
+
+            let suggestedName = fileVariant.suggestedName;
+            if (!suggestedName) {
+                let url = fileVariant.url || "";
+                suggestedName = parseURL(url).lastPathComponent;
+                if (!suggestedName) {
+                    suggestedName = WI.UIString("Untitled");
+                    let dataURLTypeMatch = /^data:([^;]+)/.exec(url);
+                    if (dataURLTypeMatch) {
+                        let fileExtension = WI.fileExtensionForMIMEType(dataURLTypeMatch[1]);
+                        if (fileExtension)
+                            suggestedName += "." + fileExtension;
+                    }
+                }
             }
-        }
+            let url = WI.FileUtilities.inspectorURLForFilename(suggestedName);
 
-        if (typeof saveData.content === "string") {
-            const base64Encoded = saveData.base64Encoded || false;
-            InspectorFrontendHost.save(suggestedName, saveData.content, base64Encoded, forceSaveAs || saveData.forceSaveAs);
+            if (typeof content === "string") {
+                return Promise.resolve({
+                    displayType,
+                    url,
+                    content,
+                    base64Encoded: !!fileVariant.base64Encoded,
+                });
+            }
+
+            let wrappedPromise = new WI.WrappedPromise;
+            let fileReader = new FileReader;
+            fileReader.addEventListener("loadend", () => {
+                wrappedPromise.resolve({
+                    displayType,
+                    url,
+                    content: parseDataURL(fileReader.result).data,
+                    base64Encoded: true,
+                });
+            });
+            fileReader.readAsDataURL(content);
+            return wrappedPromise.promise;
+        });
+        if (promises.includes(null)) {
+            InspectorFrontendHost.beep();
             return;
         }
 
-        let fileReader = new FileReader;
-        fileReader.readAsDataURL(saveData.content);
-        fileReader.addEventListener("loadend", () => {
-            let dataURLComponents = parseDataURL(fileReader.result);
+        let saveDatas = await Promise.all(promises);
 
-            const base64Encoded = true;
-            InspectorFrontendHost.save(suggestedName, dataURLComponents.data, base64Encoded, forceSaveAs || saveData.forceSaveAs);
-        });
+        console.assert(isFileVariantsMode || saveDatas.length === 1, saveDatas);
+        console.assert(!isFileVariantsMode || new Set(saveDatas.map((saveData) => saveData.displayType)).size === saveDatas.length, saveDatas);
+        console.assert(!isFileVariantsMode || new Set(saveDatas.map((saveData) => WI.urlWithoutExtension(saveData.url))).size === 1, saveDatas);
+
+        InspectorFrontendHost.save(saveDatas, !!forceSaveAs);
     }
 
-    static importText(callback)
+    static import(callback, {multiple} = {})
     {
         let inputElement = document.createElement("input");
         inputElement.type = "file";
-        inputElement.multiple = true;
+        inputElement.value = null;
+        inputElement.multiple = !!multiple;
         inputElement.addEventListener("change", (event) => {
-            WI.FileUtilities.readText(inputElement.files, callback);
+            callback(inputElement.files);
         });
+
         inputElement.click();
+
+        // Cache the last used import element so that it doesn't get GCd while the native file
+        // picker is shown, which would prevent the "change" event listener from firing.
+        FileUtilities.importInputElement = inputElement;
     }
 
-    static importJSON(callback)
+    static importText(callback, options = {})
     {
-        let inputElement = document.createElement("input");
-        inputElement.type = "file";
-        inputElement.multiple = true;
-        inputElement.addEventListener("change", (event) => {
-            WI.FileUtilities.readJSON(inputElement.files, callback);
-        });
-        inputElement.click();
+        FileUtilities.import((files) => {
+            FileUtilities.readText(files, callback);
+        }, options);
+    }
+
+    static importJSON(callback, options = {})
+    {
+        FileUtilities.import((files) => {
+            FileUtilities.readJSON(files, callback);
+        }, options);
+    }
+
+    static importData(callback, options = {})
+    {
+        FileUtilities.import((files) => {
+            FileUtilities.readData(files, callback);
+        }, options);
     }
 
     static async readText(fileOrList, callback)
+    {
+        await FileUtilities._read(fileOrList, async (file, result) => {
+            await new Promise((resolve, reject) => {
+                let reader = new FileReader;
+                reader.addEventListener("loadend", (event) => {
+                    result.text = reader.result;
+                    resolve(event);
+                });
+                reader.addEventListener("error", reject);
+                reader.readAsText(file);
+            });
+        }, callback);
+    }
+
+    static async readJSON(fileOrList, callback)
+    {
+        await WI.FileUtilities.readText(fileOrList, async (result) => {
+            if (result.text && !result.error) {
+                try {
+                    result.json = JSON.parse(result.text);
+                } catch (e) {
+                    result.error = e;
+                }
+            }
+
+            await callback(result);
+        });
+    }
+
+    static async readData(fileOrList, callback)
+    {
+        await FileUtilities._read(fileOrList, async (file, result) => {
+            await new Promise((resolve, reject) => {
+                let reader = new FileReader;
+                reader.addEventListener("loadend", (event) => {
+                    let {mimeType, base64, data} = parseDataURL(reader.result);
+
+                    // In case no mime type was determined, try to derive one from the file extension.
+                    if (!mimeType || mimeType === "text/plain") {
+                        let extension = WI.fileExtensionForFilename(result.filename);
+                        if (extension)
+                            mimeType = WI.mimeTypeForFileExtension(extension);
+                    }
+
+                    result.mimeType = mimeType;
+                    result.base64Encoded = base64;
+                    result.content = data;
+
+                    resolve(event);
+                });
+                reader.addEventListener("error", reject);
+                reader.readAsDataURL(file);
+            });
+        }, callback);
+    }
+
+    // Private
+
+    static async _read(fileOrList, operation, callback)
     {
         console.assert(fileOrList instanceof File || fileOrList instanceof FileList);
 
@@ -124,43 +253,23 @@ WI.FileUtilities = class FileUtilities {
             files = Array.from(fileOrList);
 
         for (let file of files) {
-            let reader = new FileReader;
-            reader.readAsText(file);
-
             let result = {
                 filename: file.name,
             };
 
             try {
-                await new Promise((resolve, reject) => {
-                    reader.addEventListener("loadend", (event) => {
-                        result.text = reader.result;
-                        resolve(event);
-                    });
-                    reader.addEventListener("error", reject);
-                });
+                await operation(file, result);
             } catch (e) {
                 result.error = e;
             }
 
-            let promise = callback(result);
-            if (promise instanceof Promise)
-                await promise;
+            await callback(result);
         }
     }
+};
 
-    static async readJSON(fileOrList, callback)
-    {
-        return WI.FileUtilities.readText(fileOrList, (result) => {
-            if (result.text && !result.error) {
-                try {
-                    result.json = JSON.parse(result.text);
-                } catch (e) {
-                    result.error = e;
-                }
-            }
-
-            return callback(result);
-        });
-    }
+// Keep in sync with `InspectorFrontendClient::SaveMode` and `InspectorFrontendHost::SaveMode`.
+WI.FileUtilities.SaveMode = {
+    SingleFile: "single-file",
+    FileVariants: "file-variants",
 };

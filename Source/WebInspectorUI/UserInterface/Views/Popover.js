@@ -114,7 +114,7 @@ WI.Popover = class Popover extends WI.Object
             previouslyFocusedElement.focus();
     }
 
-    present(targetFrame, preferredEdges)
+    present(targetFrame, preferredEdges, {updateContent, shouldAnimate} = {})
     {
         this._targetFrame = targetFrame;
         this._preferredEdges = preferredEdges;
@@ -124,7 +124,10 @@ WI.Popover = class Popover extends WI.Object
 
         this._addListenersIfNeeded();
 
-        this._update();
+        if (updateContent && this.visible)
+            this.update(shouldAnimate);
+        else
+            this._update(shouldAnimate);
     }
 
     presentNewContentWithFrame(content, targetFrame, preferredEdges)
@@ -235,7 +238,7 @@ WI.Popover = class Popover extends WI.Object
             this._preferredSize = new WI.Size(Math.ceil(popoverBounds.width), Math.ceil(popoverBounds.height));
         }
 
-        var titleBarOffset = WI.Platform.name === "mac" ? 22 : 0;
+        var titleBarOffset = WI.undockedTitleAreaHeight();
         var containerFrame = new WI.Rect(0, titleBarOffset, window.innerWidth, window.innerHeight - titleBarOffset);
         // The frame of the window with a little inset to make sure we have room for shadows.
         containerFrame = containerFrame.inset(WI.Popover.ShadowEdgeInsets);

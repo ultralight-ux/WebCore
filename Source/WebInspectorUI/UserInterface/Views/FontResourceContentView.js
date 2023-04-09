@@ -31,14 +31,10 @@ WI.FontResourceContentView = class FontResourceContentView extends WI.ResourceCo
 
         this._styleElement = null;
         this._previewElement = null;
+        this._previewContainer = null;
     }
 
     // Public
-
-    get previewElement()
-    {
-        return this._previewElement;
-    }
 
     sizeToFit()
     {
@@ -56,78 +52,45 @@ WI.FontResourceContentView = class FontResourceContentView extends WI.ResourceCo
     contentAvailable(content, base64Encoded)
     {
         this._fontObjectURL = this.resource.createObjectURL();
+
         if (!this._fontObjectURL) {
             this.showGenericErrorMessage();
             return;
         }
 
-        const uniqueFontName = "WebInspectorFontPreview" + (++WI.FontResourceContentView._uniqueFontIdentifier);
-
-        var format = "";
-
-        // We need to specify a format when loading SVG fonts to make them work.
-        if (this.resource.mimeTypeComponents.type === "image/svg+xml")
-            format = " format(\"svg\")";
-
-        if (this._styleElement && this._styleElement.parentNode)
-            this._styleElement.parentNode.removeChild(this._styleElement);
-
         this.removeLoadingIndicator();
 
-        this._styleElement = document.createElement("style");
-        this._styleElement.textContent = "@font-face { font-family: \"" + uniqueFontName + "\"; src: url(" + this._fontObjectURL + ")" + format + "; }";
+        this._previewContainer = this.element.appendChild(document.createElement("div"));
+        this._previewContainer.className = "preview-container";
 
-        // The style element will be added when shown later if we are not visible now.
-        if (this.visible)
-            document.head.appendChild(this._styleElement);
+        this._updatePreviewElement();
 
-        this._previewElement = document.createElement("div");
-        this._previewElement.className = "preview";
-        this._previewElement.style.fontFamily = uniqueFontName;
+        if (WI.NetworkManager.supportsOverridingResponses()) {
+            let dropZoneView = new WI.DropZoneView(this);
+            dropZoneView.targetElement = this._previewContainer;
+            this.addSubview(dropZoneView);
 
-        function createMetricElement(className)
-        {
-            var metricElement = document.createElement("div");
-            metricElement.className = "metric " + className;
-            return metricElement;
+            if (this.resource.localResourceOverride)
+                this.resource.addEventListener(WI.SourceCode.Event.ContentDidChange, this._handleLocalResourceContentDidChange, this);
         }
-
-        var lines = WI.FontResourceContentView.PreviewLines;
-        for (var i = 0; i < lines.length; ++i) {
-            var lineElement = document.createElement("div");
-            lineElement.className = "line";
-
-            lineElement.appendChild(createMetricElement("top"));
-            lineElement.appendChild(createMetricElement("xheight"));
-            lineElement.appendChild(createMetricElement("middle"));
-            lineElement.appendChild(createMetricElement("baseline"));
-            lineElement.appendChild(createMetricElement("bottom"));
-
-            var contentElement = document.createElement("div");
-            contentElement.className = "content";
-            contentElement.textContent = lines[i];
-            lineElement.appendChild(contentElement);
-
-            this._previewElement.appendChild(lineElement);
-        }
-
-        this.element.appendChild(this._previewElement);
-
-        this.sizeToFit();
     }
 
-    shown()
+    attached()
     {
+        super.attached();
+
         // Add the style element since it is removed when hidden.
         if (this._styleElement)
             document.head.appendChild(this._styleElement);
     }
 
-    hidden()
+    detached()
     {
         // Remove the style element so it will not stick around when this content view is destroyed.
-        if (this._styleElement && this._styleElement.parentNode)
-            this._styleElement.parentNode.removeChild(this._styleElement);
+        if (this._styleElement)
+            this._styleElement.remove();
+
+        super.detached();
     }
 
     closed()
@@ -138,6 +101,8 @@ WI.FontResourceContentView = class FontResourceContentView extends WI.ResourceCo
         // the object URL to be resolved again.
         if (this._fontObjectURL)
             URL.revokeObjectURL(this._fontObjectURL);
+
+        super.closed();
     }
 
     // Protected
@@ -145,6 +110,118 @@ WI.FontResourceContentView = class FontResourceContentView extends WI.ResourceCo
     layout()
     {
         this.sizeToFit();
+    }
+
+    // DropZoneView delegate
+
+    dropZoneShouldAppearForDragEvent(dropZone, event)
+    {
+        let existingOverrides = WI.networkManager.localResourceOverridesForURL(this.resource.url);
+        if (existingOverrides.length > 1)
+            return false;
+
+        let localResourceOverride = this.resource.localResourceOverride || existingOverrides[0];
+        if (localResourceOverride && !localResourceOverride.canMapToFile)
+            return false;
+
+        return event.dataTransfer.types.includes("Files");
+    }
+
+    dropZoneHandleDragEnter(dropZone, event)
+    {
+        if (this.resource.localResourceOverride)
+            dropZone.text = WI.UIString("Update Font");
+        else if (WI.networkManager.localResourceOverridesForURL(this.resource.url).length)
+            dropZone.text = WI.UIString("Update Local Override");
+        else
+            dropZone.text = WI.UIString("Create Local Override");
+    }
+
+    dropZoneHandleDrop(dropZone, event)
+    {
+        let files = event.dataTransfer.files;
+        if (files.length !== 1) {
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        WI.FileUtilities.readData(files, async ({dataURL, mimeType, base64Encoded, content}) => {
+            let localResourceOverride = this.resource.localResourceOverride || WI.networkManager.localResourceOverridesForURL(this.resource.url)[0];
+            if (!localResourceOverride) {
+                localResourceOverride = await this.resource.createLocalResourceOverride(WI.LocalResourceOverride.InterceptType.Response);
+                WI.networkManager.addLocalResourceOverride(localResourceOverride);
+            }
+            console.assert(localResourceOverride);
+
+            let revision = localResourceOverride.localResource.editableRevision;
+            revision.updateRevisionContent(content, {base64Encoded, mimeType});
+
+            if (!this.resource.localResourceOverride)
+                WI.showLocalResourceOverride(localResourceOverride, {overriddenResource: this.resource});
+        });
+    }
+
+    // Private
+
+    _updatePreviewElement()
+    {
+        if (this._styleElement)
+            this._styleElement.remove();
+        if (this._previewElement)
+            this._previewElement.remove();
+
+        const uniqueFontName = "WebInspectorFontPreview" + (++WI.FontResourceContentView._uniqueFontIdentifier);
+
+        let format = "";
+
+        // We need to specify a format when loading SVG fonts to make them work.
+        if (this.resource.mimeTypeComponents.type === "image/svg+xml")
+            format = " format(\"svg\")";
+
+        this._styleElement = document.createElement("style");
+        this._styleElement.textContent = `@font-face { font-family: "${uniqueFontName}"; src: url(${this._fontObjectURL}) ${format}; }`;
+
+        // The style element will be added when shown later if we are not visible now.
+        if (this.isAttached)
+            document.head.appendChild(this._styleElement);
+
+        this._previewElement = document.createElement("div");
+        this._previewElement.className = "preview";
+        this._previewElement.style.fontFamily = uniqueFontName;
+
+        function createMetricElement(className) {
+            let metricElement = document.createElement("div");
+            metricElement.className = "metric " + className;
+            return metricElement;
+        }
+
+        for (let line of WI.FontResourceContentView.PreviewLines) {
+            let lineElement = document.createElement("div");
+            lineElement.className = "line";
+
+            lineElement.appendChild(createMetricElement("top"));
+            lineElement.appendChild(createMetricElement("xheight"));
+            lineElement.appendChild(createMetricElement("middle"));
+            lineElement.appendChild(createMetricElement("baseline"));
+            lineElement.appendChild(createMetricElement("bottom"));
+
+            let contentElement = document.createElement("div");
+            contentElement.className = "content";
+            contentElement.textContent = line;
+            lineElement.appendChild(contentElement);
+
+            this._previewElement.appendChild(lineElement);
+        }
+
+        this._previewContainer.appendChild(this._previewElement);
+
+        this.sizeToFit();
+    }
+
+    _handleLocalResourceContentDidChange(event)
+    {
+        this._fontObjectURL = this.resource.createObjectURL();
+        this._updatePreviewElement();
     }
 };
 

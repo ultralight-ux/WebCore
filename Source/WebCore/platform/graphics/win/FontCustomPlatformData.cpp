@@ -21,7 +21,9 @@
 #include "config.h"
 #include "FontCustomPlatformData.h"
 
+#include "FontCreationContext.h"
 #include "FontDescription.h"
+#include "FontMemoryResource.h"
 #include "FontPlatformData.h"
 #include "OpenTypeUtilities.h"
 #include "SharedBuffer.h"
@@ -33,34 +35,29 @@
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #endif
 
-#if USE(DIRECT2D)
-#include "DirectWriteUtilities.h"
-#include <dwrite_3.h>
-#endif
-
 namespace WebCore {
 
-FontCustomPlatformData::~FontCustomPlatformData()
+FontCustomPlatformData::FontCustomPlatformData(const String& name, FontPlatformData::CreationData&& creationData)
+    : name(name)
+    , creationData(WTFMove(creationData))
 {
-    if (m_fontReference)
-        RemoveFontMemResourceEx(m_fontReference);
 }
 
-FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities)
+FontCustomPlatformData::~FontCustomPlatformData() = default;
+
+FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontCreationContext&)
 {
     int size = fontDescription.computedPixelSize();
     FontRenderingMode renderingMode = fontDescription.renderingMode();
 
-    ASSERT(m_fontReference);
-
-    auto faceName = m_name.charactersWithNullTermination();
+    auto faceName = name.charactersWithNullTermination();
     if (faceName.size() > LF_FACESIZE) {
         faceName.resize(LF_FACESIZE);
         faceName.last() = 0;
     }
 
     LOGFONT logFont { };
-    memcpy(logFont.lfFaceName, faceName.data(), sizeof(logFont.lfFaceName[0]) * std::min<size_t>(static_cast<size_t>(LF_FACESIZE), 1 + m_name.length()));
+    memcpy(logFont.lfFaceName, faceName.data(), sizeof(logFont.lfFaceName[0]) * std::min<size_t>(static_cast<size_t>(LF_FACESIZE), 1 + name.length()));
 
     logFont.lfHeight = -size;
     if (renderingMode == FontRenderingMode::Normal)
@@ -71,7 +68,7 @@ FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription&
     logFont.lfUnderline = false;
     logFont.lfStrikeOut = false;
     logFont.lfCharSet = DEFAULT_CHARSET;
-#if USE(CG) || USE(CAIRO) || USE(DIRECT2D)
+#if USE(CG) || USE(CAIRO)
     logFont.lfOutPrecision = OUT_TT_ONLY_PRECIS;
 #else
     logFont.lfOutPrecision = OUT_TT_PRECIS;
@@ -82,9 +79,10 @@ FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription&
     logFont.lfWeight = bold ? 700 : 400;
 
     auto hfont = adoptGDIObject(::CreateFontIndirect(&logFont));
-#if USE(CG)
-    RetainPtr<CGFontRef> cgFont = adoptCF(CGFontCreateWithPlatformFont(&logFont));
-    return FontPlatformData(WTFMove(hfont), cgFont.get(), size, bold, italic, renderingMode == FontRenderingMode::Alternate);
+#if USE(CORE_TEXT)
+    auto ctFont = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), size, nullptr));
+    auto cgFont = adoptCF(CTFontCopyGraphicsFont(ctFont.get(), nullptr));
+    return FontPlatformData(WTFMove(hfont), ctFont.get(), cgFont.get(), size, bold, italic, renderingMode == FontRenderingMode::Alternate);
 #else
     auto font = DirectWrite::createWithPlatformFont(logFont);
     return FontPlatformData(WTFMove(hfont), WTFMove(font), size, bold, italic, renderingMode == FontRenderingMode::Alternate);
@@ -98,26 +96,30 @@ static String createUniqueFontName()
     GUID fontUuid;
     CoCreateGuid(&fontUuid);
 
-    String fontName = base64Encode(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
+    auto fontName = base64EncodeToString(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
     ASSERT(fontName.length() < LF_FACESIZE);
     return fontName;
 }
 
-std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String&)
+std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String& itemInCollection)
 {
     String fontName = createUniqueFontName();
-    HANDLE fontReference;
-    fontReference = renameAndActivateFont(buffer, fontName);
-    if (!fontReference)
+    auto fontResource = renameAndActivateFont(buffer, fontName);
+    if (!fontResource)
         return nullptr;
-    return makeUnique<FontCustomPlatformData>(fontReference, fontName);
+    FontPlatformData::CreationData creationData = { buffer, itemInCollection, fontResource.releaseNonNull() };
+    auto result = makeUnique<FontCustomPlatformData>(fontName, WTFMove(creationData));
+#if USE(CORE_TEXT)
+    result->fontDescriptor = adoptCF(CTFontManagerCreateFontDescriptorFromData(buffer.createCFData().get()));
+#endif
+    return result;
 }
 
 bool FontCustomPlatformData::supportsFormat(const String& format)
 {
-    return equalLettersIgnoringASCIICase(format, "truetype")
-        || equalLettersIgnoringASCIICase(format, "opentype")
-        || equalLettersIgnoringASCIICase(format, "woff");
+    return equalLettersIgnoringASCIICase(format, "truetype"_s)
+        || equalLettersIgnoringASCIICase(format, "opentype"_s)
+        || equalLettersIgnoringASCIICase(format, "woff"_s);
 }
 
 }

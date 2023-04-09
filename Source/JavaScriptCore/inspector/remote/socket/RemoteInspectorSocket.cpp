@@ -63,14 +63,14 @@ void RemoteInspector::connect(ConnectionID id)
     start();
 }
 
-void RemoteInspector::didClose(ConnectionID)
+void RemoteInspector::didClose(RemoteInspectorSocketEndpoint&, ConnectionID)
 {
     ASSERT(isConnected());
 
-    m_clientConnection = WTF::nullopt;
+    m_clientConnection = std::nullopt;
 
     RunLoop::current().dispatch([=] {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         stopInternal(StopSource::API);
     });
 }
@@ -86,7 +86,7 @@ void RemoteInspector::sendWebInspectorEvent(const String& event)
 
 void RemoteInspector::start()
 {
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
 
     if (m_enabled)
         return;
@@ -107,14 +107,17 @@ void RemoteInspector::stopInternal(StopSource)
         targetConnection->close();
     m_targetConnectionMap.clear();
 
+    if (m_client)
+        m_client->closeAutomationSession();
+
     updateHasActiveDebugSession();
 
-    m_automaticInspectionPaused = false;
+    m_pausedAutomaticInspectionCandidates.clear();
 }
 
 TargetListing RemoteInspector::listingForInspectionTarget(const RemoteInspectionTarget& target) const
 {
-    if (!target.remoteDebuggingAllowed())
+    if (!target.allowsInspectionByPolicy())
         return nullptr;
 
     // FIXME: Support remote debugging of a ServiceWorker.
@@ -158,7 +161,7 @@ void RemoteInspector::pushListingsNow()
 
     auto targetListJSON = JSON::Array::create();
     for (auto listing : m_targetListingMap.values())
-        targetListJSON->pushObject(listing);
+        targetListJSON->pushObject(*listing);
 
     auto jsonEvent = JSON::Object::create();
     jsonEvent->setString("event"_s, "SetTargetList"_s);
@@ -179,22 +182,20 @@ void RemoteInspector::pushListingsSoon()
     m_pushScheduled = true;
 
     RunLoop::current().dispatch([=] {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         if (m_pushScheduled)
             pushListingsNow();
     });
 }
 
-void RemoteInspector::sendAutomaticInspectionCandidateMessage()
+void RemoteInspector::sendAutomaticInspectionCandidateMessage(TargetID)
 {
     ASSERT(m_enabled);
     ASSERT(m_automaticInspectionEnabled);
-    ASSERT(m_automaticInspectionPaused);
-    ASSERT(m_automaticInspectionCandidateTargetIdentifier);
     // FIXME: Implement automatic inspection.
 }
 
-void RemoteInspector::requestAutomationSession(const String& sessionID, const Client::SessionCapabilities& capabilities)
+void RemoteInspector::requestAutomationSession(String&& sessionID, const Client::SessionCapabilities& capabilities)
 {
     if (!m_client)
         return;
@@ -209,7 +210,7 @@ void RemoteInspector::requestAutomationSession(const String& sessionID, const Cl
         return;
     }
 
-    m_client->requestAutomationSession(sessionID, capabilities);
+    m_client->requestAutomationSession(WTFMove(sessionID), capabilities);
     updateClientCapabilities();
 }
 
@@ -230,7 +231,7 @@ void RemoteInspector::setup(TargetID targetIdentifier)
 {
     RemoteControllableTarget* target;
     {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         target = m_targetMap.get(targetIdentifier);
         if (!target)
             return;
@@ -243,7 +244,7 @@ void RemoteInspector::setup(TargetID targetIdentifier)
         return;
     }
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
     m_targetConnectionMap.set(targetIdentifier, WTFMove(connectionToTarget));
 
     updateHasActiveDebugSession();
@@ -260,19 +261,9 @@ String RemoteInspector::backendCommands() const
     if (m_backendCommandsPath.isEmpty())
         return { };
 
-    auto handle = FileSystem::openFile(m_backendCommandsPath, FileSystem::FileOpenMode::Read);
-    if (!FileSystem::isHandleValid(handle))
-        return { };
+    auto contents = FileSystem::readEntireFile(m_backendCommandsPath);
 
-    String result;
-    long long size;
-    if (FileSystem::getFileSize(handle, size)) {
-        Vector<LChar> buffer(size);
-        if (FileSystem::readFromFile(handle, reinterpret_cast<char*>(buffer.data()), size) == size)
-            result = String::adopt(WTFMove(buffer));
-    }
-    FileSystem::closeFile(handle);
-    return result;
+    return contents ? String::adopt(WTFMove(*contents)) : emptyString();
 }
 
 // RemoteInspectorConnectionClient handlers
@@ -301,7 +292,7 @@ void RemoteInspector::setupInspectorClient(const Event&)
 
     m_readyToPushListings = true;
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
     pushListingsNow();
 }
 
@@ -324,7 +315,7 @@ void RemoteInspector::frontendDidClose(const Event& event)
 
     RefPtr<RemoteConnectionToTarget> connectionToTarget;
     {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         RemoteControllableTarget* target = m_targetMap.get(event.targetID.value());
         if (!target)
             return;
@@ -346,38 +337,42 @@ void RemoteInspector::sendMessageToBackend(const Event& event)
 
     RefPtr<RemoteConnectionToTarget> connectionToTarget;
     {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         connectionToTarget = m_targetConnectionMap.get(event.targetID.value());
         if (!connectionToTarget)
             return;
     }
 
-    connectionToTarget->sendMessageToTarget(event.message.value());
+    connectionToTarget->sendMessageToTarget(String { event.message.value() });
 }
 
 void RemoteInspector::startAutomationSession(const Event& event)
 {
     ASSERT(isMainThread());
 
+    if (!m_clientConnection)
+        return;
+
     if (!event.message)
         return;
 
-    requestAutomationSession(event.message.value(), { });
+    String sessionID = *event.message;
+    requestAutomationSession(WTFMove(sessionID), { });
 
     auto sendEvent = JSON::Object::create();
-    sendEvent->setString("event"_s, "SetCapabilities"_s);
+    sendEvent->setString("event"_s, "StartAutomationSession_Return"_s);
 
     auto capability = clientCapabilities();
 
     auto message = JSON::Object::create();
-    message->setString("browserName"_s, capability ? capability->browserName : "");
-    message->setString("browserVersion"_s, capability ? capability->browserVersion : "");
+    message->setString("browserName"_s, capability ? capability->browserName : emptyString());
+    message->setString("browserVersion"_s, capability ? capability->browserVersion : emptyString());
     sendEvent->setString("message"_s, message->toJSONString());
     sendWebInspectorEvent(sendEvent->toJSONString());
 
     m_readyToPushListings = true;
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
     pushListingsNow();
 }
 

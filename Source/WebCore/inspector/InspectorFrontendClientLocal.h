@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,6 +31,7 @@
 
 #pragma once
 
+#include "InspectorFrontendAPIDispatcher.h"
 #include "InspectorFrontendClient.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
@@ -38,6 +39,7 @@
 
 namespace WebCore {
 
+class Color;
 class FloatRect;
 class Frame;
 class InspectorController;
@@ -45,7 +47,7 @@ class InspectorBackendDispatchTask;
 class InspectorFrontendHost;
 class Page;
 
-class WEBCORE_EXPORT InspectorFrontendClientLocal : public InspectorFrontendClient {
+class InspectorFrontendClientLocal : public InspectorFrontendClient {
     WTF_MAKE_NONCOPYABLE(InspectorFrontendClientLocal);
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -59,91 +61,97 @@ public:
         virtual void deleteProperty(const String& name);
     };
 
-    InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
-    ~InspectorFrontendClientLocal() override;
+    WEBCORE_EXPORT InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
+    WEBCORE_EXPORT ~InspectorFrontendClientLocal() override;
 
-    void resetState() override;
+    WEBCORE_EXPORT void resetState() override;
 
-    void windowObjectCleared() final;
-    void frontendLoaded() override;
+    WEBCORE_EXPORT void windowObjectCleared() final;
+    WEBCORE_EXPORT void frontendLoaded() override;
+    WEBCORE_EXPORT void pagePaused() final;
+    WEBCORE_EXPORT void pageUnpaused() final;
 
     void startWindowDrag() override { }
-    void moveWindowBy(float x, float y) final;
+    WEBCORE_EXPORT void moveWindowBy(float x, float y) final;
 
-    UserInterfaceLayoutDirection userInterfaceLayoutDirection() const final;
+    WEBCORE_EXPORT UserInterfaceLayoutDirection userInterfaceLayoutDirection() const final;
 
-    void requestSetDockSide(DockSide) final;
-    void changeAttachedWindowHeight(unsigned) final;
-    void changeAttachedWindowWidth(unsigned) final;
-    void changeSheetRect(const FloatRect&) final;
-    void openInNewTab(const String& url) final;
-    bool canSave()  override { return false; }
-    void save(const String&, const String&, bool, bool) override { }
-    void append(const String&, const String&) override { }
+    WEBCORE_EXPORT void requestSetDockSide(DockSide) final;
+    WEBCORE_EXPORT void changeAttachedWindowHeight(unsigned) final;
+    WEBCORE_EXPORT void changeAttachedWindowWidth(unsigned) final;
+    WEBCORE_EXPORT void changeSheetRect(const FloatRect&) final;
+    WEBCORE_EXPORT void openURLExternally(const String& url) final;
+    void revealFileExternally(const String&) override { }
+    bool canSave(InspectorFrontendClient::SaveMode) override { return false; }
+    void save(Vector<InspectorFrontendClient::SaveData>&&, bool /* forceSaveAs */) override { }
+    bool canLoad()  override { return false; }
+    void load(const String&, CompletionHandler<void(const String&)>&& completionHandler) override { completionHandler(nullString()); }
+
+    bool canPickColorFromScreen() override { return false; }
+    void pickColorFromScreen(CompletionHandler<void(const std::optional<WebCore::Color>&)>&& completionHandler) override { completionHandler({ }); }
+
+    void setInspectorPageDeveloperExtrasEnabled(bool) override { };
 
     virtual void attachWindow(DockSide) = 0;
     virtual void detachWindow() = 0;
 
-    void sendMessageToBackend(const String& message) final;
+    WEBCORE_EXPORT void sendMessageToBackend(const String& message) final;
 
-    bool isUnderTest() final;
+    WEBCORE_EXPORT bool isUnderTest() final;
     bool isRemote() const final { return false; }
-    unsigned inspectionLevel() const final;
+    WEBCORE_EXPORT unsigned inspectionLevel() const final;
     String backendCommandsURL() const final { return String(); };
 
-    bool canAttachWindow();
-    void setDockingUnavailable(bool);
+    InspectorFrontendAPIDispatcher& frontendAPIDispatcher() final { return m_frontendAPIDispatcher; }
+    Page* frontendPage() final { return m_frontendPage; }
+    
+    WEBCORE_EXPORT bool canAttachWindow();
+    WEBCORE_EXPORT void setDockingUnavailable(bool);
 
-    static unsigned constrainedAttachedWindowHeight(unsigned preferredHeight, unsigned totalWindowHeight);
-    static unsigned constrainedAttachedWindowWidth(unsigned preferredWidth, unsigned totalWindowWidth);
+    WEBCORE_EXPORT static unsigned constrainedAttachedWindowHeight(unsigned preferredHeight, unsigned totalWindowHeight);
+    WEBCORE_EXPORT static unsigned constrainedAttachedWindowWidth(unsigned preferredWidth, unsigned totalWindowWidth);
 
     // Direct Frontend API
-    bool isDebuggingEnabled();
-    void setDebuggingEnabled(bool);
+    WEBCORE_EXPORT bool isDebuggingEnabled();
+    WEBCORE_EXPORT void setDebuggingEnabled(bool);
 
-    bool isTimelineProfilingEnabled();
-    void setTimelineProfilingEnabled(bool);
+    WEBCORE_EXPORT bool isTimelineProfilingEnabled();
+    WEBCORE_EXPORT void setTimelineProfilingEnabled(bool);
 
-    bool isProfilingJavaScript();
-    void startProfilingJavaScript();
-    void stopProfilingJavaScript();
+    WEBCORE_EXPORT bool isProfilingJavaScript();
+    WEBCORE_EXPORT void startProfilingJavaScript();
+    WEBCORE_EXPORT void stopProfilingJavaScript();
 
-    void showConsole();
+    WEBCORE_EXPORT void showConsole();
 
-    void showMainResourceForFrame(Frame*);
+    WEBCORE_EXPORT void showMainResourceForFrame(Frame*);
 
-    void showResources();
+    WEBCORE_EXPORT void showResources();
 
-    void setAttachedWindow(DockSide);
+    WEBCORE_EXPORT void setAttachedWindow(DockSide);
 
-    Page* inspectedPage() const;
+    WEBCORE_EXPORT Page* inspectedPage() const;
     Page* frontendPage() const { return m_frontendPage; }
-
-    void dispatch(const String& signature);
-    void dispatchMessage(const String& messageObject);
-    void dispatchMessageAsync(const String& messageObject);
 
 protected:
     virtual void setAttachedWindowHeight(unsigned) = 0;
     virtual void setAttachedWindowWidth(unsigned) = 0;
-    void restoreAttachedWindowHeight();
+    WEBCORE_EXPORT void restoreAttachedWindowHeight();
 
     virtual void setSheetRect(const WebCore::FloatRect&) = 0;
 
 private:
-    bool evaluateAsBoolean(const String& expression);
-    void evaluateOnLoad(const String& expression);
-
     friend class FrontendMenuProvider;
+    std::optional<bool> evaluationResultToBoolean(InspectorFrontendAPIDispatcher::EvaluationResult);
+
     InspectorController* m_inspectedPageController { nullptr };
     Page* m_frontendPage { nullptr };
     // TODO(yurys): this ref shouldn't be needed.
     RefPtr<InspectorFrontendHost> m_frontendHost;
     std::unique_ptr<InspectorFrontendClientLocal::Settings> m_settings;
-    bool m_frontendLoaded { false };
     DockSide m_dockSide;
-    Vector<String> m_evaluateOnLoad;
     Ref<InspectorBackendDispatchTask> m_dispatchTask;
+    Ref<InspectorFrontendAPIDispatcher> m_frontendAPIDispatcher;
 };
 
 } // namespace WebCore

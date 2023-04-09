@@ -72,9 +72,10 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
         this._cachedData.latency = this.resource.latency;
         this._cachedData.protocol = this.resource.protocol;
         this._cachedData.priority = this.resource.priority;
-        this._cachedData.remoteAddress = this.resource.remoteAddress;
+        this._cachedData.remoteAddress = this.resource.displayRemoteAddress;
         this._cachedData.connectionIdentifier = this.resource.connectionIdentifier;
         this._cachedData.initiator = this.resource.initiatorSourceCodeLocation;
+        this._cachedData.source = this.resource.initiatorSourceCodeLocation; // Timeline Overview
         return this._cachedData;
     }
 
@@ -148,6 +149,16 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
         return super.createCellContent(columnIdentifier, cell);
     }
 
+    generateIconTitle(columnIdentifier)
+    {
+        if (columnIdentifier === "name") {
+            if (this.resource.responseSource === WI.Resource.ResponseSource.InspectorOverride)
+                return WI.UIString("This resource was loaded from a local override");
+        }
+
+        return super.generateIconTitle(columnIdentifier);
+    }
+
     refresh()
     {
         if (this._scheduledRefreshIdentifier) {
@@ -162,7 +173,7 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
 
     iconClassNames()
     {
-        return [WI.ResourceTreeElement.ResourceIconStyleClassName, this.resource.type];
+        return [WI.ResourceTreeElement.ResourceIconStyleClassName, ...WI.Resource.classNamesForResource(this.resource)];
     }
 
     appendContextMenuItems(contextMenu)
@@ -282,6 +293,7 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
         const options = {
             ignoreNetworkTab: true,
             ignoreSearchTab: true,
+            initiatorHint: WI.TabBrowser.TabNavigationInitiator.LinkClick,
         };
         WI.showSourceCode(this.resource, options);
     }

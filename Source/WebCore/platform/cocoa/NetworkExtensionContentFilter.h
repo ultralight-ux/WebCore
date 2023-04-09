@@ -25,6 +25,8 @@
 
 #pragma once
 
+#if ENABLE(CONTENT_FILTERING)
+
 #include "PlatformContentFilter.h"
 #include <objc/NSObjCRuntime.h>
 #include <wtf/Compiler.h>
@@ -47,14 +49,15 @@ public:
 
     void willSendRequest(ResourceRequest&, const ResourceResponse&) override;
     void responseReceived(const ResourceResponse&) override;
-    void addData(const char* data, int length) override;
+    void addData(const SharedBuffer&) override;
     void finishedAddingData() override;
-    Ref<SharedBuffer> replacementData() const override;
-#if ENABLE(CONTENT_FILTERING)
+    Ref<FragmentedSharedBuffer> replacementData() const override;
     ContentFilterUnblockHandler unblockHandler() const override;
-#endif
 
+    WEBCORE_EXPORT static bool isRequired();
+#if !ENABLE(CONTENT_FILTERING_IN_NETWORKING_PROCESS)
     WEBCORE_EXPORT static void setHasConsumedSandboxExtensions(bool);
+#endif
 
 private:
     static bool enabled();
@@ -63,6 +66,7 @@ private:
     void initialize(const URL* = nullptr);
     void handleDecision(NEFilterSourceStatus, NSData *replacementData);
 
+#if !ENABLE(CONTENT_FILTERING_IN_NETWORKING_PROCESS)
     enum class SandboxExtensionsState : uint8_t {
         Consumed,
         NotConsumed,
@@ -70,6 +74,7 @@ private:
     };
 
     WEBCORE_EXPORT static SandboxExtensionsState m_sandboxExtensionsState;
+#endif
 
     OSObjectPtr<dispatch_queue_t> m_queue;
     RetainPtr<NSData> m_replacementData;
@@ -77,3 +82,5 @@ private:
 };
 
 } // namespace WebCore
+
+#endif // ENABLE(CONTENT_FILTERING)

@@ -100,23 +100,23 @@ static UBool uTextLatin1Access(UText* uText, int64_t index, UBool forward)
         if (index < uText->chunkNativeLimit && index >= uText->chunkNativeStart) {
             // Already inside the buffer. Set the new offset.
             uText->chunkOffset = static_cast<int32_t>(index - uText->chunkNativeStart);
-            return TRUE;
+            return true;
         }
         if (index >= length && uText->chunkNativeLimit == length) {
             // Off the end of the buffer, but we can't get it.
             uText->chunkOffset = static_cast<int32_t>(index - uText->chunkNativeStart);
-            return FALSE;
+            return false;
         }
     } else {
         if (index <= uText->chunkNativeLimit && index > uText->chunkNativeStart) {
             // Already inside the buffer. Set the new offset.
             uText->chunkOffset = static_cast<int32_t>(index - uText->chunkNativeStart);
-            return TRUE;
+            return true;
         }
         if (!index && !uText->chunkNativeStart) {
             // Already at the beginning; can't go any farther.
             uText->chunkOffset = 0;
-            return FALSE;
+            return false;
         }
     }
     
@@ -140,11 +140,11 @@ static UBool uTextLatin1Access(UText* uText, int64_t index, UBool forward)
     }
     uText->chunkLength = static_cast<int32_t>(uText->chunkNativeLimit - uText->chunkNativeStart);
 
-    StringImpl::copyCharacters(const_cast<UChar*>(uText->chunkContents), static_cast<const LChar*>(uText->context) + uText->chunkNativeStart, static_cast<unsigned>(uText->chunkLength));
+    StringImpl::copyCharacters(const_cast<UChar*>(uText->chunkContents), static_cast<const LChar*>(uText->context) + uText->chunkNativeStart, uText->chunkLength);
 
     uText->nativeIndexingLimit = uText->chunkLength;
 
-    return TRUE;
+    return true;
 }
 
 static int32_t uTextLatin1Extract(UText* uText, int64_t start, int64_t limit, UChar* dest, int32_t destCapacity, UErrorCode* status)
@@ -178,7 +178,7 @@ static int32_t uTextLatin1Extract(UText* uText, int64_t start, int64_t limit, UC
         if (trimmedLength > destCapacity)
             trimmedLength = destCapacity;
 
-        StringImpl::copyCharacters(dest, static_cast<const LChar*>(uText->context) + start, static_cast<unsigned>(trimmedLength));
+        StringImpl::copyCharacters(dest, static_cast<const LChar*>(uText->context) + start, trimmedLength);
     }
 
     if (length < destCapacity) {
@@ -291,7 +291,7 @@ static void textLatin1ContextAwareMoveInPrimaryContext(UText* text, int64_t nati
     text->chunkLength = length < std::numeric_limits<int32_t>::max() ? static_cast<int32_t>(length) : 0;
     text->nativeIndexingLimit = text->chunkLength;
     text->chunkOffset = forward ? 0 : text->chunkLength;
-    StringImpl::copyCharacters(const_cast<UChar*>(text->chunkContents), static_cast<const LChar*>(text->p) + (text->chunkNativeStart - text->b), static_cast<unsigned>(text->chunkLength));
+    StringImpl::copyCharacters(const_cast<UChar*>(text->chunkContents), static_cast<const LChar*>(text->p) + (text->chunkNativeStart - text->b), text->chunkLength);
 }
 
 static void textLatin1ContextAwareSwitchToPrimaryContext(UText* text, int64_t nativeIndex, int64_t nativeLength, UBool forward)
@@ -337,7 +337,7 @@ static int64_t uTextLatin1ContextAwareNativeLength(UText* text)
 static UBool uTextLatin1ContextAwareAccess(UText* text, int64_t nativeIndex, UBool forward)
 {
     if (!text->context)
-        return FALSE;
+        return false;
     int64_t nativeLength = uTextLatin1ContextAwareNativeLength(text);
     UBool isAccessible;
     if (uTextAccessInChunkOrOutOfRange(text, nativeIndex, nativeLength, forward, isAccessible))
@@ -357,7 +357,7 @@ static UBool uTextLatin1ContextAwareAccess(UText* text, int64_t nativeIndex, UBo
         ASSERT(newContext == UTextProviderContext::PriorContext);
         textLatin1ContextAwareSwitchToPriorContext(text, nativeIndex, nativeLength, forward);
     }
-    return TRUE;
+    return true;
 }
 
 static int32_t uTextLatin1ContextAwareExtract(UText*, int64_t, int64_t, UChar*, int32_t, UErrorCode* errorCode)

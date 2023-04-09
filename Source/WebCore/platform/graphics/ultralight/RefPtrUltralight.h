@@ -8,8 +8,11 @@
 namespace WTF {
 
 #define DECLARE_REF_DEREF_ULTRALIGHT(X)       \
-  template<> void refIfNotNull(X * ptr);  \
-  template<> void derefIfNotNull(X * ptr);
+template <>                                   \
+struct DefaultRefDerefTraits<X> {             \
+    static void refIfNotNull(X * ptr);        \
+    static void derefIfNotNull(X * ptr);      \
+};
 
 DECLARE_REF_DEREF_ULTRALIGHT(ultralight::Path)
 

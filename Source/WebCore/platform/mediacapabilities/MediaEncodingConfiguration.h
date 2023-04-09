@@ -32,6 +32,14 @@ namespace WebCore {
 
 struct MediaEncodingConfiguration : MediaConfiguration {
     MediaEncodingType type;
+
+    MediaEncodingConfiguration isolatedCopy() const;
 };
 
+inline MediaEncodingConfiguration MediaEncodingConfiguration::isolatedCopy() const
+{
+    return { MediaConfiguration::isolatedCopy(), type };
 }
+
+} // namespace WebCore
+

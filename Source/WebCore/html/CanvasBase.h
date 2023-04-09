@@ -28,13 +28,16 @@
 #include "IntSize.h"
 #include <wtf/HashSet.h>
 #include <wtf/TypeCasts.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebCore {
 
 class AffineTransform;
 class CanvasBase;
+class CanvasObserver;
 class CanvasRenderingContext;
 class Element;
+class GraphicsClient;
 class GraphicsContext;
 class GraphicsContextStateSaver;
 class Image;
@@ -42,16 +45,13 @@ class ImageBuffer;
 class FloatRect;
 class ScriptExecutionContext;
 class SecurityOrigin;
+class WebCoreOpaqueRoot;
 
-class CanvasObserver {
+class CanvasDisplayBufferObserver : public CanMakeWeakPtr<CanvasDisplayBufferObserver> {
 public:
-    virtual ~CanvasObserver() = default;
+    virtual ~CanvasDisplayBufferObserver() = default;
 
-    virtual bool isCanvasObserverProxy() const { return false; }
-
-    virtual void canvasChanged(CanvasBase&, const FloatRect& changedRect) = 0;
-    virtual void canvasResized(CanvasBase&) = 0;
-    virtual void canvasDestroyed(CanvasBase&) = 0;
+    virtual void canvasDisplayBufferPrepared(CanvasBase&) = 0;
 };
 
 class CanvasBase {
@@ -71,6 +71,8 @@ public:
 
     ImageBuffer* buffer() const;
 
+    virtual void setImageBufferAndMarkDirty(RefPtr<ImageBuffer>&&) { }
+
     virtual AffineTransform baseTransform() const;
 
     void makeRenderingResultsAvailable();
@@ -89,19 +91,34 @@ public:
 
     void addObserver(CanvasObserver&);
     void removeObserver(CanvasObserver&);
-    void notifyObserversCanvasChanged(const FloatRect&);
+    void notifyObserversCanvasChanged(const std::optional<FloatRect>&);
     void notifyObserversCanvasResized();
     void notifyObserversCanvasDestroyed(); // Must be called in destruction before clearing m_context.
+    void addDisplayBufferObserver(CanvasDisplayBufferObserver&);
+    void removeDisplayBufferObserver(CanvasDisplayBufferObserver&);
+    void notifyObserversCanvasDisplayBufferPrepared();
+    bool hasDisplayBufferObservers() const { return !m_displayBufferObservers.isEmptyIgnoringNullReferences(); }
 
     HashSet<Element*> cssCanvasClients() const;
 
     virtual GraphicsContext* drawingContext() const;
     virtual GraphicsContext* existingDrawingContext() const;
 
-    virtual void didDraw(const FloatRect&) = 0;
+    GraphicsClient* graphicsClient() const;
+
+    virtual void didDraw(const std::optional<FloatRect>&) = 0;
 
     virtual Image* copiedImage() const = 0;
-    bool callTracingActive() const;
+    virtual void clearCopiedImage() const = 0;
+
+    bool hasActiveInspectorCanvasCallTracer() const;
+
+    bool shouldAccelerate(const IntSize&) const;
+    bool shouldAccelerate(unsigned area) const;
+
+    WEBCORE_EXPORT static size_t maxActivePixelMemory();
+    WEBCORE_EXPORT static void setMaxPixelMemoryForTesting(std::optional<size_t>);
+    WEBCORE_EXPORT static void setMaxCanvasAreaForTesting(std::optional<size_t>);
 
 protected:
     explicit CanvasBase(IntSize);
@@ -110,18 +127,20 @@ protected:
 
     virtual void setSize(const IntSize& size) { m_size = size; }
 
-    std::unique_ptr<ImageBuffer> setImageBuffer(std::unique_ptr<ImageBuffer>&&) const;
+    RefPtr<ImageBuffer> setImageBuffer(RefPtr<ImageBuffer>&&) const;
     virtual bool hasCreatedImageBuffer() const { return false; }
     static size_t activePixelMemory();
 
     void resetGraphicsContextState() const;
+
+    void createImageBuffer(bool usesDisplayListDrawing, bool avoidBackendSizeCheckForTesting) const;
 
 private:
     virtual void createImageBuffer() const { }
 
     mutable IntSize m_size;
     mutable Lock m_imageBufferAssignmentLock;
-    mutable std::unique_ptr<ImageBuffer> m_imageBuffer;
+    mutable RefPtr<ImageBuffer> m_imageBuffer;
     mutable size_t m_imageBufferCost { 0 };
     mutable std::unique_ptr<GraphicsContextStateSaver> m_contextStateSaver;
 
@@ -129,8 +148,11 @@ private:
 #if ASSERT_ENABLED
     bool m_didNotifyObserversCanvasDestroyed { false };
 #endif
-    HashSet<CanvasObserver*> m_observers;
+    WeakHashSet<CanvasObserver> m_observers;
+    WeakHashSet<CanvasDisplayBufferObserver> m_displayBufferObservers;
 };
+
+WebCoreOpaqueRoot root(CanvasBase*);
 
 } // namespace WebCore
 

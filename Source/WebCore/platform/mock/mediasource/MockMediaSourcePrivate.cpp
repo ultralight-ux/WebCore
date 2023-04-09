@@ -29,6 +29,7 @@
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ContentType.h"
+#include "Logging.h"
 #include "MediaSourcePrivateClient.h"
 #include "MockMediaPlayerMediaSource.h"
 #include "MockSourceBufferPrivate.h"
@@ -45,9 +46,13 @@ Ref<MockMediaSourcePrivate> MockMediaSourcePrivate::create(MockMediaPlayerMediaS
 MockMediaSourcePrivate::MockMediaSourcePrivate(MockMediaPlayerMediaSource& parent, MediaSourcePrivateClient& client)
     : m_player(parent)
     , m_client(client)
+#if !RELEASE_LOG_DISABLED
+    , m_logger(m_player.mediaPlayerLogger())
+    , m_logIdentifier(m_player.mediaPlayerLogIdentifier())
+#endif
 {
 #if !RELEASE_LOG_DISABLED
-    m_client->setLogIdentifier(m_player.mediaPlayerLogIdentifier());
+    client.setLogIdentifier(m_player.mediaPlayerLogIdentifier());
 #endif
 }
 
@@ -57,18 +62,18 @@ MockMediaSourcePrivate::~MockMediaSourcePrivate()
         buffer->clearMediaSource();
 }
 
-MediaSourcePrivate::AddStatus MockMediaSourcePrivate::addSourceBuffer(const ContentType& contentType, RefPtr<SourceBufferPrivate>& outPrivate)
+MediaSourcePrivate::AddStatus MockMediaSourcePrivate::addSourceBuffer(const ContentType& contentType, bool, RefPtr<SourceBufferPrivate>& outPrivate)
 {
     MediaEngineSupportParameters parameters;
     parameters.isMediaSource = true;
     parameters.type = contentType;
     if (MockMediaPlayerMediaSource::supportsType(parameters) == MediaPlayer::SupportsType::IsNotSupported)
-        return NotSupported;
+        return AddStatus::NotSupported;
 
     m_sourceBuffers.append(MockSourceBufferPrivate::create(this));
     outPrivate = m_sourceBuffers.last();
 
-    return Ok;
+    return AddStatus::Ok;
 }
 
 void MockMediaSourcePrivate::removeSourceBuffer(SourceBufferPrivate* buffer)
@@ -80,15 +85,19 @@ void MockMediaSourcePrivate::removeSourceBuffer(SourceBufferPrivate* buffer)
 
 MediaTime MockMediaSourcePrivate::duration()
 {
-    return m_client->duration();
+    if (m_client)
+        return m_client->duration();
+    return MediaTime::invalidTime();
 }
 
 std::unique_ptr<PlatformTimeRanges> MockMediaSourcePrivate::buffered()
 {
-    return m_client->buffered();
+    if (m_client)
+        return m_client->buffered();
+    return nullptr;
 }
 
-void MockMediaSourcePrivate::durationChanged()
+void MockMediaSourcePrivate::durationChanged(const MediaTime&)
 {
     m_player.updateDuration(duration());
 }
@@ -156,7 +165,8 @@ bool MockMediaSourcePrivate::hasVideo() const
 
 void MockMediaSourcePrivate::seekToTime(const MediaTime& time)
 {
-    m_client->seekToTime(time);
+    if (m_client)
+        m_client->seekToTime(time);
 }
 
 MediaTime MockMediaSourcePrivate::seekToTime(const MediaTime& targetTime, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
@@ -171,7 +181,12 @@ MediaTime MockMediaSourcePrivate::seekToTime(const MediaTime& targetTime, const 
     return seekTime;
 }
 
-Optional<VideoPlaybackQualityMetrics> MockMediaSourcePrivate::videoPlaybackQualityMetrics()
+MediaTime MockMediaSourcePrivate::currentMediaTime() const
+{
+    return m_player.currentMediaTime();
+}
+
+std::optional<VideoPlaybackQualityMetrics> MockMediaSourcePrivate::videoPlaybackQualityMetrics()
 {
     return VideoPlaybackQualityMetrics {
         m_totalVideoFrames,
@@ -183,14 +198,9 @@ Optional<VideoPlaybackQualityMetrics> MockMediaSourcePrivate::videoPlaybackQuali
 }
 
 #if !RELEASE_LOG_DISABLED
-const Logger& MockMediaSourcePrivate::mediaSourceLogger() const
+WTFLogChannel& MockMediaSourcePrivate::logChannel() const
 {
-    return m_player.mediaPlayerLogger();
-}
-
-const void* MockMediaSourcePrivate::mediaSourceLogIdentifier()
-{
-    return m_player.mediaPlayerLogIdentifier();
+    return LogMediaSource;
 }
 #endif
 

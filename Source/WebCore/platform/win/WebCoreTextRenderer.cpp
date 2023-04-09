@@ -60,7 +60,7 @@ static void doDrawTextAtPoint(GraphicsContext& context, const String& text, cons
 
         int beforeWidth;
         if (underlinedIndex > 0) {
-            TextRun beforeRun(StringView(text).substring(0, underlinedIndex));
+            TextRun beforeRun(StringView(text).left(underlinedIndex));
             beforeWidth = font.width(beforeRun);
         } else
             beforeWidth = 0;
@@ -106,12 +106,12 @@ bool WebCoreShouldUseFontSmoothing()
 
 void WebCoreSetAlwaysUsesComplexTextCodePath(bool complex)
 {
-    FontCascade::setCodePath(complex ? FontCascade::Complex : FontCascade::Auto);
+    FontCascade::setCodePath(complex ? FontCascade::CodePath::Complex : FontCascade::CodePath::Auto);
 }
 
 bool WebCoreAlwaysUsesComplexTextCodePath()
 {
-    return FontCascade::codePath() == FontCascade::Complex;
+    return FontCascade::codePath() == FontCascade::CodePath::Complex;
 }
 
 } // namespace WebCore

@@ -20,14 +20,16 @@
 #include "GLContextGLX.h"
 
 #if USE(GLX)
-#include "OpenGLShims.h"
+
 #include "PlatformDisplayX11.h"
 #include "XErrorTrapper.h"
-#include <GL/glx.h>
 #include <cairo.h>
 
-#if ENABLE(ACCELERATED_2D_CANVAS)
-#include <cairo-gl.h>
+#if USE(LIBEPOXY)
+#include <epoxy/glx.h>
+#else
+#include "OpenGLShims.h"
+#include <GL/glx.h>
 #endif
 
 namespace WebCore {
@@ -221,7 +223,7 @@ std::unique_ptr<GLContextGLX> GLContextGLX::createPbufferContext(PlatformDisplay
         0
     };
 
-    int returnedElements;
+    int returnedElements = 0;
     Display* display = downcast<PlatformDisplayX11>(platformDisplay).native();
     XUniquePtr<GLXFBConfig> configs(glXChooseFBConfig(display, 0, fbConfigAttributes, &returnedElements));
     if (!returnedElements)
@@ -325,9 +327,6 @@ GLContextGLX::GLContextGLX(PlatformDisplay& display, XUniqueGLXContext&& context
 
 GLContextGLX::~GLContextGLX()
 {
-    if (m_cairoDevice)
-        cairo_device_destroy(m_cairoDevice);
-
     if (m_context) {
         // Due to a bug in some nvidia drivers, we need bind the default framebuffer in a context before
         // destroying it to avoid a crash. In order to do that, we need to make the context current and,
@@ -401,24 +400,10 @@ void GLContextGLX::swapInterval(int interval)
     glXSwapIntervalSGI(interval);
 }
 
-cairo_device_t* GLContextGLX::cairoDevice()
-{
-    if (m_cairoDevice)
-        return m_cairoDevice;
-
-#if ENABLE(ACCELERATED_2D_CANVAS) && CAIRO_HAS_GLX_FUNCTIONS
-    m_cairoDevice = cairo_glx_device_create(m_x11Display, m_context.get());
-#endif
-
-    return m_cairoDevice;
-}
-
-#if ENABLE(GRAPHICS_CONTEXT_GL)
-PlatformGraphicsContextGL GLContextGLX::platformContext()
+GCGLContext GLContextGLX::platformContext()
 {
     return m_context.get();
 }
-#endif
 
 } // namespace WebCore
 

@@ -37,13 +37,29 @@ typedef void (^LSAppLinkCompletionHandler)(LSAppLink *appLink, NSError *error);
 typedef void (^LSAppLinkOpenCompletionHandler)(BOOL success, NSError *error);
 #endif
 
-#if !USE(APPLE_INTERNAL_SDK)
+#if USE(APPLE_INTERNAL_SDK)
+// FIXME: remove the following section when <rdar://83360464> is fixed.
+#if PLATFORM(MACCATALYST)
+#if !defined(__LSAPPLICATIONSERVICESPRIV__)
+enum LSSessionID {
+    kLSDefaultSessionID = -2,
+};
+#endif // !defined(__LSAPPLICATIONSERVICESPRIV__)
+WTF_EXTERN_C_BEGIN
+CFDictionaryRef _LSApplicationCheckIn(LSSessionID, CFDictionaryRef applicationInfo);
+WTF_EXTERN_C_END
+#endif // PLATFORM(MACCATALYST)
+#else // USE(APPLE_INTERNAL_SDK)
+
+const uint8_t kLSOpenRunningInstanceBehaviorUseRunningProcess = 1;
 
 @interface LSResourceProxy : NSObject <NSCopying, NSSecureCoding>
 @property (nonatomic, copy, readonly) NSString *localizedName;
 @end
 
 @interface LSBundleProxy : LSResourceProxy <NSSecureCoding>
++ (LSBundleProxy *)bundleProxyWithAuditToken:(audit_token_t)auditToken error:(NSError **)outError;
+@property (nonatomic, readonly) NSString *bundleIdentifier;
 @end
 
 #if HAVE(APP_LINKS)
@@ -75,6 +91,17 @@ typedef void (^LSAppLinkOpenCompletionHandler)(BOOL success, NSError *error);
 enum LSSessionID {
     kLSDefaultSessionID = -2,
 };
+
+enum {
+    kLSServerConnectionStatusDoNotConnectToServerMask = 0x1ULL,
+};
+
+WTF_EXTERN_C_BEGIN
+
+CFDictionaryRef _LSApplicationCheckIn(LSSessionID, CFDictionaryRef applicationInfo);
+
+WTF_EXTERN_C_END
+
 #endif
 
 #if HAVE(LSDATABASECONTEXT)
@@ -93,6 +120,8 @@ enum LSSessionID {
 - (id <NSObject>)addDatabaseChangeObserver4WebKit:(void (^)(xpc_object_t change))observer;
 - (void)removeDatabaseChangeObserver4WebKit:(id <NSObject>)token;
 - (void)observeDatabaseChange4WebKit:(xpc_object_t)change;
+
+- (void)getSystemContentDatabaseObject4WebKit:(void (^)(xpc_object_t object, NSError *error))completion;
 @end
 #endif
 #endif
@@ -106,12 +135,22 @@ typedef struct ProcessSerialNumber ProcessSerialNumber;
 WTF_EXTERN_C_BEGIN
 
 extern const CFStringRef _kLSDisplayNameKey;
+extern const CFStringRef _kLSOpenOptionActivateKey;
+extern const CFStringRef _kLSOpenOptionAddToRecentsKey;
+extern const CFStringRef _kLSOpenOptionBackgroundLaunchKey;
+extern const CFStringRef _kLSOpenOptionHideKey;
+extern const CFStringRef _kLSOpenOptionPreferRunningInstanceKey;
+extern const CFStringRef _kLSPersistenceSuppressRelaunchAtLoginKey;
 
 LSASNRef _LSGetCurrentApplicationASN();
+LSASNRef _LSCopyLSASNForAuditToken(LSSessionID, audit_token_t);
 OSStatus _LSSetApplicationInformationItem(LSSessionID, LSASNRef, CFStringRef keyToSetRef, CFTypeRef valueToSetRef, CFDictionaryRef* newInformationDictRef);
 CFTypeRef _LSCopyApplicationInformationItem(LSSessionID, LSASNRef, CFTypeRef);
 
 OSStatus _RegisterApplication(CFDictionaryRef, ProcessSerialNumber*);
+
+typedef void (^ _LSOpenCompletionHandler)(LSASNRef, Boolean, CFErrorRef);
+void _LSOpenURLsUsingBundleIdentifierWithCompletionHandler(CFArrayRef, CFStringRef, CFDictionaryRef, _LSOpenCompletionHandler);
 
 WTF_EXTERN_C_END
 
@@ -119,17 +158,10 @@ WTF_EXTERN_C_END
 
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 
-#if PLATFORM(MACCATALYST) && USE(APPLE_INTERNAL_SDK)
-enum LSSessionID {
-    kLSDefaultSessionID = -2,
-};
-#endif
-
 WTF_EXTERN_C_BEGIN
 
 typedef bool (^LSServerConnectionAllowedBlock) (CFDictionaryRef optionsRef);
 void _LSSetApplicationLaunchServicesServerConnectionStatus(uint64_t flags, LSServerConnectionAllowedBlock block);
-CFDictionaryRef _LSApplicationCheckIn(LSSessionID sessionID, CFDictionaryRef applicationInfo);
 
 WTF_EXTERN_C_END
 

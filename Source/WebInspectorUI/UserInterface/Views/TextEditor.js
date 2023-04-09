@@ -45,7 +45,7 @@ WI.TextEditor = class TextEditor extends WI.View
         this._codeMirror.on("gutterContextMenu", this._gutterContextMenu.bind(this));
         this._codeMirror.getScrollerElement().addEventListener("click", this._openClickedLinks.bind(this), true);
 
-        this._completionController = new WI.CodeMirrorCompletionController(this._codeMirror, this);
+        this._completionController = new WI.CodeMirrorCompletionController(WI.CodeMirrorCompletionController.Mode.Basic, this._codeMirror, this);
         this._tokenTrackingController = new WI.CodeMirrorTokenTrackingController(this._codeMirror, this);
 
         this._initialStringNotSet = true;
@@ -75,11 +75,6 @@ WI.TextEditor = class TextEditor extends WI.View
     }
 
     // Public
-
-    get visible()
-    {
-        return this._visible;
-    }
 
     get string()
     {
@@ -182,7 +177,7 @@ WI.TextEditor = class TextEditor extends WI.View
     hasFormatter()
     {
         let mode = this._codeMirror.getMode().name;
-        return mode === "javascript" || mode === "css";
+        return mode === "javascript" || mode === "css" || mode === "htmlmixed" || mode === "xml";
     }
 
     canBeFormatted()
@@ -215,6 +210,19 @@ WI.TextEditor = class TextEditor extends WI.View
 
         var position = this._codeMirrorPositionFromTextRange(textRange);
         this._codeMirror.setSelection(position.start, position.end);
+    }
+
+    get scrollOffset()
+    {
+        let scrollInfo = this._codeMirror.getScrollInfo();
+        return new WI.Point(scrollInfo.left, scrollInfo.top);
+    }
+
+    set scrollOffset(scrollOffset)
+    {
+        console.assert(scrollOffset instanceof WI.Point, scrollOffset);
+
+        this._codeMirror.scrollTo(scrollOffset.x, scrollOffset.y);
     }
 
     get mimeType()
@@ -313,8 +321,14 @@ WI.TextEditor = class TextEditor extends WI.View
                 return;
         }
 
+        let queryRegex = WI.SearchUtilities.searchRegExpForString(query, WI.SearchUtilities.defaultSettings);
+        if (!queryRegex) {
+            this.searchCleared();
+            this.dispatchEventToListeners(WI.TextEditor.Event.NumberOfSearchResultsDidChange);
+            return;
+        }
+
         // Go down the slow patch for all other text content.
-        let queryRegex = WI.SearchUtilities.regExpForString(query, WI.SearchUtilities.defaultSettings);
         var searchCursor = this._codeMirror.getSearchCursor(queryRegex, {line: 0, ch: 0}, false);
         var boundBatchSearch = batchSearch.bind(this);
         var numberOfSearchResultsDidChangeTimeout = null;
@@ -476,24 +490,23 @@ WI.TextEditor = class TextEditor extends WI.View
         return this._codeMirror.getDoc().markText(startPosition.toCodeMirror(), endPosition.toCodeMirror(), {className: styleClassName, inclusiveLeft: true, inclusiveRight: true});
     }
 
-    revealPosition(position, textRangeToSelect, forceUnformatted, noHighlight)
+    revealPosition(position, options = {})
     {
-        console.assert(position === undefined || position instanceof WI.SourceCodePosition, "revealPosition called without a SourceCodePosition");
-        if (!(position instanceof WI.SourceCodePosition))
-            return;
+        console.assert(position instanceof WI.SourceCodePosition, position);
 
-        if (!this._visible || this._initialStringNotSet || this._deferReveal) {
-            // If we can't get a line handle or are not visible then we wait to do the reveal.
-            this._positionToReveal = position;
-            this._textRangeToSelect = textRangeToSelect;
-            this._forceUnformatted = forceUnformatted;
+        if (!this.isAttached || this._initialStringNotSet || this._deferReveal) {
+            this._pendingPositionToReveal = position;
+            this._pendingRevealPositionOptions = options;
             return;
         }
 
-        // Delete now that the reveal is happening.
-        delete this._positionToReveal;
-        delete this._textRangeToSelect;
-        delete this._forceUnformatted;
+        delete this._pendingPositionToReveal;
+        delete this._pendingRevealPositionOptions;
+
+        let {textRangeToSelect, scrollOffset, forceUnformatted, preventHighlight} = options;
+
+        console.assert(!textRangeToSelect || textRangeToSelect instanceof WI.TextRange, textRangeToSelect);
+        console.assert(!scrollOffset || scrollOffset instanceof WI.Point, scrollOffset);
 
         // If we need to unformat, reveal the line after a wait.
         // Otherwise the line highlight doesn't work properly.
@@ -519,14 +532,21 @@ WI.TextEditor = class TextEditor extends WI.View
 
         function revealAndHighlightLine()
         {
-            // If the line is not visible, reveal it as the center line in the editor.
-            var position = this._codeMirrorPositionFromTextRange(textRangeToSelect);
-            if (!this._isPositionVisible(position.start))
-                this._scrollIntoViewCentered(position.start);
+            if (scrollOffset)
+                this._codeMirror.scrollTo(scrollOffset.x, scrollOffset.y);
+            else {
+                // If the line is not visible, reveal it as the center line in the editor.
+                let position = this._codeMirrorPositionFromTextRange(textRangeToSelect);
+                if (!this._isPositionVisible(position.start))
+                    this._scrollIntoViewCentered(position.start);
+            }
 
             this.selectedTextRange = textRangeToSelect;
 
-            if (noHighlight)
+            if (!this.readOnly)
+                this.focus();
+
+            if (preventHighlight)
                 return;
 
             // Avoid highlighting the execution line while debugging.
@@ -544,9 +564,9 @@ WI.TextEditor = class TextEditor extends WI.View
         this._codeMirror.operation(revealAndHighlightLine.bind(this));
     }
 
-    shown()
+    attached()
     {
-        this._visible = true;
+        super.attached();
 
         // Refresh since our size might have changed.
         this._codeMirror.refresh();
@@ -555,11 +575,6 @@ WI.TextEditor = class TextEditor extends WI.View
         // This needs to be done as a separate operation from the refresh
         // so that the scrollInfo coordinates are correct.
         this._revealPendingPositionIfPossible();
-    }
-
-    hidden()
-    {
-        this._visible = false;
     }
 
     setBreakpointInfoForLineAndColumn(lineNumber, columnNumber, breakpointInfo)
@@ -803,13 +818,9 @@ WI.TextEditor = class TextEditor extends WI.View
 
     layout()
     {
-        // FIXME: <https://webkit.org/b/146256> Web Inspector: Nested ContentBrowsers / ContentViewContainers cause too many ContentView updates
-        // Ideally we would not get an updateLayout call if we are not visible. We should restructure ContentView
-        // show/hide restoration to reduce duplicated work and solve this in the process.
+        super.layout();
 
-        // FIXME: visible check can be removed once <https://webkit.org/b/150741> is fixed.
-        if (this._visible)
-            this._codeMirror.refresh();
+        this._codeMirror.refresh();
     }
 
     _format(formatted)
@@ -853,17 +864,9 @@ WI.TextEditor = class TextEditor extends WI.View
 
             if (!pretty)
                 this._undoFormatting(beforePrettyPrintState, resolve);
-            else if (this._canUseFormatterWorker())
-                this._startWorkerPrettyPrint(beforePrettyPrintState, resolve);
             else
-                this._startCodeMirrorPrettyPrint(beforePrettyPrintState, resolve);
+                this._startWorkerPrettyPrint(beforePrettyPrintState, resolve);
         });
-    }
-
-    _canUseFormatterWorker()
-    {
-        let mode = this._codeMirror.getMode().name;
-        return mode === "javascript" || mode === "css";
     }
 
     _attemptToDetermineMIMEType()
@@ -901,26 +904,26 @@ WI.TextEditor = class TextEditor extends WI.View
         };
 
         let mode = this._codeMirror.getMode().name;
-        if (mode === "javascript") {
+        switch (mode) {
+        case "javascript": {
             let sourceType = this._delegate ? this._delegate.textEditorScriptSourceType(this) : WI.Script.SourceType.Program;
             const isModule = sourceType === WI.Script.SourceType.Module;
             workerProxy.formatJavaScript(sourceText, isModule, indentString, includeSourceMapData, formatCallback);
-        } else if (mode === "css")
+            break;
+        }
+        case "css":
             workerProxy.formatCSS(sourceText, indentString, includeSourceMapData, formatCallback);
-    }
-
-    _startCodeMirrorPrettyPrint(beforePrettyPrintState, callback)
-    {
-        let indentString = WI.indentString();
-        let start = {line: 0, ch: 0};
-        let end = {line: this._codeMirror.lineCount() - 1};
-        let builder = new FormatterContentBuilder(indentString);
-        let formatter = new WI.Formatter(this._codeMirror, builder);
-        formatter.format(start, end);
-
-        let formattedText = builder.formattedContent;
-        let sourceMapData = builder.sourceMapData;
-        this._finishPrettyPrint(beforePrettyPrintState, formattedText, sourceMapData, callback);
+            break;
+        case "htmlmixed":
+            workerProxy.formatHTML(sourceText, indentString, includeSourceMapData, formatCallback);
+            break;
+        case "xml":
+            workerProxy.formatXML(sourceText, indentString, includeSourceMapData, formatCallback);
+            break;
+        default:
+            console.assert(false, "Unexpected mode attempted to pretty print.");
+            break;
+        }
     }
 
     _finishPrettyPrint(beforePrettyPrintState, formattedText, sourceMapData, callback)
@@ -952,15 +955,15 @@ WI.TextEditor = class TextEditor extends WI.View
         let newExecutionLocation = null;
 
         if (pretty) {
-            if (this._positionToReveal) {
-                let newRevealPosition = this._formatterSourceMap.originalToFormatted(this._positionToReveal.lineNumber, this._positionToReveal.columnNumber);
-                this._positionToReveal = new WI.SourceCodePosition(newRevealPosition.lineNumber, newRevealPosition.columnNumber);
+            if (this._pendingPositionToReveal) {
+                let newRevealPosition = this._formatterSourceMap.originalToFormatted(this._pendingPositionToReveal.lineNumber, this._pendingPositionToReveal.columnNumber);
+                this._pendingPositionToReveal = new WI.SourceCodePosition(newRevealPosition.lineNumber, newRevealPosition.columnNumber);
             }
 
-            if (this._textRangeToSelect) {
-                let mappedRevealSelectionStart = this._formatterSourceMap.originalToFormatted(this._textRangeToSelect.startLine, this._textRangeToSelect.startColumn);
-                let mappedRevealSelectionEnd = this._formatterSourceMap.originalToFormatted(this._textRangeToSelect.endLine, this._textRangeToSelect.endColumn);
-                this._textRangeToSelect = new WI.TextRange(mappedRevealSelectionStart.lineNumber, mappedRevealSelectionStart.columnNumber, mappedRevealSelectionEnd.lineNumber, mappedRevealSelectionEnd.columnNumber);
+            if (this._pendingRevealPositionOptions?.textRangeToSelect) {
+                let mappedRevealSelectionStart = this._formatterSourceMap.originalToFormatted(this._pendingRevealPositionOptions.textRangeToSelect.startLine, this._pendingRevealPositionOptions.textRangeToSelect.startColumn);
+                let mappedRevealSelectionEnd = this._formatterSourceMap.originalToFormatted(this._pendingRevealPositionOptions.textRangeToSelect.endLine, this._pendingRevealPositionOptions.textRangeToSelect.endColumn);
+                this._pendingRevealPositionOptions.textRangeToSelect = new WI.TextRange(mappedRevealSelectionStart.lineNumber, mappedRevealSelectionStart.columnNumber, mappedRevealSelectionEnd.lineNumber, mappedRevealSelectionEnd.columnNumber);
             }
 
             if (!isNaN(this._executionLineNumber)) {
@@ -973,15 +976,15 @@ WI.TextEditor = class TextEditor extends WI.View
             newSelectionAnchor = {line: mappedAnchorLocation.lineNumber, ch: mappedAnchorLocation.columnNumber};
             newSelectionHead = {line: mappedHeadLocation.lineNumber, ch: mappedHeadLocation.columnNumber};
         } else {
-            if (this._positionToReveal) {
-                let newRevealPosition = this._formatterSourceMap.formattedToOriginal(this._positionToReveal.lineNumber, this._positionToReveal.columnNumber);
-                this._positionToReveal = new WI.SourceCodePosition(newRevealPosition.lineNumber, newRevealPosition.columnNumber);
+            if (this._pendingPositionToReveal) {
+                let newRevealPosition = this._formatterSourceMap.formattedToOriginal(this._pendingPositionToReveal.lineNumber, this._pendingPositionToReveal.columnNumber);
+                this._pendingPositionToReveal = new WI.SourceCodePosition(newRevealPosition.lineNumber, newRevealPosition.columnNumber);
             }
 
-            if (this._textRangeToSelect) {
-                let mappedRevealSelectionStart = this._formatterSourceMap.formattedToOriginal(this._textRangeToSelect.startLine, this._textRangeToSelect.startColumn);
-                let mappedRevealSelectionEnd = this._formatterSourceMap.formattedToOriginal(this._textRangeToSelect.endLine, this._textRangeToSelect.endColumn);
-                this._textRangeToSelect = new WI.TextRange(mappedRevealSelectionStart.lineNumber, mappedRevealSelectionStart.columnNumber, mappedRevealSelectionEnd.lineNumber, mappedRevealSelectionEnd.columnNumber);
+            if (this._pendingRevealPositionOptions?.textRangeToSelect) {
+                let mappedRevealSelectionStart = this._formatterSourceMap.formattedToOriginal(this._pendingRevealPositionOptions.textRangeToSelect.startLine, this._pendingRevealPositionOptions.textRangeToSelect.startColumn);
+                let mappedRevealSelectionEnd = this._formatterSourceMap.formattedToOriginal(this._pendingRevealPositionOptions.textRangeToSelect.endLine, this._pendingRevealPositionOptions.textRangeToSelect.endColumn);
+                this._pendingRevealPositionOptions.textRangeToSelect = new WI.TextRange(mappedRevealSelectionStart.lineNumber, mappedRevealSelectionStart.columnNumber, mappedRevealSelectionEnd.lineNumber, mappedRevealSelectionEnd.columnNumber);
             }
 
             if (!isNaN(this._executionLineNumber)) {
@@ -1087,15 +1090,13 @@ WI.TextEditor = class TextEditor extends WI.View
 
     _revealPendingPositionIfPossible()
     {
-        // Nothing to do if we don't have a pending position.
-        if (!this._positionToReveal)
+        if (!this._pendingPositionToReveal)
             return;
 
-        // Don't try to reveal unless we are visible.
-        if (!this._visible)
+        if (!this.isAttached)
             return;
 
-        this.revealPosition(this._positionToReveal, this._textRangeToSelect, this._forceUnformatted);
+        this.revealPosition(this._pendingPositionToReveal, this._pendingRevealPositionOptions);
     }
 
     _revealSearchResult(result, changeFocus, directionInCaseOfRevalidation)
@@ -1446,13 +1447,15 @@ WI.TextEditor = class TextEditor extends WI.View
 
     _removeBreakpointFromLineAndColumn(lineNumber, columnNumber)
     {
-        console.assert(columnNumber in this._breakpoints[lineNumber]);
-        delete this._breakpoints[lineNumber][columnNumber];
+        if (!nullish(columnNumber)) {
+            console.assert(columnNumber in this._breakpoints[lineNumber]);
+            delete this._breakpoints[lineNumber][columnNumber];
 
-        // There are still breakpoints on the line. Update the breakpoint style.
-        if (!isEmptyObject(this._breakpoints[lineNumber])) {
-            this._setBreakpointStylesOnLine(lineNumber);
-            return;
+            // There are still breakpoints on the line. Update the breakpoint style.
+            if (!isEmptyObject(this._breakpoints[lineNumber])) {
+                this._setBreakpointStylesOnLine(lineNumber);
+                return;
+            }
         }
 
         delete this._breakpoints[lineNumber];
@@ -1508,19 +1511,17 @@ WI.TextEditor = class TextEditor extends WI.View
 
         console.assert(lineNumber in this._breakpoints);
 
-        if (this._codeMirror.hasLineClass(lineNumber, "wrap", WI.TextEditor.MultipleBreakpointsStyleClassName)) {
-            console.assert(!isEmptyObject(this._breakpoints[lineNumber]));
-            return;
-        }
-
-        // Single existing breakpoint, start tracking it for dragging.
-        console.assert(Object.keys(this._breakpoints[lineNumber]).length === 1);
-        var columnNumber = Object.keys(this._breakpoints[lineNumber])[0];
-        this._draggingBreakpointInfo = this._breakpoints[lineNumber][columnNumber];
         this._lineNumberWithMousedDownBreakpoint = lineNumber;
         this._lineNumberWithDraggedBreakpoint = lineNumber;
-        this._columnNumberWithMousedDownBreakpoint = columnNumber;
-        this._columnNumberWithDraggedBreakpoint = columnNumber;
+        this._draggingBreakpointInfo = this._breakpoints[lineNumber];
+
+        let columnNumbers = Object.keys(this._breakpoints[lineNumber]);
+        if (columnNumbers.length === 1) {
+            let columnNumber = columnNumbers[0];
+            this._draggingBreakpointInfo = this._draggingBreakpointInfo[columnNumber];
+            this._columnNumberWithMousedDownBreakpoint = columnNumber;
+            this._columnNumberWithDraggedBreakpoint = columnNumber;
+        }
 
         this._documentMouseMovedEventListener = this._documentMouseMoved.bind(this);
         this._documentMouseUpEventListener = this._documentMouseUp.bind(this);
@@ -1571,6 +1572,17 @@ WI.TextEditor = class TextEditor extends WI.View
         // Record that the mouse dragged some so when mouse up fires we know to do the
         // work of removing and moving the breakpoint.
         this._mouseDragged = true;
+
+        if (!("_columnNumberWithMousedDownBreakpoint" in this)) {
+            if (lineNumber === this._lineNumberWithMousedDownBreakpoint) {
+                this._setColumnBreakpointInfoForLine(lineNumber, this._draggingBreakpointInfo);
+                this._lineNumberWithDraggedBreakpoint = lineNumber;
+            } else {
+                this._removeBreakpointFromLineAndColumn(this._lineNumberWithMousedDownBreakpoint);
+                delete this._lineNumberWithDraggedBreakpoint;
+            }
+            return;
+        }
 
         if ("_lineNumberWithDraggedBreakpoint" in this) {
             // We have a line that is currently showing the dragged breakpoint. Remove that breakpoint
@@ -1628,13 +1640,12 @@ WI.TextEditor = class TextEditor extends WI.View
                 // and tells us to clear the breakpoint info, we can ignore those calls.
                 if (this._previousColumnBreakpointInfo && delegateImplementsBreakpointRemoved) {
                     this._ignoreSetBreakpointInfoCalls = true;
-                    for (var columnNumber in this._previousColumnBreakpointInfo)
-                        this._delegate.textEditorBreakpointRemoved(this, this._lineNumberWithDraggedBreakpoint, columnNumber);
+                    this._delegate.textEditorBreakpointRemoved(this, this._lineNumberWithDraggedBreakpoint);
                     delete this._ignoreSetBreakpointInfoCalls;
                 }
 
                 // Tell the delegate to move the breakpoint from one line to another.
-                if (delegateImplementsBreakpointMoved) {
+                if ("_columnNumberWithDraggedBreakpoint" in this && delegateImplementsBreakpointMoved) {
                     this._ignoreSetBreakpointInfoCalls = true;
                     this._delegate.textEditorBreakpointMoved(this, this._lineNumberWithMousedDownBreakpoint, this._columnNumberWithMousedDownBreakpoint, this._lineNumberWithDraggedBreakpoint, this._columnNumberWithDraggedBreakpoint);
                     delete this._ignoreSetBreakpointInfoCalls;
@@ -1643,8 +1654,8 @@ WI.TextEditor = class TextEditor extends WI.View
         } else {
             // Toggle the disabled state of the breakpoint.
             console.assert(this._lineNumberWithMousedDownBreakpoint in this._breakpoints);
-            console.assert(this._columnNumberWithMousedDownBreakpoint in this._breakpoints[this._lineNumberWithMousedDownBreakpoint]);
-            if (this._lineNumberWithMousedDownBreakpoint in this._breakpoints && this._columnNumberWithMousedDownBreakpoint in this._breakpoints[this._lineNumberWithMousedDownBreakpoint] && delegateImplementsBreakpointClicked)
+            console.assert(!("_columnNumberWithMousedDownBreakpoint" in this) || this._columnNumberWithMousedDownBreakpoint in this._breakpoints[this._lineNumberWithMousedDownBreakpoint]);
+            if (this._lineNumberWithMousedDownBreakpoint in this._breakpoints && (!("_columnNumberWithMousedDownBreakpoint" in this) || this._columnNumberWithMousedDownBreakpoint in this._breakpoints[this._lineNumberWithMousedDownBreakpoint]) && delegateImplementsBreakpointClicked)
                 this._delegate.textEditorBreakpointClicked(this, this._lineNumberWithMousedDownBreakpoint, this._columnNumberWithMousedDownBreakpoint);
         }
 

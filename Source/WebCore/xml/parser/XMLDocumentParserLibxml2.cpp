@@ -31,10 +31,16 @@
 #include "CDATASection.h"
 #include "Comment.h"
 #include "CachedResourceLoader.h"
+#include "CommonAtomStrings.h"
+#include "CustomElementReactionQueue.h"
+#include "CustomElementRegistry.h"
+#include "DOMWindow.h"
 #include "Document.h"
 #include "DocumentFragment.h"
 #include "DocumentType.h"
+#include "EventLoop.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameLoader.h"
 #include "HTMLEntityParser.h"
 #include "HTMLHtmlElement.h"
@@ -55,10 +61,13 @@
 #include "Settings.h"
 #include "SharedBuffer.h"
 #include "StyleScope.h"
+#include "TextResourceDecoder.h"
+#include "ThrowOnDynamicMarkupInsertionCountIncrementer.h"
 #include "TransformSource.h"
 #include "XMLNSNames.h"
 #include "XMLDocumentParserScope.h"
 #include <libxml/parserInternals.h>
+#include <wtf/unicode/CharacterNames.h>
 #include <wtf/unicode/UTF8Conversion.h>
 
 #if ENABLE(XSLT)
@@ -358,9 +367,8 @@ static int matchFunc(const char*)
 class OffsetBuffer {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    OffsetBuffer(Vector<char> buffer)
+    OffsetBuffer(Vector<uint8_t>&& buffer)
         : m_buffer(WTFMove(buffer))
-        , m_currentOffset(0)
     {
     }
 
@@ -376,8 +384,8 @@ public:
     }
 
 private:
-    Vector<char> m_buffer;
-    unsigned m_currentOffset;
+    Vector<uint8_t> m_buffer;
+    unsigned m_currentOffset { 0 };
 };
 
 static bool externalEntityMimeTypeAllowed(const ResourceResponse& response)
@@ -394,7 +402,7 @@ static bool externalEntityMimeTypeAllowed(const ResourceResponse& response)
     return MIMETypeRegistry::isXMLMIMEType(mimeType) || MIMETypeRegistry::isXMLEntityMIMEType(mimeType);
 }
 
-static inline void setAttributes(Element* element, Vector<Attribute>& attributeVector, ParserContentPolicy parserContentPolicy)
+static inline void setAttributes(Element* element, Vector<Attribute>& attributeVector, OptionSet<ParserContentPolicy> parserContentPolicy)
 {
     if (!scriptingContentIsAllowed(parserContentPolicy))
         element->stripScriptingAttributes(attributeVector);
@@ -410,8 +418,7 @@ static void switchToUTF16(xmlParserCtxtPtr ctxt)
 
     // FIXME: Can we just use XML_PARSE_IGNORE_ENC now?
 
-    const UChar BOM = 0xFEFF;
-    const unsigned char BOMHighByte = *reinterpret_cast<const unsigned char*>(&BOM);
+    const unsigned char BOMHighByte = *reinterpret_cast<const unsigned char*>(&byteOrderMark);
     xmlSwitchEncoding(ctxt, BOMHighByte == 0xFF ? XML_CHAR_ENCODING_UTF16LE : XML_CHAR_ENCODING_UTF16BE);
 }
 
@@ -420,19 +427,19 @@ static bool shouldAllowExternalLoad(const URL& url)
     String urlString = url.string();
 
     // On non-Windows platforms libxml asks for this URL, the "XML_XML_DEFAULT_CATALOG", on initialization.
-    if (urlString == "file:///etc/xml/catalog")
+    if (urlString == "file:///etc/xml/catalog"_s)
         return false;
 
     // On Windows, libxml computes a URL relative to where its DLL resides.
-    if (startsWithLettersIgnoringASCIICase(urlString, "file:///") && urlString.endsWithIgnoringASCIICase("/etc/catalog"))
+    if (startsWithLettersIgnoringASCIICase(urlString, "file:///"_s) && urlString.endsWithIgnoringASCIICase("/etc/catalog"_s))
         return false;
 
     // The most common DTD. There isn't much point in hammering www.w3c.org by requesting this for every XHTML document.
-    if (startsWithLettersIgnoringASCIICase(urlString, "http://www.w3.org/tr/xhtml"))
+    if (startsWithLettersIgnoringASCIICase(urlString, "http://www.w3.org/tr/xhtml"_s))
         return false;
 
     // Similarly, there isn't much point in requesting the SVG DTD.
-    if (startsWithLettersIgnoringASCIICase(urlString, "http://www.w3.org/graphics/svg"))
+    if (startsWithLettersIgnoringASCIICase(urlString, "http://www.w3.org/graphics/svg"_s))
         return false;
 
     // The libxml doesn't give us a lot of context for deciding whether to
@@ -458,7 +465,7 @@ static void* openFunc(const char* uri)
     Document* document = cachedResourceLoader.document();
     // Same logic as HTMLBaseElement::href(). Keep them in sync.
     auto* encoding = (document && document->decoder()) ? document->decoder()->encodingForURLParsing() : nullptr;
-    URL url(document ? document->url() : URL(), stripLeadingAndTrailingHTMLSpaces(uri), encoding);
+    URL url(document ? document->fallbackBaseURL() : URL(), stripLeadingAndTrailingHTMLSpaces(String::fromLatin1(uri)), encoding);
 
     if (!shouldAllowExternalLoad(url))
         return &globalDescriptor;
@@ -490,10 +497,10 @@ static void* openFunc(const char* uri)
         }
     }
 
-    Vector<char> buffer;
-    if (data)
-        buffer.append(data->data(), data->size());
-    return new OffsetBuffer(WTFMove(buffer));
+    if (!data)
+        return &globalDescriptor;
+
+    return new OffsetBuffer({ data->data(), data->size() });
 }
 
 static int readFunc(void* context, char* buffer, int len)
@@ -564,7 +571,7 @@ RefPtr<XMLParserContext> XMLParserContext::createMemoryParser(xmlSAXHandlerPtr h
     xmlParserCtxtPtr parser = xmlCreateMemoryParserCtxt(chunk.data(), chunk.length());
 
     if (!parser)
-        return 0;
+        return nullptr;
 
     memcpy(parser->sax, handlers, sizeof(xmlSAXHandler));
 
@@ -588,11 +595,11 @@ RefPtr<XMLParserContext> XMLParserContext::createMemoryParser(xmlSAXHandlerPtr h
 
 bool XMLDocumentParser::supportsXMLVersion(const String& version)
 {
-    return version == "1.0";
+    return version == "1.0"_s;
 }
 
-XMLDocumentParser::XMLDocumentParser(Document& document, FrameView* frameView)
-    : ScriptableDocumentParser(document)
+XMLDocumentParser::XMLDocumentParser(Document& document, FrameView* frameView, OptionSet<ParserContentPolicy> policy)
+    : ScriptableDocumentParser(document, policy)
     , m_view(frameView)
     , m_pendingCallbacks(makeUnique<PendingCallbacks>())
     , m_currentNode(&document)
@@ -600,7 +607,7 @@ XMLDocumentParser::XMLDocumentParser(Document& document, FrameView* frameView)
 {
 }
 
-XMLDocumentParser::XMLDocumentParser(DocumentFragment& fragment, HashMap<AtomString, AtomString>&& prefixToNamespaceMap, const AtomString& defaultNamespaceURI, ParserContentPolicy parserContentPolicy)
+XMLDocumentParser::XMLDocumentParser(DocumentFragment& fragment, HashMap<AtomString, AtomString>&& prefixToNamespaceMap, const AtomString& defaultNamespaceURI, OptionSet<ParserContentPolicy> parserContentPolicy)
     : ScriptableDocumentParser(fragment.document(), parserContentPolicy)
     , m_pendingCallbacks(makeUnique<PendingCallbacks>())
     , m_currentNode(&fragment)
@@ -698,7 +705,7 @@ static inline bool handleNamespaceAttributes(Vector<Attribute>& prefixedAttribut
         AtomString namespaceQName = xmlnsAtom();
         AtomString namespaceURI = toAtomString(namespaces[i].uri);
         if (namespaces[i].prefix)
-            namespaceQName = "xmlns:" + toString(namespaces[i].prefix);
+            namespaceQName = makeAtomString("xmlns:", toString(namespaces[i].prefix));
 
         auto result = Element::parseAttributeName(XMLNSNames::xmlnsNamespaceURI, namespaceQName);
         if (result.hasException())
@@ -726,7 +733,7 @@ static inline bool handleElementAttributes(Vector<Attribute>& prefixedAttributes
         AtomString attrValue = toAtomString(attributes[i].value, valueLength);
         String attrPrefix = toString(attributes[i].prefix);
         AtomString attrURI = attrPrefix.isEmpty() ? nullAtom() : toAtomString(attributes[i].uri);
-        AtomString attrQName = attrPrefix.isEmpty() ? toAtomString(attributes[i].localname) : attrPrefix + ":" + toString(attributes[i].localname);
+        AtomString attrQName = attrPrefix.isEmpty() ? toAtomString(attributes[i].localname) : makeAtomString(attrPrefix, ':', toString(attributes[i].localname));
 
         auto result = Element::parseAttributeName(attrURI, attrQName);
         if (result.hasException())
@@ -785,6 +792,24 @@ void XMLDocumentParser::startElementNs(const xmlChar* xmlLocalName, const xmlCha
     m_sawFirstElement = true;
 
     QualifiedName qName(prefix, localName, uri);
+
+    bool willConstructCustomElement = false;
+    if (!m_parsingFragment) {
+        if (auto* window = m_currentNode->document().domWindow()) {
+            auto* registry = window->customElementRegistry();
+            if (UNLIKELY(registry))
+                willConstructCustomElement = registry->findInterface(qName);
+        }
+    }
+
+    std::optional<ThrowOnDynamicMarkupInsertionCountIncrementer> markupInsertionCountIncrementer;
+    std::optional<CustomElementReactionStack> customElementReactionStack;
+    if (UNLIKELY(willConstructCustomElement)) {
+        markupInsertionCountIncrementer.emplace(m_currentNode->document());
+        m_currentNode->document().eventLoop().performMicrotaskCheckpoint();
+        customElementReactionStack.emplace(m_currentNode->document().globalObject());
+    }
+
     auto newElement = m_currentNode->document().createElement(qName, true);
 
     Vector<Attribute> prefixedAttributes;
@@ -799,6 +824,11 @@ void XMLDocumentParser::startElementNs(const xmlChar* xmlLocalName, const xmlCha
     if (!success) {
         stopParsing();
         return;
+    }
+
+    if (UNLIKELY(willConstructCustomElement)) {
+        customElementReactionStack.reset();
+        markupInsertionCountIncrementer.reset();
     }
 
     newElement->beginParsingChildren();
@@ -880,9 +910,12 @@ void XMLDocumentParser::endElementNs()
         // FIXME: Script execution should be shared between
         // the libxml2 and Qt XMLDocumentParser implementations.
 
-        if (scriptElement.readyToBeParserExecuted())
-            scriptElement.executeClassicScript(ScriptSourceCode(scriptElement.scriptContent(), URL(document()->url()), m_scriptStartPosition, JSC::SourceProviderSourceType::Program, InlineClassicScript::create(scriptElement)));
-        else if (scriptElement.willBeParserExecuted() && scriptElement.loadableScript()) {
+        if (scriptElement.readyToBeParserExecuted()) {
+            if (scriptElement.scriptType() == ScriptType::Classic)
+                scriptElement.executeClassicScript(ScriptSourceCode(scriptElement.scriptContent(), URL(document()->url()), m_scriptStartPosition, JSC::SourceProviderSourceType::Program, InlineClassicScript::create(scriptElement)));
+            else
+                scriptElement.registerImportMap(ScriptSourceCode(scriptElement.scriptContent(), URL(document()->url()), m_scriptStartPosition, JSC::SourceProviderSourceType::ImportMap));
+        } else if (scriptElement.willBeParserExecuted() && scriptElement.loadableScript()) {
             m_pendingScript = PendingScript::create(scriptElement, *scriptElement.loadableScript());
             m_pendingScript->setClient(*this);
 
@@ -1158,7 +1191,7 @@ static size_t convertUTF16EntityToUTF8(const UChar* utf16Entity, size_t numberOf
 {
     const char* originalTarget = target;
     auto conversionResult = WTF::Unicode::convertUTF16ToUTF8(&utf16Entity, utf16Entity + numberOfCodeUnits, &target, target + targetSize);
-    if (conversionResult != WTF::Unicode::ConversionOK)
+    if (conversionResult != WTF::Unicode::ConversionResult::Success)
         return 0;
 
     // Even though we must pass the length, libxml expects the entity string to be null terminated.
@@ -1174,11 +1207,43 @@ static xmlEntityPtr getXHTMLEntity(const xmlChar* name)
     if (!numberOfCodeUnits)
         return 0;
 
-    ASSERT(numberOfCodeUnits <= 4);
-    size_t entityLengthInUTF8 = convertUTF16EntityToUTF8(utf16DecodedEntity, numberOfCodeUnits,
-        reinterpret_cast<char*>(sharedXHTMLEntityResult), WTF_ARRAY_LENGTH(sharedXHTMLEntityResult));
-    if (!entityLengthInUTF8)
-        return 0;
+    constexpr size_t kSharedXhtmlEntityResultLength = std::size(sharedXHTMLEntityResult);
+    size_t entityLengthInUTF8;
+    // Unlike HTML parser, XML parser parses the content of named
+    // entities. So we need to escape '&' and '<'.
+    if (numberOfCodeUnits == 1 && utf16DecodedEntity[0] == '&') {
+        sharedXHTMLEntityResult[0] = '&';
+        sharedXHTMLEntityResult[1] = '#';
+        sharedXHTMLEntityResult[2] = '3';
+        sharedXHTMLEntityResult[3] = '8';
+        sharedXHTMLEntityResult[4] = ';';
+        entityLengthInUTF8 = 5;
+    } else if (numberOfCodeUnits == 1 && utf16DecodedEntity[0] == '<') {
+        sharedXHTMLEntityResult[0] = '&';
+        sharedXHTMLEntityResult[1] = '#';
+        sharedXHTMLEntityResult[2] = 'x';
+        sharedXHTMLEntityResult[3] = '3';
+        sharedXHTMLEntityResult[4] = 'C';
+        sharedXHTMLEntityResult[5] = ';';
+        entityLengthInUTF8 = 6;
+    } else if (numberOfCodeUnits == 2 && utf16DecodedEntity[0] == '<' && utf16DecodedEntity[1] == 0x20D2) {
+        sharedXHTMLEntityResult[0] = '&';
+        sharedXHTMLEntityResult[1] = '#';
+        sharedXHTMLEntityResult[2] = '6';
+        sharedXHTMLEntityResult[3] = '0';
+        sharedXHTMLEntityResult[4] = ';';
+        sharedXHTMLEntityResult[5] = 0xE2;
+        sharedXHTMLEntityResult[6] = 0x83;
+        sharedXHTMLEntityResult[7] = 0x92;
+        entityLengthInUTF8 = 8;
+    } else {
+        ASSERT(numberOfCodeUnits <= 4);
+        entityLengthInUTF8 = convertUTF16EntityToUTF8(utf16DecodedEntity, numberOfCodeUnits,
+            reinterpret_cast<char*>(sharedXHTMLEntityResult), kSharedXhtmlEntityResultLength);
+        if (!entityLengthInUTF8)
+            return 0;
+    }
+    ASSERT(entityLengthInUTF8 <= kSharedXhtmlEntityResultLength);
 
     xmlEntityPtr entity = sharedXHTMLEntity();
     entity->length = entityLengthInUTF8;
@@ -1253,17 +1318,17 @@ static void internalSubsetHandler(void* closure, const xmlChar* name, const xmlC
 static void externalSubsetHandler(void* closure, const xmlChar*, const xmlChar* externalId, const xmlChar*)
 {
     String extId = toString(externalId);
-    if ((extId == "-//W3C//DTD XHTML 1.0 Transitional//EN")
-        || (extId == "-//W3C//DTD XHTML 1.1//EN")
-        || (extId == "-//W3C//DTD XHTML 1.0 Strict//EN")
-        || (extId == "-//W3C//DTD XHTML 1.0 Frameset//EN")
-        || (extId == "-//W3C//DTD XHTML Basic 1.0//EN")
-        || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0//EN")
-        || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0 plus SVG 1.1//EN")
-        || (extId == "-//W3C//DTD MathML 2.0//EN")
-        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.0//EN")
-        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.1//EN")
-        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.2//EN"))
+    if ((extId == "-//W3C//DTD XHTML 1.0 Transitional//EN"_s)
+        || (extId == "-//W3C//DTD XHTML 1.1//EN"_s)
+        || (extId == "-//W3C//DTD XHTML 1.0 Strict//EN"_s)
+        || (extId == "-//W3C//DTD XHTML 1.0 Frameset//EN"_s)
+        || (extId == "-//W3C//DTD XHTML Basic 1.0//EN"_s)
+        || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0//EN"_s)
+        || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0 plus SVG 1.1//EN"_s)
+        || (extId == "-//W3C//DTD MathML 2.0//EN"_s)
+        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.0//EN"_s)
+        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.1//EN"_s)
+        || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.2//EN"_s))
         getParser(closure)->setIsXHTMLDocument(true); // controls if we replace entities or not.
 }
 
@@ -1326,6 +1391,9 @@ void XMLDocumentParser::doEnd()
     }
 
 #if ENABLE(XSLT)
+    if (isDetached())
+        return;
+
     bool xmlViewerMode = !m_sawError && !m_sawCSS && !m_sawXSLTransform && shouldRenderInXMLTreeViewerMode(*document());
     if (xmlViewerMode) {
         XMLTreeViewer xmlTreeViewer(*document());
@@ -1351,8 +1419,7 @@ void XMLDocumentParser::doEnd()
 #if ENABLE(XSLT)
 static inline const char* nativeEndianUTF16Encoding()
 {
-    const UChar BOM = 0xFEFF;
-    const unsigned char BOMHighByte = *reinterpret_cast<const unsigned char*>(&BOM);
+    const unsigned char BOMHighByte = *reinterpret_cast<const unsigned char*>(&byteOrderMark);
     return BOMHighByte == 0xFF ? "UTF-16LE" : "UTF-16BE";
 }
 
@@ -1433,13 +1500,13 @@ bool XMLDocumentParser::appendFragmentSource(const String& chunk)
     ASSERT(!m_context);
     ASSERT(m_parsingFragment);
 
-    CString chunkAsUtf8 = chunk.utf8();
+    CString chunkAsUTF8 = chunk.utf8();
     
     // libxml2 takes an int for a length, and therefore can't handle XML chunks larger than 2 GiB.
-    if (chunkAsUtf8.length() > INT_MAX)
+    if (chunkAsUTF8.length() > INT_MAX)
         return false;
 
-    initializeParserContext(chunkAsUtf8);
+    initializeParserContext(chunkAsUTF8);
     xmlParseContent(context());
     endDocument(); // Close any open text nodes.
 
@@ -1447,10 +1514,10 @@ bool XMLDocumentParser::appendFragmentSource(const String& chunk)
     // XMLDocumentParserQt has a similar check (m_stream.error() == QXmlStreamReader::PrematureEndOfDocumentError) in doEnd().
     // Check if all the chunk has been processed.
     long bytesProcessed = xmlByteConsumed(context());
-    if (bytesProcessed == -1 || ((unsigned long)bytesProcessed) != chunkAsUtf8.length()) {
+    if (bytesProcessed == -1 || ((unsigned long)bytesProcessed) != chunkAsUTF8.length()) {
         // FIXME: I don't believe we can hit this case without also having seen an error or a null byte.
         // If we hit this ASSERT, we've found a test case which demonstrates the need for this code.
-        ASSERT(m_sawError || (bytesProcessed >= 0 && !chunkAsUtf8.data()[bytesProcessed]));
+        ASSERT(m_sawError || (bytesProcessed >= 0 && !chunkAsUTF8.data()[bytesProcessed]));
         return false;
     }
 
@@ -1460,7 +1527,7 @@ bool XMLDocumentParser::appendFragmentSource(const String& chunk)
 
 // --------------------------------
 
-using AttributeParseState = Optional<HashMap<String, String>>;
+using AttributeParseState = std::optional<HashMap<String, String>>;
 
 static void attributesStartElementNsHandler(void* closure, const xmlChar* xmlLocalName, const xmlChar* /*xmlPrefix*/, const xmlChar* /*xmlURI*/, int /*numNamespaces*/, const xmlChar** /*namespaces*/, int numAttributes, int /*numDefaulted*/, const xmlChar** libxmlAttributes)
 {
@@ -1483,7 +1550,7 @@ static void attributesStartElementNsHandler(void* closure, const xmlChar* xmlLoc
     }
 }
 
-Optional<HashMap<String, String>> parseAttributes(const String& string)
+std::optional<HashMap<String, String>> parseAttributes(const String& string)
 {
     String parseString = "<?xml version=\"1.0\"?><attrs " + string + " />";
 

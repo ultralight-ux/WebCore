@@ -42,23 +42,35 @@ class MediaPlayerPrivateAVFoundationObjC;
 class CDMSessionAVFoundationObjC final : public LegacyCDMSession, public CanMakeWeakPtr<CDMSessionAVFoundationObjC> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMSessionAVFoundationObjC(MediaPlayerPrivateAVFoundationObjC* parent, LegacyCDMSessionClient*);
+    CDMSessionAVFoundationObjC(MediaPlayerPrivateAVFoundationObjC* parent, LegacyCDMSessionClient&);
     virtual ~CDMSessionAVFoundationObjC();
 
     LegacyCDMSessionType type() override { return CDMSessionTypeAVFoundationObjC; }
-    void setClient(LegacyCDMSessionClient* client) override { m_client = client; }
     const String& sessionId() const override { return m_sessionId; }
     RefPtr<Uint8Array> generateKeyRequest(const String& mimeType, Uint8Array* initData, String& destinationURL, unsigned short& errorCode, uint32_t& systemCode) override;
     void releaseKeys() override;
     bool update(Uint8Array*, RefPtr<Uint8Array>& nextMessage, unsigned short& errorCode, uint32_t& systemCode) override;
+    RefPtr<ArrayBuffer> cachedKeyForKeyID(const String&) const override;
 
     void playerDidReceiveError(NSError *);
 
 private:
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    const char* logClassName() const { return "CDMSessionAVFoundationObjC"; }
+    WTFLogChannel& logChannel() const;
+#endif
+
     WeakPtr<MediaPlayerPrivateAVFoundationObjC> m_parent;
-    LegacyCDMSessionClient* m_client;
+    WeakPtr<LegacyCDMSessionClient> m_client;
     String m_sessionId;
     RetainPtr<AVAssetResourceLoadingRequest> m_request;
+
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 }

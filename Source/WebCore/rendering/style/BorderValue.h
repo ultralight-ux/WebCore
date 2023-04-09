@@ -24,34 +24,26 @@
 
 #pragma once
 
-#include "Color.h"
 #include "RenderStyleConstants.h"
+#include "StyleColor.h"
 
 namespace WebCore {
+
+class RenderStyle;
 
 class BorderValue {
 friend class RenderStyle;
 public:
-    BorderValue()
-        : m_style(static_cast<unsigned>(BorderStyle::None))
-        , m_isAuto(static_cast<unsigned>(OutlineIsAuto::Off))
+    BorderValue();
+
+    bool nonZero() const
     {
+        return width() && style() != BorderStyle::None;
     }
 
-    bool nonZero(bool checkStyle = true) const
-    {
-        return width() && (!checkStyle || style() != BorderStyle::None);
-    }
+    bool isTransparent() const;
 
-    bool isTransparent() const
-    {
-        return m_color.isValid() && !m_color.isVisible();
-    }
-
-    bool isVisible(bool checkStyle = true) const
-    {
-        return nonZero(checkStyle) && !isTransparent() && (!checkStyle || style() != BorderStyle::Hidden);
-    }
+    bool isVisible() const;
 
     bool operator==(const BorderValue& o) const
     {
@@ -63,20 +55,18 @@ public:
         return !(*this == o);
     }
 
-    void setColor(const Color& color)
+    void setColor(const StyleColor& color)
     {
         m_color = color;
     }
 
-    const Color& color() const { return m_color; }
+    const StyleColor& color() const { return m_color; }
 
     float width() const { return m_width; }
     BorderStyle style() const { return static_cast<BorderStyle>(m_style); }
-    
-    float boxModelWidth() const;
 
 protected:
-    Color m_color;
+    StyleColor m_color;
 
     float m_width { 3 };
 
@@ -85,14 +75,5 @@ protected:
     // This is only used by OutlineValue but moved here to keep the bits packed.
     unsigned m_isAuto : 1; // OutlineIsAuto
 };
-
-inline float BorderValue::boxModelWidth() const
-{
-    auto style = this->style();
-    if (style == BorderStyle::None || style == BorderStyle::Hidden)
-        return 0;
-
-    return width();
-}
 
 } // namespace WebCore

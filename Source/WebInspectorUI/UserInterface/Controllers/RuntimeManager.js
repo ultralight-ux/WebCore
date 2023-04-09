@@ -31,15 +31,29 @@ WI.RuntimeManager = class RuntimeManager extends WI.Object
 
         this._activeExecutionContext = null;
 
-        WI.Frame.addEventListener(WI.Frame.Event.ExecutionContextsCleared, this._frameExecutionContextsCleared, this);
+        WI.settings.consoleSavedResultAlias.addEventListener(WI.Setting.Event.Changed, function(event) {
+            for (let target of WI.targets) {
+                // COMPATIBILITY (iOS 12.2): Runtime.setSavedResultAlias did not exist.
+                if (target.hasCommand("Runtime.setSavedResultAlias"))
+                    target.RuntimeAgent.setSavedResultAlias(WI.settings.consoleSavedResultAlias.value);
+            }
+        }, this);
     }
 
     // Static
 
     static supportsAwaitPromise()
     {
-        // COMPATIBILITY (iOS 12): Runtime.awaitPromise did not exist
-        return !!InspectorBackend.domains.Runtime.awaitPromise;
+        // COMPATIBILITY (iOS 12): Runtime.awaitPromise did not exist.
+        return InspectorBackend.hasCommand("Runtime.awaitPromise");
+    }
+
+    static preferredSavedResultPrefix()
+    {
+        // COMPATIBILITY (iOS 12.2): Runtime.setSavedResultAlias did not exist.
+        if (!InspectorBackend.hasCommand("Runtime.setSavedResultAlias"))
+            return "$";
+        return WI.settings.consoleSavedResultAlias.value || "$";
     }
 
     // Target
@@ -48,13 +62,15 @@ WI.RuntimeManager = class RuntimeManager extends WI.Object
     {
         target.RuntimeAgent.enable();
 
-        // COMPATIBILITY (iOS 8): Runtime.enableTypeProfiler did not exist.
-        if (target.RuntimeAgent.enableTypeProfiler && WI.settings.showJavaScriptTypeInformation.value)
+        if (WI.settings.showJavaScriptTypeInformation.value)
             target.RuntimeAgent.enableTypeProfiler();
 
-        // COMPATIBILITY (iOS 10): Runtime.enableControlFlowProfiler did not exist
-        if (target.RuntimeAgent.enableControlFlowProfiler && WI.settings.enableControlFlowProfiler.value)
+        if (WI.settings.enableControlFlowProfiler.value)
             target.RuntimeAgent.enableControlFlowProfiler();
+
+        // COMPATIBILITY (iOS 12.2): Runtime.setSavedResultAlias did not exist.
+        if (target.hasCommand("Runtime.setSavedResultAlias") && WI.settings.consoleSavedResultAlias.value)
+            target.RuntimeAgent.setSavedResultAlias(WI.settings.consoleSavedResultAlias.value);
     }
 
     // Public
@@ -132,14 +148,31 @@ WI.RuntimeManager = class RuntimeManager extends WI.Object
         }
 
         if (WI.debuggerManager.activeCallFrame) {
-            // COMPATIBILITY (iOS 8): "saveResult" did not exist.
-            target.DebuggerAgent.evaluateOnCallFrame.invoke({callFrameId: WI.debuggerManager.activeCallFrame.id, expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, returnByValue, generatePreview, saveResult}, evalCallback.bind(this), target.DebuggerAgent);
+            target.DebuggerAgent.evaluateOnCallFrame.invoke({
+                callFrameId: WI.debuggerManager.activeCallFrame.id,
+                expression,
+                objectGroup,
+                includeCommandLineAPI,
+                doNotPauseOnExceptionsAndMuteConsole,
+                returnByValue,
+                generatePreview,
+                saveResult,
+                emulateUserGesture, // COMPATIBILITY (iOS 13): "emulateUserGesture" did not exist yet.
+            }, evalCallback.bind(this));
             return;
         }
 
-        // COMPATIBILITY (iOS 8): "saveResult" did not exist.
-        // COMPATIBILITY (iOS 12.2): "emulateUserGesture" did not exist.
-        target.RuntimeAgent.evaluate.invoke({expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, contextId: executionContextId, returnByValue, generatePreview, saveResult, emulateUserGesture}, evalCallback.bind(this), target.RuntimeAgent);
+        target.RuntimeAgent.evaluate.invoke({
+            expression,
+            objectGroup,
+            includeCommandLineAPI,
+            doNotPauseOnExceptionsAndMuteConsole,
+            contextId: executionContextId,
+            returnByValue,
+            generatePreview,
+            saveResult,
+            emulateUserGesture, // COMPATIBILITY (iOS 12.2): "emulateUserGesture" did not exist yet.
+        }, evalCallback.bind(this));
     }
 
     saveResult(remoteObject, callback)
@@ -148,12 +181,6 @@ WI.RuntimeManager = class RuntimeManager extends WI.Object
 
         let target = this._activeExecutionContext.target;
         let executionContextId = this._activeExecutionContext.id;
-
-        // COMPATIBILITY (iOS 8): Runtime.saveResult did not exist.
-        if (!target.RuntimeAgent.saveResult) {
-            callback(undefined);
-            return;
-        }
 
         function mycallback(error, savedResultIndex)
         {
@@ -166,32 +193,7 @@ WI.RuntimeManager = class RuntimeManager extends WI.Object
             target.RuntimeAgent.saveResult(remoteObject.asCallArgument(), executionContextId, mycallback);
     }
 
-    getPropertiesForRemoteObject(objectId, callback)
-    {
-        this._activeExecutionContext.target.RuntimeAgent.getProperties(objectId, function(error, result) {
-            if (error) {
-                callback(error);
-                return;
-            }
-
-            let properties = new Map;
-            for (let property of result)
-                properties.set(property.name, property);
-
-            callback(null, properties);
-        });
-    }
-
     // Private
-
-    _frameExecutionContextsCleared(event)
-    {
-        let contexts = event.data.contexts || [];
-
-        let currentContextWasDestroyed = contexts.some((context) => context.id === this._activeExecutionContext.id);
-        if (currentContextWasDestroyed)
-            this.activeExecutionContext = WI.mainTarget.executionContext;
-    }
 
     _tryApplyAwaitConvenience(originalExpression)
     {
@@ -283,7 +285,7 @@ WI.RuntimeManager.ConsoleObjectGroup = "console";
 WI.RuntimeManager.TopLevelExecutionContextIdentifier = undefined;
 
 WI.RuntimeManager.Event = {
-    DidEvaluate: Symbol("runtime-manager-did-evaluate"),
-    DefaultExecutionContextChanged: Symbol("runtime-manager-default-execution-context-changed"),
-    ActiveExecutionContextChanged: Symbol("runtime-manager-active-execution-context-changed"),
+    DidEvaluate: "runtime-manager-did-evaluate",
+    DefaultExecutionContextChanged: "runtime-manager-default-execution-context-changed",
+    ActiveExecutionContextChanged: "runtime-manager-active-execution-context-changed",
 };

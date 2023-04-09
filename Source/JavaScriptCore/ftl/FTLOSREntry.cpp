@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,7 @@ void* prepareOSREntry(
     DFG::JITCode* dfgCode = dfgCodeBlock->jitCode()->dfg();
     ForOSREntryJITCode* entryCode = entryCodeBlock->jitCode()->ftlForOSREntry();
 
-    if (!entryCode->dfgCommon()->isStillValid) {
+    if (!entryCode->dfgCommon()->isStillValid()) {
         dfgCode->clearOSREntryBlockAndResetThresholds(dfgCodeBlock);
         return nullptr;
     }
@@ -65,15 +65,40 @@ void* prepareOSREntry(
         return nullptr;
     }
     
-    Operands<Optional<JSValue>> values;
+    Operands<std::optional<JSValue>> values;
     dfgCode->reconstruct(callFrame, dfgCodeBlock, CodeOrigin(bytecodeIndex), streamIndex, values);
     
     dataLogLnIf(Options::verboseOSR(), "    Values at entry: ", values);
     
-    Optional<JSValue> reconstructedThis;
+    std::optional<JSValue> reconstructedThis;
     for (int argument = values.numberOfArguments(); argument--;) {
         JSValue valueOnStack = callFrame->r(virtualRegisterForArgumentIncludingThis(argument)).asanUnsafeJSValue();
-        Optional<JSValue> reconstructedValue = values.argument(argument);
+        std::optional<JSValue> reconstructedValue = values.argument(argument);
+        {
+            JSValue valueToValidate = reconstructedValue ? *reconstructedValue : valueOnStack;
+            auto flushFormat = entryCode->argumentFlushFormats()[argument];
+            switch (flushFormat) {
+            case DFG::FlushedInt32:
+                if (!valueToValidate.isInt32())
+                    return nullptr;
+                break;
+            case DFG::FlushedBoolean:
+                if (!valueToValidate.isBoolean())
+                    return nullptr;
+                break;
+            case DFG::FlushedCell:
+                if (!valueToValidate.isCell())
+                    return nullptr;
+                break;
+            case DFG::FlushedJSValue:
+                break;
+            default:
+                dataLogLn("Unknown flush format for argument during FTL osr entry: ", flushFormat);
+                RELEASE_ASSERT_NOT_REACHED();
+                break;
+            }
+        }
+
         if (!argument) {
             // |this| argument can be unboxed. We should store boxed value instead for loop OSR entry since FTL assumes that all arguments are flushed JSValue.
             // To make this valid, we will modify the stack on the fly: replacing the value with boxed value.
@@ -88,14 +113,13 @@ void* prepareOSREntry(
         RELEASE_ASSERT_NOT_REACHED();
     }
     
-    RELEASE_ASSERT(
-        static_cast<int>(values.numberOfLocals()) == baseline->numCalleeLocals());
+    RELEASE_ASSERT(values.numberOfLocals() == baseline->numCalleeLocals());
     
     EncodedJSValue* scratch = static_cast<EncodedJSValue*>(
         entryCode->entryBuffer()->dataBuffer());
     
     for (int local = values.numberOfLocals(); local--;) {
-        Optional<JSValue> value = values.local(local);
+        std::optional<JSValue> value = values.local(local);
         if (value)
             scratch[local] = JSValue::encode(value.value());
         else
@@ -110,7 +134,7 @@ void* prepareOSREntry(
     
     callFrame->setCodeBlock(entryCodeBlock);
     
-    void* result = entryCode->addressForCall(ArityCheckNotRequired).executableAddress();
+    void* result = entryCode->addressForCall(ArityCheckNotRequired).taggedPtr();
     dataLogLnIf(Options::verboseOSR(), "    Entry will succeed, going to address ", RawPointer(result));
 
     // At this point, we're committed to triggering an OSR entry immediately after we return. Hence, it is safe to modify stack here.

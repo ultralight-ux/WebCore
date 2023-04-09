@@ -27,6 +27,8 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
 {
     constructor(resource)
     {
+        console.assert(resource instanceof WI.Resource || resource instanceof WI.CSSStyleSheet);
+
         super(resource, "text");
 
         resource.addEventListener(WI.SourceCode.Event.ContentDidChange, this._sourceCodeContentDidChange, this);
@@ -72,7 +74,14 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
 
     get navigationItems()
     {
-        return [this._prettyPrintButtonNavigationItem, this._showTypesButtonNavigationItem, this._codeCoverageButtonNavigationItem];
+        let items = super.navigationItems;
+
+        items.push(this._prettyPrintButtonNavigationItem);
+
+        if (!this.resource.localResourceOverride)
+            items.push(this._showTypesButtonNavigationItem, this._codeCoverageButtonNavigationItem);
+
+        return items;
     }
 
     get managesOwnIssues()
@@ -89,7 +98,7 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
     get supplementalRepresentedObjects()
     {
         let objects = WI.debuggerManager.probeSets.filter(function(probeSet) {
-            return this._resource.contentIdentifier === probeSet.breakpoint.contentIdentifier;
+            return !(probeSet.breakpoint instanceof WI.JavaScriptBreakpoint) || this._resource.contentIdentifier === probeSet.breakpoint.contentIdentifier;
         }, this);
 
         // If the SourceCodeTextEditor has an executionLineNumber, we can assume
@@ -100,38 +109,41 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
         return objects;
     }
 
-    revealPosition(position, textRangeToSelect, forceUnformatted)
+    revealPosition(position, options = {})
     {
-        this._textEditor.revealPosition(position, textRangeToSelect, forceUnformatted);
-    }
-
-    shown()
-    {
-        super.shown();
-
-        this._textEditor.shown();
-    }
-
-    hidden()
-    {
-        super.hidden();
-
-        this._textEditor.hidden();
+        this._textEditor.revealPosition(position, options);
     }
 
     closed()
     {
         super.closed();
 
-        this.resource.removeEventListener(null, null, this);
-        WI.debuggerManager.removeEventListener(null, null, this);
-        WI.settings.showJavaScriptTypeInformation.removeEventListener(null, null, this);
-        WI.settings.enableControlFlowProfiler.removeEventListener(null, null, this);
+        this.resource.removeEventListener(WI.SourceCode.Event.ContentDidChange, this._sourceCodeContentDidChange, this);
+        WI.settings.showJavaScriptTypeInformation.removeEventListener(WI.Setting.Event.Changed, this._showJavaScriptTypeInformationSettingChanged, this);
+        WI.settings.enableControlFlowProfiler.removeEventListener(WI.Setting.Event.Changed, this._enableControlFlowProfilerSettingChanged, this);
+        WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ProbeSetAdded, this._probeSetsChanged, this);
+        WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ProbeSetRemoved, this._probeSetsChanged, this);
+
+        this._textEditor.close();
     }
 
     contentAvailable(content, base64Encoded)
     {
         // Do nothing.
+    }
+
+    get createLocalResourceOverrideTooltip()
+    {
+        return WI.UIString("Click to create a Local Override from this content");
+    }
+
+    requestLocalResourceOverrideInitialContent()
+    {
+        return Promise.resolve({
+            mimeType: this.resource.mimeType,
+            base64Encoded: this.resource.base64Encoded,
+            content: this._textEditor.string,
+        });
     }
 
     get supportsSave()
@@ -141,11 +153,23 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
 
     get saveData()
     {
-        if (this.resource instanceof WI.CSSStyleSheet) {
-            let url = WI.FileUtilities.inspectorURLForFilename("InspectorStyleSheet.css");
-            return {url, content: this._textEditor.string, forceSaveAs: true};
+        let saveData = {
+            content: this._textEditor.string,
+        };
+
+        if (this.resource instanceof WI.CSSStyleSheet)
+            saveData.suggestedName = "InspectorStyleSheet.css";
+        else {
+            saveData.url = this.resource.url;
+
+            if (this.resource.urlComponents.path === "/") {
+                let extension = WI.fileExtensionForMIMEType(this.resource.mimeType);
+                if (extension)
+                    saveData.suggestedName = `index.${extension}`;
+            }
         }
-        return {url: this.resource.url, content: this._textEditor.string};
+
+        return saveData;
     }
 
     get supportsSearch()
@@ -200,6 +224,9 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
         if (this._textEditor.parentView === this)
             return;
 
+        if (this._hasContent())
+            return;
+
         this.removeLoadingIndicator();
 
         this.addSubview(this._textEditor);
@@ -214,9 +241,6 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
 
         this._codeCoverageButtonNavigationItem.enabled = this._textEditor.canShowCoverageHints();
         this._codeCoverageButtonNavigationItem.activated = WI.settings.enableControlFlowProfiler.value;
-
-        if (!this._textEditor.string)
-            this.showGenericNoContentMessage();
     }
 
     _togglePrettyPrint(event)
@@ -272,8 +296,8 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
     _textEditorContentDidChange(event)
     {
         this._ignoreSourceCodeContentDidChangeEvent = true;
-        WI.branchManager.currentBranch.revisionForRepresentedObject(this.resource).content = this._textEditor.string;
-        delete this._ignoreSourceCodeContentDidChangeEvent;
+        this.resource.editableRevision.updateRevisionContent(this._textEditor.string);
+        this._ignoreSourceCodeContentDidChangeEvent = false;
     }
 
     _executionLineNumberDidChange(event)
@@ -289,7 +313,7 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
     _probeSetsChanged(event)
     {
         var breakpoint = event.data.probeSet.breakpoint;
-        if (breakpoint.sourceCodeLocation.sourceCode === this.resource)
+        if (!(breakpoint instanceof WI.JavaScriptBreakpoint) || breakpoint.sourceCodeLocation.sourceCode === this.resource)
             this.dispatchEventToListeners(WI.ContentView.Event.SupplementalRepresentedObjectsDidChange);
     }
 
@@ -298,12 +322,15 @@ WI.TextResourceContentView = class TextResourceContentView extends WI.ResourceCo
         if (this.resource instanceof WI.CSSStyleSheet)
             return true;
 
-        // Check the MIME-type for CSS since Resource.Type.Stylesheet also includes XSL, which we can't edit yet.
-        if (this.resource.type === WI.Resource.Type.Stylesheet && this.resource.syntheticMIMEType === "text/css")
+        // Check the MIME-type for CSS since Resource.Type.StyleSheet also includes XSL, which we can't edit yet.
+        if (this.resource.type === WI.Resource.Type.StyleSheet && this.resource.syntheticMIMEType === "text/css")
             return true;
 
         // Allow editing any local file since edits can be saved and reloaded right from the Inspector.
         if (this.resource.urlComponents.scheme === "file")
+            return true;
+
+        if (this.resource.localResourceOverride)
             return true;
 
         return false;

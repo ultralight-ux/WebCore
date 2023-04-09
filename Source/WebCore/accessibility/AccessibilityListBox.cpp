@@ -52,8 +52,8 @@ Ref<AccessibilityListBox> AccessibilityListBox::create(RenderObject* renderer)
 {
     return adoptRef(*new AccessibilityListBox(renderer));
 }
-    
-bool AccessibilityListBox::canSetSelectedChildrenAttribute() const
+
+bool AccessibilityListBox::canSetSelectedChildren() const
 {
     Node* selectNode = m_renderer->node();
     if (!selectNode)
@@ -71,20 +71,17 @@ void AccessibilityListBox::addChildren()
     if (!selectNode)
         return;
 
-    m_haveChildren = true;
+    m_childrenInitialized = true;
 
-    for (const auto& listItem : downcast<HTMLSelectElement>(*selectNode).listItems()) {
-        AccessibilityObject* listOption = listBoxOptionAccessibilityObject(listItem);
-        if (listOption && !listOption->accessibilityIsIgnored())
-            m_children.append(listOption);
-    }
+    for (const auto& listItem : downcast<HTMLSelectElement>(*selectNode).listItems())
+        addChild(listBoxOptionAccessibilityObject(listItem.get()), DescendIfIgnored::No);
 }
 
 void AccessibilityListBox::setSelectedChildren(const AccessibilityChildrenVector& children)
 {
-    if (!canSetSelectedChildrenAttribute())
+    if (!canSetSelectedChildren())
         return;
-    
+
     Node* selectNode = m_renderer->node();
     if (!selectNode)
         return;
@@ -108,9 +105,9 @@ void AccessibilityListBox::selectedChildren(AccessibilityChildrenVector& result)
 {
     ASSERT(result.isEmpty());
 
-    if (!hasChildren())
+    if (!childrenInitialized())
         addChildren();
-        
+
     for (const auto& child : m_children) {
         if (downcast<AccessibilityListBoxOption>(*child).isSelected())
             result.append(child.get());
@@ -121,7 +118,7 @@ void AccessibilityListBox::visibleChildren(AccessibilityChildrenVector& result)
 {
     ASSERT(result.isEmpty());
     
-    if (!hasChildren())
+    if (!childrenInitialized())
         addChildren();
     
     unsigned length = m_children.size();

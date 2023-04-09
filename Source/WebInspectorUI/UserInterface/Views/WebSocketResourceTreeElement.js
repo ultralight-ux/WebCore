@@ -38,9 +38,9 @@ WI.WebSocketResourceTreeElement = class WebSocketResourceTreeElement extends WI.
 
     ondetach()
     {
-        super.ondetach();
-
         this.resource.removeEventListener(WI.WebSocketResource.Event.ReadyStateChanged, this._updateConnectionStatus, this);
+
+        super.ondetach();
     }
 
     populateContextMenu(contextMenu, event)
@@ -51,8 +51,7 @@ WI.WebSocketResourceTreeElement = class WebSocketResourceTreeElement extends WI.
                     return;
 
                 const text = WI.UIString("Selected WebSocket");
-                const addSpecialUserLogClass = true;
-                WI.consoleLogViewController.appendImmediateExecutionWithResult(text, remoteObject, addSpecialUserLogClass);
+                WI.consoleLogViewController.appendImmediateExecutionWithResult(text, remoteObject, {addSpecialUserLogClass: true});
             });
         });
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,17 +28,20 @@
 
 #include "DOMPoint.h"
 #include "JSDOMBinding.h"
-
+#include "WebCoreOpaqueRoot.h"
 
 namespace WebCore {
 using namespace JSC;
 
-void JSDOMQuad::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSDOMQuad::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(const_cast<DOMPoint*>(&wrapped().p1()));
-    visitor.addOpaqueRoot(const_cast<DOMPoint*>(&wrapped().p2()));
-    visitor.addOpaqueRoot(const_cast<DOMPoint*>(&wrapped().p3()));
-    visitor.addOpaqueRoot(const_cast<DOMPoint*>(&wrapped().p4()));
+    addWebCoreOpaqueRoot(visitor, const_cast<DOMPoint*>(&wrapped().p1()));
+    addWebCoreOpaqueRoot(visitor, const_cast<DOMPoint*>(&wrapped().p2()));
+    addWebCoreOpaqueRoot(visitor, const_cast<DOMPoint*>(&wrapped().p3()));
+    addWebCoreOpaqueRoot(visitor, const_cast<DOMPoint*>(&wrapped().p4()));
 }
 
-}
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSDOMQuad);
+
+} // namespace WebCore

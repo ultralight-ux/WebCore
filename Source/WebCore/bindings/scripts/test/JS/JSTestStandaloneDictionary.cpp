@@ -24,7 +24,6 @@
 
 #include "JSTestStandaloneDictionary.h"
 
-#include "Document.h"
 #include "JSDOMConvertBoolean.h"
 #include "JSDOMConvertCallbacks.h"
 #include "JSDOMConvertNullable.h"
@@ -33,12 +32,13 @@
 #include "JSDOMConvertUnion.h"
 #include "JSDOMGlobalObject.h"
 #include "JSVoidCallback.h"
-#include "Settings.h"
+#include "ScriptExecutionContext.h"
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/JSString.h>
 #include <JavaScriptCore/ObjectConstructor.h>
+#include <variant>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/Variant.h>
+#include <wtf/SortedArrayMap.h>
 
 
 namespace WebCore {
@@ -61,7 +61,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         boolMemberValue = jsUndefined();
     else {
-        boolMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "boolMember"));
+        boolMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "boolMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!boolMemberValue.isUndefined()) {
@@ -72,7 +72,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         callbackMemberValue = jsUndefined();
     else {
-        callbackMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "callbackMember"));
+        callbackMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "callbackMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!callbackMemberValue.isUndefined()) {
@@ -83,7 +83,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         enumMemberValue = jsUndefined();
     else {
-        enumMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "enumMember"));
+        enumMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "enumMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!enumMemberValue.isUndefined()) {
@@ -94,20 +94,20 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         nullableUnionWithNullDefaultValueValue = jsUndefined();
     else {
-        nullableUnionWithNullDefaultValueValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "nullableUnionWithNullDefaultValue"));
+        nullableUnionWithNullDefaultValueValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "nullableUnionWithNullDefaultValue"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!nullableUnionWithNullDefaultValueValue.isUndefined()) {
         result.nullableUnionWithNullDefaultValue = convert<IDLNullable<IDLUnion<IDLDOMString, IDLBoolean>>>(lexicalGlobalObject, nullableUnionWithNullDefaultValueValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
-        result.nullableUnionWithNullDefaultValue = WTF::nullopt;
+        result.nullableUnionWithNullDefaultValue = std::nullopt;
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     JSValue partialBooleanMemberValue;
     if (isNullOrUndefined)
         partialBooleanMemberValue = jsUndefined();
     else {
-        partialBooleanMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialBooleanMember"));
+        partialBooleanMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialBooleanMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialBooleanMemberValue.isUndefined()) {
@@ -120,7 +120,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialBooleanMemberWithIgnoredConditionalValue = jsUndefined();
     else {
-        partialBooleanMemberWithIgnoredConditionalValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialBooleanMemberWithIgnoredConditional"));
+        partialBooleanMemberWithIgnoredConditionalValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialBooleanMemberWithIgnoredConditional"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialBooleanMemberWithIgnoredConditionalValue.isUndefined()) {
@@ -133,7 +133,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialCallbackMemberValue = jsUndefined();
     else {
-        partialCallbackMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialCallbackMember"));
+        partialCallbackMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialCallbackMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialCallbackMemberValue.isUndefined()) {
@@ -146,7 +146,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialEnumMemberValue = jsUndefined();
     else {
-        partialEnumMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialEnumMember"));
+        partialEnumMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialEnumMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialEnumMemberValue.isUndefined()) {
@@ -159,7 +159,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialRequiredLongMemberValue = jsUndefined();
     else {
-        partialRequiredLongMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialRequiredLongMember"));
+        partialRequiredLongMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialRequiredLongMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialRequiredLongMemberValue.isUndefined()) {
@@ -175,7 +175,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialStringMemberValue = jsUndefined();
     else {
-        partialStringMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialStringMember"));
+        partialStringMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialStringMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialStringMemberValue.isUndefined()) {
@@ -184,16 +184,18 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
-    JSValue partialStringMemberWithEnabledBySettingValue;
-    if (isNullOrUndefined)
-        partialStringMemberWithEnabledBySettingValue = jsUndefined();
-    else {
-        partialStringMemberWithEnabledBySettingValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialStringMemberWithEnabledBySetting"));
-        RETURN_IF_EXCEPTION(throwScope, { });
-    }
-    if (!partialStringMemberWithEnabledBySettingValue.isUndefined()) {
-        result.partialStringMemberWithEnabledBySetting = convert<IDLDOMString>(lexicalGlobalObject, partialStringMemberWithEnabledBySettingValue);
-        RETURN_IF_EXCEPTION(throwScope, { });
+    if (jsCast<JSDOMGlobalObject*>(&lexicalGlobalObject)->scriptExecutionContext()->settingsValues().testSettingEnabled) {
+        JSValue partialStringMemberWithEnabledBySettingValue;
+        if (isNullOrUndefined)
+            partialStringMemberWithEnabledBySettingValue = jsUndefined();
+        else {
+            partialStringMemberWithEnabledBySettingValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialStringMemberWithEnabledBySetting"_s));
+            RETURN_IF_EXCEPTION(throwScope, { });
+        }
+        if (!partialStringMemberWithEnabledBySettingValue.isUndefined()) {
+            result.partialStringMemberWithEnabledBySetting = convert<IDLDOMString>(lexicalGlobalObject, partialStringMemberWithEnabledBySettingValue);
+            RETURN_IF_EXCEPTION(throwScope, { });
+        }
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
@@ -201,7 +203,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         partialUnsignedLongMemberWithImplementedAsValue = jsUndefined();
     else {
-        partialUnsignedLongMemberWithImplementedAsValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialUnsignedLongMemberWithImplementedAs"));
+        partialUnsignedLongMemberWithImplementedAsValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "partialUnsignedLongMemberWithImplementedAs"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!partialUnsignedLongMemberWithImplementedAsValue.isUndefined()) {
@@ -213,7 +215,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         stringMemberValue = jsUndefined();
     else {
-        stringMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "stringMember"));
+        stringMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "stringMember"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!stringMemberValue.isUndefined()) {
@@ -224,7 +226,7 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
     if (isNullOrUndefined)
         unionMemberWithDefaultValueValue = jsUndefined();
     else {
-        unionMemberWithDefaultValueValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "unionMemberWithDefaultValue"));
+        unionMemberWithDefaultValueValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "unionMemberWithDefaultValue"_s));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
     if (!unionMemberWithDefaultValueValue.isUndefined()) {
@@ -238,77 +240,92 @@ template<> DictionaryImplName convertDictionary<DictionaryImplName>(JSGlobalObje
 JSC::JSObject* convertDictionaryToJS(JSC::JSGlobalObject& lexicalGlobalObject, JSDOMGlobalObject& globalObject, const DictionaryImplName& dictionary)
 {
     auto& vm = JSC::getVM(&lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
 
     auto result = constructEmptyObject(&lexicalGlobalObject, globalObject.objectPrototype());
 
     if (!IDLBoolean::isNullValue(dictionary.boolMember)) {
-        auto boolMemberValue = toJS<IDLBoolean>(IDLBoolean::extractValueFromNullable(dictionary.boolMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "boolMember"), boolMemberValue);
+        auto boolMemberValue = toJS<IDLBoolean>(lexicalGlobalObject, throwScope, IDLBoolean::extractValueFromNullable(dictionary.boolMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "boolMember"_s), boolMemberValue);
     }
     if (!IDLCallbackFunction<JSVoidCallback>::isNullValue(dictionary.callbackMember)) {
-        auto callbackMemberValue = toJS<IDLCallbackFunction<JSVoidCallback>>(lexicalGlobalObject, globalObject, IDLCallbackFunction<JSVoidCallback>::extractValueFromNullable(dictionary.callbackMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "callbackMember"), callbackMemberValue);
+        auto callbackMemberValue = toJS<IDLCallbackFunction<JSVoidCallback>>(lexicalGlobalObject, globalObject, throwScope, IDLCallbackFunction<JSVoidCallback>::extractValueFromNullable(dictionary.callbackMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "callbackMember"_s), callbackMemberValue);
     }
     if (!IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::isNullValue(dictionary.enumMember)) {
-        auto enumMemberValue = toJS<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>>(lexicalGlobalObject, IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::extractValueFromNullable(dictionary.enumMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "enumMember"), enumMemberValue);
+        auto enumMemberValue = toJS<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>>(lexicalGlobalObject, throwScope, IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::extractValueFromNullable(dictionary.enumMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "enumMember"_s), enumMemberValue);
     }
-    auto nullableUnionWithNullDefaultValueValue = toJS<IDLNullable<IDLUnion<IDLDOMString, IDLBoolean>>>(lexicalGlobalObject, globalObject, dictionary.nullableUnionWithNullDefaultValue);
-    result->putDirect(vm, JSC::Identifier::fromString(vm, "nullableUnionWithNullDefaultValue"), nullableUnionWithNullDefaultValueValue);
+    auto nullableUnionWithNullDefaultValueValue = toJS<IDLNullable<IDLUnion<IDLDOMString, IDLBoolean>>>(lexicalGlobalObject, globalObject, throwScope, dictionary.nullableUnionWithNullDefaultValue);
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, JSC::Identifier::fromString(vm, "nullableUnionWithNullDefaultValue"_s), nullableUnionWithNullDefaultValueValue);
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLBoolean::isNullValue(dictionary.partialBooleanMember)) {
-        auto partialBooleanMemberValue = toJS<IDLBoolean>(IDLBoolean::extractValueFromNullable(dictionary.partialBooleanMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialBooleanMember"), partialBooleanMemberValue);
+        auto partialBooleanMemberValue = toJS<IDLBoolean>(lexicalGlobalObject, throwScope, IDLBoolean::extractValueFromNullable(dictionary.partialBooleanMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialBooleanMember"_s), partialBooleanMemberValue);
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLBoolean::isNullValue(dictionary.partialBooleanMemberWithIgnoredConditional)) {
-        auto partialBooleanMemberWithIgnoredConditionalValue = toJS<IDLBoolean>(IDLBoolean::extractValueFromNullable(dictionary.partialBooleanMemberWithIgnoredConditional));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialBooleanMemberWithIgnoredConditional"), partialBooleanMemberWithIgnoredConditionalValue);
+        auto partialBooleanMemberWithIgnoredConditionalValue = toJS<IDLBoolean>(lexicalGlobalObject, throwScope, IDLBoolean::extractValueFromNullable(dictionary.partialBooleanMemberWithIgnoredConditional));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialBooleanMemberWithIgnoredConditional"_s), partialBooleanMemberWithIgnoredConditionalValue);
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLCallbackFunction<JSVoidCallback>::isNullValue(dictionary.partialCallbackMember)) {
-        auto partialCallbackMemberValue = toJS<IDLCallbackFunction<JSVoidCallback>>(lexicalGlobalObject, globalObject, IDLCallbackFunction<JSVoidCallback>::extractValueFromNullable(dictionary.partialCallbackMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialCallbackMember"), partialCallbackMemberValue);
+        auto partialCallbackMemberValue = toJS<IDLCallbackFunction<JSVoidCallback>>(lexicalGlobalObject, globalObject, throwScope, IDLCallbackFunction<JSVoidCallback>::extractValueFromNullable(dictionary.partialCallbackMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialCallbackMember"_s), partialCallbackMemberValue);
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::isNullValue(dictionary.partialEnumMember)) {
-        auto partialEnumMemberValue = toJS<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>>(lexicalGlobalObject, IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::extractValueFromNullable(dictionary.partialEnumMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialEnumMember"), partialEnumMemberValue);
+        auto partialEnumMemberValue = toJS<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>>(lexicalGlobalObject, throwScope, IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>::extractValueFromNullable(dictionary.partialEnumMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialEnumMember"_s), partialEnumMemberValue);
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
-    auto partialRequiredLongMemberValue = toJS<IDLLong>(dictionary.partialRequiredLongMember);
-    result->putDirect(vm, JSC::Identifier::fromString(vm, "partialRequiredLongMember"), partialRequiredLongMemberValue);
+    auto partialRequiredLongMemberValue = toJS<IDLLong>(lexicalGlobalObject, throwScope, dictionary.partialRequiredLongMember);
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, JSC::Identifier::fromString(vm, "partialRequiredLongMember"_s), partialRequiredLongMemberValue);
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLDOMString::isNullValue(dictionary.partialStringMember)) {
-        auto partialStringMemberValue = toJS<IDLDOMString>(lexicalGlobalObject, IDLDOMString::extractValueFromNullable(dictionary.partialStringMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialStringMember"), partialStringMemberValue);
+        auto partialStringMemberValue = toJS<IDLDOMString>(lexicalGlobalObject, throwScope, IDLDOMString::extractValueFromNullable(dictionary.partialStringMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialStringMember"_s), partialStringMemberValue);
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
-    if (downcast<Document>(jsCast<JSDOMGlobalObject*>(&globalObject)->scriptExecutionContext())->settings().testSettingEnabled()) {
+    if (jsCast<JSDOMGlobalObject*>(&globalObject)->scriptExecutionContext()->settingsValues().testSettingEnabled) {
         if (!IDLDOMString::isNullValue(dictionary.partialStringMemberWithEnabledBySetting)) {
-            auto partialStringMemberWithEnabledBySettingValue = toJS<IDLDOMString>(lexicalGlobalObject, IDLDOMString::extractValueFromNullable(dictionary.partialStringMemberWithEnabledBySetting));
-            result->putDirect(vm, JSC::Identifier::fromString(vm, "partialStringMemberWithEnabledBySetting"), partialStringMemberWithEnabledBySettingValue);
+            auto partialStringMemberWithEnabledBySettingValue = toJS<IDLDOMString>(lexicalGlobalObject, throwScope, IDLDOMString::extractValueFromNullable(dictionary.partialStringMemberWithEnabledBySetting));
+            RETURN_IF_EXCEPTION(throwScope, { });
+            result->putDirect(vm, JSC::Identifier::fromString(vm, "partialStringMemberWithEnabledBySetting"_s), partialStringMemberWithEnabledBySettingValue);
         }
     }
 #endif
 #if ENABLE(Conditional13) || ENABLE(Conditional14)
     if (!IDLUnsignedLong::isNullValue(dictionary.partialUnsignedLongMember)) {
-        auto partialUnsignedLongMemberWithImplementedAsValue = toJS<IDLUnsignedLong>(IDLUnsignedLong::extractValueFromNullable(dictionary.partialUnsignedLongMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialUnsignedLongMemberWithImplementedAs"), partialUnsignedLongMemberWithImplementedAsValue);
+        auto partialUnsignedLongMemberWithImplementedAsValue = toJS<IDLUnsignedLong>(lexicalGlobalObject, throwScope, IDLUnsignedLong::extractValueFromNullable(dictionary.partialUnsignedLongMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "partialUnsignedLongMemberWithImplementedAs"_s), partialUnsignedLongMemberWithImplementedAsValue);
     }
 #endif
     if (!IDLDOMString::isNullValue(dictionary.stringMember)) {
-        auto stringMemberValue = toJS<IDLDOMString>(lexicalGlobalObject, IDLDOMString::extractValueFromNullable(dictionary.stringMember));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "stringMember"), stringMemberValue);
+        auto stringMemberValue = toJS<IDLDOMString>(lexicalGlobalObject, throwScope, IDLDOMString::extractValueFromNullable(dictionary.stringMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "stringMember"_s), stringMemberValue);
     }
-    auto unionMemberWithDefaultValueValue = toJS<IDLUnion<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>, IDLDouble>>(lexicalGlobalObject, globalObject, dictionary.unionMemberWithDefaultValue);
-    result->putDirect(vm, JSC::Identifier::fromString(vm, "unionMemberWithDefaultValue"), unionMemberWithDefaultValueValue);
+    auto unionMemberWithDefaultValueValue = toJS<IDLUnion<IDLEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>, IDLDouble>>(lexicalGlobalObject, globalObject, throwScope, dictionary.unionMemberWithDefaultValue);
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, JSC::Identifier::fromString(vm, "unionMemberWithDefaultValue"_s), unionMemberWithDefaultValueValue);
     return result;
 }
 
@@ -322,7 +339,7 @@ String convertEnumerationToString(TestStandaloneDictionary::EnumInStandaloneDict
     };
     static_assert(static_cast<size_t>(TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue1) == 0, "TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue1 is not 0 as expected");
     static_assert(static_cast<size_t>(TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue2) == 1, "TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue2 is not 1 as expected");
-    ASSERT(static_cast<size_t>(enumerationValue) < WTF_ARRAY_LENGTH(values));
+    ASSERT(static_cast<size_t>(enumerationValue) < std::size(values));
     return values[static_cast<size_t>(enumerationValue)];
 }
 
@@ -331,14 +348,21 @@ template<> JSString* convertEnumerationToJS(JSGlobalObject& lexicalGlobalObject,
     return jsStringWithCache(lexicalGlobalObject.vm(), convertEnumerationToString(enumerationValue));
 }
 
-template<> Optional<TestStandaloneDictionary::EnumInStandaloneDictionaryFile> parseEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>(JSGlobalObject& lexicalGlobalObject, JSValue value)
+template<> std::optional<TestStandaloneDictionary::EnumInStandaloneDictionaryFile> parseEnumerationFromString<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>(const String& stringValue)
 {
-    auto stringValue = value.toWTFString(&lexicalGlobalObject);
-    if (stringValue == "enumValue1")
-        return TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue1;
-    if (stringValue == "enumValue2")
-        return TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue2;
-    return WTF::nullopt;
+    static constexpr std::pair<ComparableASCIILiteral, TestStandaloneDictionary::EnumInStandaloneDictionaryFile> mappings[] = {
+        { "enumValue1", TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue1 },
+        { "enumValue2", TestStandaloneDictionary::EnumInStandaloneDictionaryFile::EnumValue2 },
+    };
+    static constexpr SortedArrayMap enumerationMapping { mappings };
+    if (auto* enumerationValue = enumerationMapping.tryGet(stringValue); LIKELY(enumerationValue))
+        return *enumerationValue;
+    return std::nullopt;
+}
+
+template<> std::optional<TestStandaloneDictionary::EnumInStandaloneDictionaryFile> parseEnumeration<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>(JSGlobalObject& lexicalGlobalObject, JSValue value)
+{
+    return parseEnumerationFromString<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>(value.toWTFString(&lexicalGlobalObject));
 }
 
 template<> const char* expectedEnumerationValues<TestStandaloneDictionary::EnumInStandaloneDictionaryFile>()

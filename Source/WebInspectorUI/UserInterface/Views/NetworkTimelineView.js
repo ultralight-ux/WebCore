@@ -102,6 +102,10 @@ WI.NetworkTimelineView = class NetworkTimelineView extends WI.TimelineView
         columns.duration.width = "9%";
         columns.duration.aligned = "right";
 
+        columns.initiator.title = WI.UIString("Initiator");
+        columns.initiator.width = "9%";
+        columns.initiator.hidden = true;
+
         for (let column in columns)
             columns[column].sortable = true;
 
@@ -112,14 +116,6 @@ WI.NetworkTimelineView = class NetworkTimelineView extends WI.TimelineView
         columns.graph.width = "15%";
         columns.graph.headerView = this._timelineRuler;
         columns.graph.sortable = false;
-
-        // COMPATIBILITY(iOS 10.3): Network load metrics were not previously available.
-        if (!InspectorBackend.domains.Network.hasEventParameter("loadingFinished", "metrics")) {
-            delete columns.protocol;
-            delete columns.priority;
-            delete columns.remoteAddress;
-            delete columns.connectionIdentifier;
-        }
 
         this._dataGrid = new WI.TimelineDataGrid(columns);
         this._dataGrid.sortDelegate = this;
@@ -157,24 +153,9 @@ WI.NetworkTimelineView = class NetworkTimelineView extends WI.TimelineView
         return [pathComponent];
     }
 
-    shown()
-    {
-        super.shown();
-
-        this._dataGrid.shown();
-    }
-
-    hidden()
-    {
-        this._dataGrid.hidden();
-
-        super.hidden();
-    }
-
     closed()
     {
-        console.assert(this.representedObject instanceof WI.Timeline);
-        this.representedObject.removeEventListener(null, null, this);
+        this.representedObject.removeEventListener(WI.Timeline.Event.RecordAdded, this._networkTimelineRecordAdded, this);
 
         this._dataGrid.closed();
     }
@@ -285,3 +266,5 @@ WI.NetworkTimelineView = class NetworkTimelineView extends WI.TimelineView
         this._pendingRecords.push(resourceTimelineRecord);
     }
 };
+
+WI.NetworkTimelineView.ReferencePage = WI.ReferencePage.TimelinesTab.NetworkRequestsTimeline;

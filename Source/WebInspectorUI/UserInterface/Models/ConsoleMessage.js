@@ -25,7 +25,7 @@
 
 WI.ConsoleMessage = class ConsoleMessage
 {
-    constructor(target, source, level, message, type, url, line, column, repeatCount, parameters, callFrames, request)
+    constructor(target, source, level, message, type, url, line, column, repeatCount, parameters, stackTrace, request, timestamp)
     {
         console.assert(target instanceof WI.Target);
         console.assert(typeof source === "string");
@@ -33,25 +33,23 @@ WI.ConsoleMessage = class ConsoleMessage
         console.assert(typeof message === "string");
         console.assert(!type || Object.values(WI.ConsoleMessage.MessageType).includes(type));
         console.assert(!parameters || parameters.every((x) => x instanceof WI.RemoteObject));
+        console.assert(!stackTrace || stackTrace instanceof WI.StackTrace, stackTrace);
+        console.assert(!timestamp || !isNaN(timestamp), timestamp);
 
         this._target = target;
         this._source = source;
         this._level = level;
         this._messageText = message;
         this._type = type || WI.ConsoleMessage.MessageType.Log;
-
         this._url = url || null;
         this._line = line || 0;
         this._column = column || 0;
         this._sourceCodeLocation = undefined;
-
         this._repeatCount = repeatCount || 0;
         this._parameters = parameters;
-
-        callFrames = callFrames || [];
-        this._stackTrace = WI.StackTrace.fromPayload(this._target, {callFrames});
-
+        this._stackTrace = stackTrace || null;
         this._request = request;
+        this._timestamp = timestamp ?? NaN;
     }
 
     // Public
@@ -68,6 +66,7 @@ WI.ConsoleMessage = class ConsoleMessage
     get parameters() { return this._parameters; }
     get stackTrace() { return this._stackTrace; }
     get request() { return this._request; }
+    get timestamp() { return this._timestamp; }
 
     get sourceCodeLocation()
     {
@@ -75,7 +74,7 @@ WI.ConsoleMessage = class ConsoleMessage
             return this._sourceCodeLocation;
 
         // First try to get the location from the top frame of the stack trace.
-        let topCallFrame = this._stackTrace.callFrames[0];
+        let topCallFrame = this._stackTrace?.callFrames[0];
         if (topCallFrame && topCallFrame.sourceCodeLocation) {
             this._sourceCodeLocation = topCallFrame.sourceCodeLocation;
             return this._sourceCodeLocation;
@@ -84,7 +83,7 @@ WI.ConsoleMessage = class ConsoleMessage
         // If that doesn't exist try to get a location from the url/line/column in the ConsoleMessage.
         // FIXME <http://webkit.org/b/76404>: Remove the string equality checks for undefined once we don't get that value anymore.
         if (this._url && this._url !== "undefined") {
-            let sourceCode = WI.networkManager.resourceForURL(this._url);
+            let sourceCode = WI.networkManager.resourcesForURL(this._url).firstValue;
             if (sourceCode) {
                 let lineNumber = this._line > 0 ? this._line - 1 : 0;
                 let columnNumber = this._column > 0 ? this._column - 1 : 0;
@@ -109,10 +108,16 @@ WI.ConsoleMessage.MessageSource = {
     Rendering: "rendering",
     CSS: "css",
     Security: "security",
-    Other: "other",
     Media: "media",
     MediaSource: "mediasource",
     WebRTC: "webrtc",
+    ITPDebug: "itp-debug",
+    PrivateClickMeasurement: "private-click-measurement",
+    PaymentRequest: "payment-request",
+    Other: "other",
+
+    // COMPATIBILITY (iOS 14.0): `Console.ChannelSource.AdClickAttribution` was renamed to `Console.ChannelSource.PrivateClickMeasurement`.
+    AdClickAttribution: "ad-click-attribution",
 };
 
 WI.ConsoleMessage.MessageType = {

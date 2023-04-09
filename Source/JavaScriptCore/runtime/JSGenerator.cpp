@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,11 +31,11 @@
 
 namespace JSC {
 
-const ClassInfo JSGenerator::s_info = { "Generator", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSGenerator) };
+const ClassInfo JSGenerator::s_info = { "Generator"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSGenerator) };
 
 JSGenerator* JSGenerator::create(VM& vm, Structure* structure)
 {
-    JSGenerator* generator = new (NotNull, allocateCell<JSGenerator>(vm.heap)) JSGenerator(vm, structure);
+    JSGenerator* generator = new (NotNull, allocateCell<JSGenerator>(vm)) JSGenerator(vm, structure);
     generator->finishCreation(vm);
     return generator;
 }
@@ -59,11 +59,14 @@ void JSGenerator::finishCreation(VM& vm)
         internalField(index).set(vm, this, values[index]);
 }
 
-void JSGenerator::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSGenerator::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSGenerator*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 }
+
+DEFINE_VISIT_CHILDREN(JSGenerator);
 
 } // namespace JSC

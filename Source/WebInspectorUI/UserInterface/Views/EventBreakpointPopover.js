@@ -23,180 +23,141 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.EventBreakpointPopover = class EventBreakpointPopover extends WI.Popover
+WI.EventBreakpointPopover = class EventBreakpointPopover extends WI.BreakpointPopover
 {
-    constructor(delegate)
+    constructor(delegate, breakpoint)
     {
-        super(delegate);
+        console.assert(!breakpoint || breakpoint instanceof WI.EventBreakpoint, breakpoint);
 
-        this._breakpoint = null;
-
-        this._currentCompletions = [];
-        this._suggestionsView = new WI.CompletionSuggestionsView(this, {preventBlur: true});
-
-        this._targetElement = null;
-        this._preferredEdges = null;
-
-        this.windowResizeHandler = this._presentOverTargetElement.bind(this);
+        super(delegate, breakpoint);
     }
 
-    // Public
+    // Static
 
-    get breakpoint() { return this._breakpoint; }
-
-    show(targetElement, preferredEdges)
+    static get supportsEditing()
     {
-        this._targetElement = targetElement;
-        this._preferredEdges = preferredEdges;
-
-        let contentElement = document.createElement("div");
-        contentElement.classList.add("event-breakpoint-content");
-
-        let label = contentElement.appendChild(document.createElement("div"));
-        label.classList.add("label");
-        label.textContent = WI.UIString("Break on events with name:");
-
-        let typeContainer = contentElement.appendChild(document.createElement("div"));
-        typeContainer.classList.add("event-type");
-
-        this._typeSelectElement = typeContainer.appendChild(document.createElement("select"));
-        this._typeSelectElement.addEventListener("change", this._handleTypeSelectChange.bind(this));
-        this._typeSelectElement.addEventListener("keydown", (event) => {
-            if (isEnterKey(event))
-                this.dismiss();
-        });
-
-        let createOption = (text, value) => {
-            let optionElement = this._typeSelectElement.appendChild(document.createElement("option"));
-            optionElement.value = value;
-            optionElement.textContent = text;
-        };
-
-        createOption(WI.UIString("DOM Event"), WI.EventBreakpoint.Type.Listener);
-
-        if (WI.DOMDebuggerManager.supportsEventBreakpoints()) {
-            createOption(WI.unlocalizedString("requestAnimationFrame"), "requestAnimationFrame");
-            createOption(WI.unlocalizedString("setTimeout"), "setTimeout");
-            createOption(WI.unlocalizedString("setInterval"), "setInterval");
-        } else
-            this._typeSelectElement.hidden = true;
-
-        this._domEventNameInputElement = typeContainer.appendChild(document.createElement("input"));
-        this._domEventNameInputElement.setAttribute("dir", "ltr");
-        this._domEventNameInputElement.placeholder = WI.UIString("Example: \u201C%s\u201D").format("click");
-        this._domEventNameInputElement.spellcheck = false;
-        this._domEventNameInputElement.addEventListener("keydown", (event) => {
-            if (isEnterKey(event) || event.key === "Tab") {
-                this._result = WI.InputPopover.Result.Committed;
-
-                if (this._suggestionsView.visible && this._suggestionsView.selectedIndex < this._currentCompletions.length)
-                    this._domEventNameInputElement.value = this._currentCompletions[this._suggestionsView.selectedIndex];
-
-                this.dismiss();
-            } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && this._suggestionsView.visible) {
-                event.stop();
-
-                if (event.key === "ArrowDown")
-                    this._suggestionsView.selectNext();
-                else
-                    this._suggestionsView.selectPrevious();
-            }
-        });
-        this._domEventNameInputElement.addEventListener("input", (event) => {
-            WI.domManager.getSupportedEventNames()
-            .then((eventNames) => {
-                this._currentCompletions = [];
-                for (let eventName of eventNames) {
-                    if (eventName.toLowerCase().startsWith(this._domEventNameInputElement.value.toLowerCase()))
-                        this._currentCompletions.push(eventName);
-                }
-
-                if (!this._currentCompletions.length) {
-                    this._suggestionsView.hide();
-                    return;
-                }
-
-                this._suggestionsView.update(this._currentCompletions);
-                this._showSuggestionsView();
-            });
-        });
-
-        this.content = contentElement;
-
-        this._presentOverTargetElement();
-
-        this._typeSelectElement.value = WI.EventBreakpoint.Type.Listener;
-        this._domEventNameInputElement.select();
+        return WI.EventBreakpoint.supportsEditing;
     }
 
-    dismiss()
+    // CodeMirrorCompletionController delegate
+
+    completionControllerCompletionsNeeded(completionController, prefix, defaultCompletions, base, suffix, forced)
     {
-        let type = this._typeSelectElement.value;
-        let value = null;
+        let eventName = prefix.toLowerCase();
 
-        if (type === WI.EventBreakpoint.Type.Listener)
-            value = this._domEventNameInputElement.value;
-        else {
-            value = type;
+        WI.domManager.getSupportedEventNames().then((supportedEventNames) => {
+            this._domEventNameCompletionController.updateCompletions(Array.from(supportedEventNames).filter((supportedEventName) => supportedEventName.toLowerCase().startsWith(eventName)));
+        });
+    }
 
-            if (value === "requestAnimationFrame")
-                type = WI.EventBreakpoint.Type.AnimationFrame;
-            else if (value === "setTimeout" || value === "setInterval")
-                type = WI.EventBreakpoint.Type.Timer;
+    // Protected
+
+    get codeMirrorCompletionControllerMode()
+    {
+        return WI.CodeMirrorCompletionController.Mode.EventBreakpoint;
+    }
+
+    populateContent()
+    {
+        let content = document.createDocumentFragment();
+
+        let eventLabelElement = document.createElement("label");
+        eventLabelElement.textContent = WI.UIString("Event");
+
+        let domEventNameEditorElement = content.appendChild(document.createElement("div"));
+        domEventNameEditorElement.classList.add("editor");
+
+        this._domEventNameCodeMirror = WI.CodeMirrorEditor.create(domEventNameEditorElement, {
+            extraKeys: {"Tab": false, "Shift-Tab": false},
+            lineWrapping: false,
+            mode: "text/plain",
+            matchBrackets: true,
+            scrollbarStyle: null,
+        });
+
+        this._domEventNameCompletionController = new WI.CodeMirrorCompletionController(WI.CodeMirrorCompletionController.Mode.Basic, this._domEventNameCodeMirror, this);
+
+        this._domEventNameCodeMirror.addKeyMap({
+            "Enter": () => {
+                this._domEventNameCompletionController.commitCurrentCompletion();
+                this.dismiss();
+            },
+            "Shift-Enter": () => {
+                this._domEventNameCompletionController.commitCurrentCompletion();
+                this.dismiss();
+            },
+            "Esc": () => {
+                this.dismiss();
+            },
+        });
+
+        let domEventNameInputElement = this._domEventNameCodeMirror.getInputField();
+        domEventNameInputElement.id = "edit-breakpoint-popover-content-event-name";
+
+        eventLabelElement.setAttribute("for", domEventNameInputElement.id);
+
+        if (WI.EventBreakpoint.supportsCaseSensitive) {
+            let caseSensitiveLabel = content.appendChild(document.createElement("label"));
+            caseSensitiveLabel.className = "case-sensitive";
+
+            this._caseSensitiveCheckboxElement = caseSensitiveLabel.appendChild(document.createElement("input"));
+            this._caseSensitiveCheckboxElement.type = "checkbox";
+            this._caseSensitiveCheckboxElement.checked = true;
+
+            caseSensitiveLabel.append(WI.UIString("Case Sensitive"));
         }
 
-        if (type && value)
-            this._breakpoint = new WI.EventBreakpoint(type, value);
+        if (WI.EventBreakpoint.supportsIsRegex) {
+            let isRegexLabel = content.appendChild(document.createElement("label"));
+            isRegexLabel.className = "is-regex";
 
-        super.dismiss();
+            this._isRegexCheckboxElement = isRegexLabel.appendChild(document.createElement("input"));
+            this._isRegexCheckboxElement.type = "checkbox";
+            this._isRegexCheckboxElement.checked = false;
+            this._isRegexCheckboxElement.addEventListener("change", (event) => {
+                this._updateDOMEventNameCodeMirrorMode();
+            });
+            this._updateDOMEventNameCodeMirrorMode();
 
-        this._suggestionsView.hide();
+            isRegexLabel.append(WI.UIString("Regular Expression"));
+        }
+
+        this.addRow("event", eventLabelElement, content);
+
+        // Focus the event name input after the popover is shown.
+        setTimeout(() => {
+            this._domEventNameCodeMirror.refresh();
+
+            this._domEventNameCodeMirror.focus();
+            this._domEventNameCodeMirror.setCursor(this._domEventNameCodeMirror.lineCount(), 0);
+
+            this.update();
+        });
     }
 
-    // CompletionSuggestionsView delegate
-
-    completionSuggestionsClickedCompletion(suggestionsView, selectedText)
+    createBreakpoint(options = {})
     {
-        this._domEventNameInputElement.value = selectedText;
+        console.assert(!options.eventName, options);
+        options.eventName = this._domEventNameCodeMirror.getValue();
+        if (!options.eventName)
+            return null;
 
-        this.dismiss();
+        if (this._caseSensitiveCheckboxElement)
+            options.caseSensitive = this._caseSensitiveCheckboxElement.checked;
+        if (this._isRegexCheckboxElement)
+            options.isRegex = this._isRegexCheckboxElement.checked;
+
+        return new WI.EventBreakpoint(WI.EventBreakpoint.Type.Listener, options);
     }
 
     // Private
 
-    _presentOverTargetElement()
+    _updateDOMEventNameCodeMirrorMode()
     {
-        if (!this._targetElement)
-            return;
+        let isRegex = this._isRegexCheckboxElement?.checked;
 
-        let targetFrame = WI.Rect.rectFromClientRect(this._targetElement.getBoundingClientRect());
-        this.present(targetFrame, this._preferredEdges);
+        this._domEventNameCodeMirror.setOption("mode", isRegex ? "text/x-regex" : "text/plain");
     }
-
-    _handleTypeSelectChange(event)
-    {
-        let listenerTypeSelected = this._typeSelectElement.value === WI.EventBreakpoint.Type.Listener;
-        this._domEventNameInputElement.hidden = !listenerTypeSelected;
-
-        this.update();
-
-        if (listenerTypeSelected) {
-            this._domEventNameInputElement.focus();
-
-            if (this._domEventNameInputElement.value)
-                this._showSuggestionsView();
-        } else
-            this._suggestionsView.hide();
-    }
-
-     _showSuggestionsView()
-     {
-        let computedStyle = window.getComputedStyle(this._domEventNameInputElement);
-        let padding = parseInt(computedStyle.borderLeftWidth) + parseInt(computedStyle.paddingLeft);
-
-        let rect = WI.Rect.rectFromClientRect(this._domEventNameInputElement.getBoundingClientRect());
-        rect.origin.x += padding;
-        rect.size.width -= padding + parseInt(computedStyle.borderRightWidth) + parseInt(computedStyle.paddingRight);
-        this._suggestionsView.show(rect);
-     }
 };
+
+WI.EventBreakpointPopover.ReferencePage = WI.ReferencePage.EventBreakpoints;

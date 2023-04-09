@@ -65,11 +65,14 @@ WI.MultipleScopeBarItem = class MultipleScopeBarItem extends WI.Object
     set scopeBarItems(scopeBarItems)
     {
         if (this._scopeBarItems) {
-            for (var scopeBarItem of this._scopeBarItems)
-                scopeBarItem.removeEventListener(null, null, this);
+            for (var scopeBarItem of this._scopeBarItems) {
+                scopeBarItem.removeEventListener(WI.ScopeBarItem.Event.SelectionChanged, this._itemSelectionDidChange, this);
+                scopeBarItem.removeEventListener(WI.ScopeBarItem.Event.HiddenChanged, this._handleItemHiddenChanged, this);
+            }
         }
 
         this._scopeBarItems = scopeBarItems || [];
+        this._visibleScopeBarItems = [];
         this._selectedScopeBarItem = null;
 
         this._selectElement.removeChildren();
@@ -82,7 +85,13 @@ WI.MultipleScopeBarItem = class MultipleScopeBarItem extends WI.Object
             return optionElement;
         }
 
-        for (var scopeBarItem of this._visibleScopeBarItems) {
+        for (let scopeBarItem of this._scopeBarItems) {
+            scopeBarItem.addEventListener(WI.ScopeBarItem.Event.SelectionChanged, this._itemSelectionDidChange, this);
+            scopeBarItem.addEventListener(WI.ScopeBarItem.Event.HiddenChanged, this._handleItemHiddenChanged, this);
+
+            if (scopeBarItem.hidden)
+                continue;
+
             if (scopeBarItem.selected && !this._selectedScopeBarItem)
                 this._selectedScopeBarItem = scopeBarItem;
             else if (scopeBarItem.selected) {
@@ -91,9 +100,7 @@ WI.MultipleScopeBarItem = class MultipleScopeBarItem extends WI.Object
                 scopeBarItem.selected = false;
             }
 
-            scopeBarItem.addEventListener(WI.ScopeBarItem.Event.SelectionChanged, this._itemSelectionDidChange, this);
-            scopeBarItem.addEventListener(WI.ScopeBarItem.Event.HiddenChanged, this._handleItemHiddenChanged, this);
-
+            this._visibleScopeBarItems.push(scopeBarItem);
             this._selectElement.appendChild(createOption(scopeBarItem));
         }
 
@@ -170,11 +177,6 @@ WI.MultipleScopeBarItem = class MultipleScopeBarItem extends WI.Object
 
     // Private
 
-    get _visibleScopeBarItems()
-    {
-        return this._scopeBarItems.filter((item) => !item.hidden);
-    }
-
     _handleMouseDown(event)
     {
         // Only handle left mouse clicks.
@@ -208,7 +210,12 @@ WI.MultipleScopeBarItem = class MultipleScopeBarItem extends WI.Object
     {
         if (this._ignoreItemSelectedEvent)
             return;
-        this.selectedScopeBarItem = event.target.selected ? event.target : null;
+
+        let scopeBarItem = event.target;
+        if (scopeBarItem.hidden)
+            return;
+
+        this.selectedScopeBarItem = scopeBarItem.selected ? scopeBarItem : null;
     }
 
     _handleItemHiddenChanged(event)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2008, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,12 +20,18 @@
 #pragma once
 
 #include "BlobData.h"
+#include <variant>
+#include <wtf/ArgumentCoder.h>
 #include <wtf/Forward.h>
+#include <wtf/IsoMalloc.h>
 #include <wtf/RefCounted.h>
 #include <wtf/URL.h>
-#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
+
+namespace PAL {
+class TextEncoding;
+}
 
 namespace WebCore {
 
@@ -33,19 +39,18 @@ class BlobRegistryImpl;
 class DOMFormData;
 class File;
 class SharedBuffer;
-class TextEncoding;
 
 struct FormDataElement {
     struct EncodedFileData;
     struct EncodedBlobData;
-    using Data = Variant<Vector<char>, EncodedFileData, EncodedBlobData>;
+    using Data = std::variant<Vector<uint8_t>, EncodedFileData, EncodedBlobData>;
 
     FormDataElement() = default;
     explicit FormDataElement(Data&& data)
         : data(WTFMove(data)) { }
-    explicit FormDataElement(Vector<char>&& array)
+    explicit FormDataElement(Vector<uint8_t>&& array)
         : data(WTFMove(array)) { }
-    FormDataElement(const String& filename, int64_t fileStart, int64_t fileLength, Optional<WallTime> expectedFileModificationTime)
+    FormDataElement(const String& filename, int64_t fileStart, int64_t fileLength, std::optional<WallTime> expectedFileModificationTime)
         : data(EncodedFileData { filename, fileStart, fileLength, expectedFileModificationTime }) { }
     explicit FormDataElement(const URL& blobURL)
         : data(EncodedBlobData { blobURL }) { }
@@ -55,24 +60,11 @@ struct FormDataElement {
 
     FormDataElement isolatedCopy() const;
 
-    template<typename Encoder> void encode(Encoder& encoder) const
-    {
-        encoder << data;
-    }
-    template<typename Decoder> static Optional<FormDataElement> decode(Decoder& decoder)
-    {
-        Optional<Data> data;
-        decoder >> data;
-        if (!data)
-            return WTF::nullopt;
-        return FormDataElement(WTFMove(*data));
-    }
-
     struct EncodedFileData {
         String filename;
         int64_t fileStart { 0 };
         int64_t fileLength { 0 };
-        Optional<WallTime> expectedFileModificationTime;
+        std::optional<WallTime> expectedFileModificationTime;
 
         bool fileModificationTimeMatchesExpectation() const;
 
@@ -88,61 +80,14 @@ struct FormDataElement {
                 && fileLength == other.fileLength
                 && expectedFileModificationTime == other.expectedFileModificationTime;
         }
-        template<typename Encoder> void encode(Encoder& encoder) const
-        {
-            encoder << filename << fileStart << fileLength << expectedFileModificationTime;
-        }
-        template<typename Decoder> static Optional<EncodedFileData> decode(Decoder& decoder)
-        {
-            Optional<String> filename;
-            decoder >> filename;
-            if (!filename)
-                return WTF::nullopt;
-            
-            Optional<int64_t> fileStart;
-            decoder >> fileStart;
-            if (!fileStart)
-                return WTF::nullopt;
-            
-            Optional<int64_t> fileLength;
-            decoder >> fileLength;
-            if (!fileLength)
-                return WTF::nullopt;
-            
-            Optional<Optional<WallTime>> expectedFileModificationTime;
-            decoder >> expectedFileModificationTime;
-            if (!expectedFileModificationTime)
-                return WTF::nullopt;
-
-            return {{
-                WTFMove(*filename),
-                WTFMove(*fileStart),
-                WTFMove(*fileLength),
-                WTFMove(*expectedFileModificationTime)
-            }};
-        }
-
     };
-    
+
     struct EncodedBlobData {
         URL url;
 
         bool operator==(const EncodedBlobData& other) const
         {
             return url == other.url;
-        }
-        template<typename Encoder> void encode(Encoder& encoder) const
-        {
-            encoder << url;
-        }
-        template<typename Decoder> static Optional<EncodedBlobData> decode(Decoder& decoder)
-        {
-            Optional<URL> url;
-            decoder >> url;
-            if (!url)
-                return WTF::nullopt;
-
-            return {{ WTFMove(*url) }};
         }
     };
     
@@ -153,10 +98,10 @@ struct FormDataElement {
         if (data.index() != other.data.index())
             return false;
         if (!data.index())
-            return WTF::get<0>(data) == WTF::get<0>(other.data);
+            return std::get<0>(data) == std::get<0>(other.data);
         if (data.index() == 1)
-            return WTF::get<1>(data) == WTF::get<1>(other.data);
-        return WTF::get<2>(data) == WTF::get<2>(other.data);
+            return std::get<1>(data) == std::get<1>(other.data);
+        return std::get<2>(data) == std::get<2>(other.data);
     }
     bool operator!=(const FormDataElement& other) const
     {
@@ -182,9 +127,10 @@ private:
     Vector<String> m_temporaryZipFiles;
 };
 
-class FormData : public RefCounted<FormData> {
+class FormData final : public RefCounted<FormData> {
+    WTF_MAKE_ISO_ALLOCATED_EXPORT(FormData, WEBCORE_EXPORT);
 public:
-    enum EncodingType {
+    enum class EncodingType : uint8_t {
         FormURLEncoded, // for application/x-www-form-urlencoded
         TextPlain, // for text/plain
         MultipartFormData // for multipart/form-data
@@ -192,11 +138,12 @@ public:
 
     WEBCORE_EXPORT static Ref<FormData> create();
     WEBCORE_EXPORT static Ref<FormData> create(const void*, size_t);
-    static Ref<FormData> create(const CString&);
-    static Ref<FormData> create(Vector<char>&&);
+    WEBCORE_EXPORT static Ref<FormData> create(const CString&);
+    WEBCORE_EXPORT static Ref<FormData> create(Vector<uint8_t>&&);
+    WEBCORE_EXPORT static Ref<FormData> create(bool alwaysStream, Vector<char>&& boundary, Vector<WebCore::FormDataElement>&& elements, int64_t identifier);
     static Ref<FormData> create(const Vector<char>&);
     static Ref<FormData> create(const Vector<uint8_t>&);
-    static Ref<FormData> create(const DOMFormData&, EncodingType = FormURLEncoded);
+    static Ref<FormData> create(const DOMFormData&, EncodingType = EncodingType::FormURLEncoded);
     static Ref<FormData> createMultiPart(const DOMFormData&);
     WEBCORE_EXPORT ~FormData();
 
@@ -205,22 +152,18 @@ public:
     Ref<FormData> copy() const;
     WEBCORE_EXPORT Ref<FormData> isolatedCopy() const;
 
-    template<typename Encoder>
-    void encode(Encoder&) const;
-    template<typename Decoder>
-    static RefPtr<FormData> decode(Decoder&);
-
     WEBCORE_EXPORT void appendData(const void* data, size_t);
     void appendFile(const String& filePath);
-    WEBCORE_EXPORT void appendFileRange(const String& filename, long long start, long long length, Optional<WallTime> expectedModificationTime);
+    WEBCORE_EXPORT void appendFileRange(const String& filename, long long start, long long length, std::optional<WallTime> expectedModificationTime);
     WEBCORE_EXPORT void appendBlob(const URL& blobURL);
 
-    WEBCORE_EXPORT Vector<char> flatten() const; // omits files
+    WEBCORE_EXPORT Vector<uint8_t> flatten() const; // omits files
     String flattenToString() const; // omits files
 
     // Resolve all blob references so we only have file and data.
     // If the FormData has no blob references to resolve, this is returned.
     WEBCORE_EXPORT Ref<FormData> resolveBlobReferences(BlobRegistryImpl* = nullptr);
+    bool containsBlobElement() const;
 
     WEBCORE_EXPORT FormDataForUpload prepareForUpload();
 
@@ -238,16 +181,15 @@ public:
     void setIdentifier(int64_t identifier) { m_identifier = identifier; }
     int64_t identifier() const { return m_identifier; }
 
-    bool containsPasswordData() const { return m_containsPasswordData; }
-    void setContainsPasswordData(bool containsPasswordData) { m_containsPasswordData = containsPasswordData; }
+    unsigned imageOrMediaFilesCount() const;
 
     static EncodingType parseEncodingType(const String& type)
     {
-        if (equalLettersIgnoringASCIICase(type, "text/plain"))
-            return TextPlain;
-        if (equalLettersIgnoringASCIICase(type, "multipart/form-data"))
-            return MultipartFormData;
-        return FormURLEncoded;
+        if (equalLettersIgnoringASCIICase(type, "text/plain"_s))
+            return EncodingType::TextPlain;
+        if (equalLettersIgnoringASCIICase(type, "multipart/form-data"_s))
+            return EncodingType::MultipartFormData;
+        return EncodingType::FormURLEncoded;
     }
 
     WEBCORE_EXPORT uint64_t lengthInBytes() const;
@@ -255,11 +197,12 @@ public:
     WEBCORE_EXPORT URL asBlobURL() const;
 
 private:
-    FormData();
+    friend struct IPC::ArgumentCoder<FormData, void>;
+    FormData() = default;
     FormData(const FormData&);
 
-    void appendMultiPartFileValue(const File&, Vector<char>& header, TextEncoding&);
-    void appendMultiPartStringValue(const String&, Vector<char>& header, TextEncoding&);
+    void appendMultiPartFileValue(const File&, Vector<char>& header, PAL::TextEncoding&);
+    void appendMultiPartStringValue(const String&, Vector<char>& header, PAL::TextEncoding&);
     void appendMultiPartKeyValuePairItems(const DOMFormData&);
     void appendNonMultiPartKeyValuePairItems(const DOMFormData&, EncodingType);
 
@@ -268,8 +211,7 @@ private:
     int64_t m_identifier { 0 };
     bool m_alwaysStream { false };
     Vector<char> m_boundary;
-    bool m_containsPasswordData { false };
-    mutable Optional<uint64_t> m_lengthInBytes;
+    mutable std::optional<uint64_t> m_lengthInBytes;
 };
 
 inline bool operator==(const FormData& a, const FormData& b)
@@ -280,36 +222,6 @@ inline bool operator==(const FormData& a, const FormData& b)
 inline bool operator!=(const FormData& a, const FormData& b)
 {
     return !(a == b);
-}
-
-template<typename Encoder>
-void FormData::encode(Encoder& encoder) const
-{
-    encoder << m_alwaysStream;
-    encoder << m_boundary;
-    encoder << m_elements;
-    encoder << m_identifier;
-    // FIXME: Does not encode m_containsPasswordData. Why is that OK?
-}
-
-template<typename Decoder>
-RefPtr<FormData> FormData::decode(Decoder& decoder)
-{
-    auto data = FormData::create();
-
-    if (!decoder.decode(data->m_alwaysStream))
-        return nullptr;
-
-    if (!decoder.decode(data->m_boundary))
-        return nullptr;
-
-    if (!decoder.decode(data->m_elements))
-        return nullptr;
-
-    if (!decoder.decode(data->m_identifier))
-        return nullptr;
-
-    return data;
 }
 
 } // namespace WebCore

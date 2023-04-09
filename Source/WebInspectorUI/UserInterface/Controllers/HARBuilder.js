@@ -60,7 +60,7 @@ WI.HARBuilder = class HARBuilder
     {
         return {
             name: "WebKit Web Inspector",
-            version: WI.Platform.version.build || "1.0",
+            version: "1.0",
         };
     }
 
@@ -338,6 +338,8 @@ WI.HARBuilder = class HARBuilder
             return "Disk Cache";
         case WI.Resource.ResponseSource.ServiceWorker:
             return "Service Worker";
+        case WI.Resource.ResponseSource.InspectorOverride:
+            return "Inspector Override";
         }
 
         console.assert();
@@ -397,6 +399,10 @@ WI.HARBuilder = class HARBuilder
             return WI.Resource.ResponseSource.MemoryCache;
         case "Disk Cache":
             return WI.Resource.ResponseSource.DiskCache;
+        case "Service Worker":
+            return WI.Resource.ResponseSource.ServiceWorker;
+        case "Inspector Override":
+            return WI.Resource.ResponseSource.InspectorOverride;
         }
 
         if (fetchType)

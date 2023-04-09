@@ -21,8 +21,6 @@
 
 #pragma once
 
-#if ENABLE(SVG_FONTS)
-
 #include "SVGElement.h"
 
 namespace WebCore {
@@ -66,9 +64,7 @@ private:
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     Ref<StyleRuleFontFace> m_fontFaceRule;
-    SVGFontElement* m_fontElement;
+    WeakPtr<SVGFontElement, WeakPtrImplWithEventTargetData> m_fontElement;
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(SVG_FONTS)

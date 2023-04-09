@@ -33,108 +33,62 @@
 #include "BitmapImage.h"
 #include "CairoOperations.h"
 #include "Color.h"
-#include "ColorConversion.h"
+#include "ColorTransferFunctions.h"
 #include "GraphicsContext.h"
-#include "GraphicsContextImplCairo.h"
-#include "ImageBufferUtilitiesCairo.h"
-#include "MIMETypeRegistry.h"
-#include "PlatformContextCairo.h"
+#include "GraphicsContextCairo.h"
 #include <cairo.h>
-#include <wtf/text/Base64.h>
 
 #if USE(CAIRO)
 
 namespace WebCore {
 
-RefPtr<Image> ImageBufferCairoBackend::copyImage(BackingStoreCopy copyBehavior, PreserveResolution) const
+void ImageBufferCairoBackend::clipToMask(GraphicsContext& destContext, const FloatRect& destRect)
 {
-    // BitmapImage will release the passed in surface on destruction
-    return BitmapImage::create(copyNativeImage(copyBehavior));
+    if (auto image = copyNativeImage(DontCopyBackingStore))
+        Cairo::clipToImageBuffer(*destContext.platformContext(), image->platformImage().get(), destRect);
 }
 
-void ImageBufferCairoBackend::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+void ImageBufferCairoBackend::transformToColorSpace(const DestinationColorSpace& newColorSpace)
 {
-    if (!destContext.hasPlatformContext()) {
-        // If there's no platformContext, we're using threaded rendering, and all the operations must be done
-        // through the GraphicsContext.
-        auto image = copyImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore);
-        destContext.drawImage(*image, destRect, srcRect, options);
-        return;
-    }
-
-    InterpolationQualityMaintainer interpolationQualityForThisScope(destContext, options.interpolationQuality());
-    const auto& destinationContextState = destContext.state();
-
-    if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        drawNativeImage(*destContext.platformContext(), image.get(), destRect, srcRect, { options, destinationContextState.imageInterpolationQuality }, destinationContextState.alpha, WebCore::Cairo::ShadowState(destinationContextState));
-}
-
-void ImageBufferCairoBackend::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
-{
-    if (!destContext.hasPlatformContext()) {
-        // If there's no platformContext, we're using threaded rendering, and all the operations must be done
-        // through the GraphicsContext.
-        auto image = copyImage(DontCopyBackingStore);
-        image->drawPattern(destContext, destRect, srcRect, patternTransform, phase, spacing, options);
-        return;
-    }
-
-    if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        Cairo::drawPattern(*destContext.platformContext(), image.get(), m_logicalSize, destRect, srcRect, patternTransform, phase, options);
-}
-
-void ImageBufferCairoBackend::transformColorSpace(ColorSpace srcColorSpace, ColorSpace destColorSpace)
-{
-    if (srcColorSpace == destColorSpace)
+#if ENABLE(DESTINATION_COLOR_SPACE_LINEAR_SRGB)
+    if (m_parameters.colorSpace == newColorSpace)
         return;
 
     // only sRGB <-> linearRGB are supported at the moment
-    if ((srcColorSpace != ColorSpace::LinearRGB && srcColorSpace != ColorSpace::SRGB)
-        || (destColorSpace != ColorSpace::LinearRGB && destColorSpace != ColorSpace::SRGB))
+    if ((m_parameters.colorSpace != DestinationColorSpace::LinearSRGB() && m_parameters.colorSpace != DestinationColorSpace::SRGB())
+        || (newColorSpace != DestinationColorSpace::LinearSRGB() && newColorSpace != DestinationColorSpace::SRGB()))
         return;
 
-    if (destColorSpace == ColorSpace::LinearRGB) {
+    m_parameters.colorSpace = newColorSpace;
+
+    if (newColorSpace == DestinationColorSpace::LinearSRGB()) {
         static const std::array<uint8_t, 256> linearRgbLUT = [] {
             std::array<uint8_t, 256> array;
             for (unsigned i = 0; i < 256; i++) {
                 float color = i / 255.0f;
-                color = rgbToLinearColorComponent(color);
+                color = SRGBTransferFunction<float, TransferFunctionMode::Clamped>::toLinear(color);
                 array[i] = static_cast<uint8_t>(round(color * 255));
             }
             return array;
         }();
         platformTransformColorSpace(linearRgbLUT);
-    } else if (destColorSpace == ColorSpace::SRGB) {
+    } else {
         static const std::array<uint8_t, 256> deviceRgbLUT= [] {
             std::array<uint8_t, 256> array;
             for (unsigned i = 0; i < 256; i++) {
                 float color = i / 255.0f;
-                color = linearToRGBColorComponent(color);
+                color = SRGBTransferFunction<float, TransferFunctionMode::Clamped>::toGammaEncoded(color);
                 array[i] = static_cast<uint8_t>(round(color * 255));
             }
             return array;
         }();
         platformTransformColorSpace(deviceRgbLUT);
     }
-}
-
-String ImageBufferCairoBackend::toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const
-{
-    Vector<uint8_t> encodedImage = toData(mimeType, quality);
-    if (encodedImage.isEmpty())
-        return "data:,";
-
-    Vector<char> base64Data;
-    base64Encode(encodedImage.data(), encodedImage.size(), base64Data);
-
-    return "data:" + mimeType + ";base64," + base64Data;
-}
-
-Vector<uint8_t> ImageBufferCairoBackend::toData(const String& mimeType, Optional<double> quality) const
-{
-    ASSERT(MIMETypeRegistry::isSupportedImageMIMETypeForEncoding(mimeType));
-    cairo_surface_t* image = cairo_get_target(context().platformContext()->cr());
-    return data(image, mimeType, quality);
+#else
+    ASSERT(newColorSpace == DestinationColorSpace::SRGB());
+    ASSERT(m_parameters.colorSpace == DestinationColorSpace::SRGB());
+    UNUSED_PARAM(newColorSpace);
+#endif
 }
 
 } // namespace WebCore

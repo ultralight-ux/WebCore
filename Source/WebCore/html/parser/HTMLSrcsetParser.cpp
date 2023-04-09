@@ -130,18 +130,18 @@ static bool parseDescriptors(Vector<StringView>& descriptors, DescriptorParsingR
             continue;
         unsigned descriptorCharPosition = descriptor.length() - 1;
         UChar descriptorChar = descriptor[descriptorCharPosition];
-        descriptor = descriptor.substring(0, descriptorCharPosition);
+        descriptor = descriptor.left(descriptorCharPosition);
         if (descriptorChar == 'x') {
             if (result.hasDensity() || result.hasHeight() || result.hasWidth())
                 return false;
-            Optional<double> density = parseValidHTMLFloatingPointNumber(descriptor);
+            std::optional<double> density = parseValidHTMLFloatingPointNumber(descriptor);
             if (!density || density.value() < 0)
                 return false;
             result.setDensity(density.value());
         } else if (descriptorChar == 'w') {
             if (result.hasDensity() || result.hasWidth())
                 return false;
-            Optional<int> resourceWidth = parseValidHTMLNonNegativeInteger(descriptor);
+            std::optional<int> resourceWidth = parseValidHTMLNonNegativeInteger(descriptor);
             if (!resourceWidth || resourceWidth.value() <= 0)
                 return false;
             result.setResourceWidth(resourceWidth.value());
@@ -150,7 +150,7 @@ static bool parseDescriptors(Vector<StringView>& descriptors, DescriptorParsingR
             // The value of the 'h' descriptor is not used.
             if (result.hasDensity() || result.hasHeight())
                 return false;
-            Optional<int> resourceHeight = parseValidHTMLNonNegativeInteger(descriptor);
+            std::optional<int> resourceHeight = parseValidHTMLNonNegativeInteger(descriptor);
             if (!resourceHeight || resourceHeight.value() <= 0)
                 return false;
             result.setResourceHeight(resourceHeight.value());
@@ -257,7 +257,7 @@ static ImageCandidate pickBestImageCandidate(float deviceScaleFactor, Vector<Ima
     return imageCandidates[winner];
 }
 
-ImageCandidate bestFitSourceForImageAttributes(float deviceScaleFactor, const AtomString& srcAttribute, const AtomString& srcsetAttribute, float sourceSize)
+ImageCandidate bestFitSourceForImageAttributes(float deviceScaleFactor, StringView srcAttribute, StringView srcsetAttribute, float sourceSize)
 {
     if (srcsetAttribute.isNull()) {
         if (srcAttribute.isNull())

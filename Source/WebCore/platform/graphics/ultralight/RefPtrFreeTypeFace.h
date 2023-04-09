@@ -8,8 +8,11 @@ typedef struct FT_FaceRec_* FT_Face;
 
 namespace WTF {
 
-template<> void refIfNotNull(FT_Face face);
-template<> void derefIfNotNull(FT_Face face);
+template <>
+struct DefaultRefDerefTraits<FT_FaceRec_> {
+    static void refIfNotNull(FT_Face face);
+    static void derefIfNotNull(FT_Face face);
+};
 
 } // namespace WTF
 

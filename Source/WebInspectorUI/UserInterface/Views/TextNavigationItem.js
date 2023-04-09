@@ -27,9 +27,9 @@ WI.TextNavigationItem = class TextNavigationItem extends WI.NavigationItem
 {
     constructor(identifier, label)
     {
-        super(identifier);
-
         console.assert(identifier);
+
+        super(identifier);
 
         this._element.classList.add("text");
         this._element.textContent = label || "";
@@ -45,5 +45,12 @@ WI.TextNavigationItem = class TextNavigationItem extends WI.NavigationItem
     set text(x)
     {
         this._element.textContent = x || "";
+    }
+
+    // Protected
+
+    get totalMargin()
+    {
+        return super.totalMargin + 4; /* .navigation-bar .item.text */
     }
 };

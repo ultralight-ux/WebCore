@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Apple Inc. All rights reserved.
- * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2003-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2014 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -28,10 +28,14 @@
 namespace WebCore {
 
 class Animation;
+class CSSBorderImageSliceValue;
+class CSSBorderImageWidthValue;
+class CSSPrimitiveValue;
 class CSSValue;
 class FillLayer;
 class LengthBox;
 class NinePieceImage;
+class Quad;
 class RenderStyle;
 class StyleImage;
 
@@ -52,12 +56,11 @@ public:
     void mapFillBlendMode(CSSPropertyID, FillLayer&, const CSSValue&);
     void mapFillOrigin(CSSPropertyID, FillLayer&, const CSSValue&);
     void mapFillImage(CSSPropertyID, FillLayer&, CSSValue&);
-    void mapFillRepeatX(CSSPropertyID, FillLayer&, const CSSValue&);
-    void mapFillRepeatY(CSSPropertyID, FillLayer&, const CSSValue&);
+    void mapFillRepeat(CSSPropertyID, FillLayer&, const CSSValue&);
     void mapFillSize(CSSPropertyID, FillLayer&, const CSSValue&);
     void mapFillXPosition(CSSPropertyID, FillLayer&, const CSSValue&);
     void mapFillYPosition(CSSPropertyID, FillLayer&, const CSSValue&);
-    void mapFillMaskSourceType(CSSPropertyID, FillLayer&, const CSSValue&);
+    void mapFillMaskMode(CSSPropertyID, FillLayer&, const CSSValue&);
 
     void mapAnimationDelay(Animation&, const CSSValue&);
     void mapAnimationDirection(Animation&, const CSSValue&);
@@ -68,16 +71,21 @@ public:
     void mapAnimationPlayState(Animation&, const CSSValue&);
     void mapAnimationProperty(Animation&, const CSSValue&);
     void mapAnimationTimingFunction(Animation&, const CSSValue&);
+    void mapAnimationCompositeOperation(Animation&, const CSSValue&);
 
-    void mapNinePieceImage(CSSPropertyID, CSSValue*, NinePieceImage&);
+    void mapNinePieceImage(CSSValue*, NinePieceImage&);
     void mapNinePieceImageSlice(CSSValue&, NinePieceImage&);
+    void mapNinePieceImageSlice(CSSBorderImageSliceValue&, NinePieceImage&);
+    void mapNinePieceImageWidth(CSSValue&, NinePieceImage&);
+    void mapNinePieceImageWidth(CSSBorderImageWidthValue&, NinePieceImage&);
     LengthBox mapNinePieceImageQuad(CSSValue&);
     void mapNinePieceImageRepeat(CSSValue&, NinePieceImage&);
+    void mapNinePieceImageRepeat(CSSPrimitiveValue&, NinePieceImage&);
 
 private:
     RenderStyle* style() const;
-    bool useSVGZoomRules() const;
     RefPtr<StyleImage> styleImage(CSSValue&);
+    LengthBox mapNinePieceImageQuad(Quad&);
 
     // FIXME: This type can merge into BuilderState.
     Style::BuilderState& m_builderState;

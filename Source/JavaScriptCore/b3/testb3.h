@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 
 #include "AirCode.h"
 #include "AirInstInlines.h"
+#include "AirStackSlot.h"
 #include "AirValidate.h"
 #include "AllowMacroScratchRegisterUsage.h"
 #include "B3ArgumentRegValue.h"
@@ -34,7 +35,6 @@
 #include "B3BasicBlockInlines.h"
 #include "B3BreakCriticalEdges.h"
 #include "B3CCallValue.h"
-#include "B3Compilation.h"
 #include "B3Compile.h"
 #include "B3ComputeDivisionMagic.h"
 #include "B3Const32Value.h"
@@ -50,10 +50,8 @@
 #include "B3MoveConstants.h"
 #include "B3NativeTraits.h"
 #include "B3Procedure.h"
-#include "B3ReduceLoopStrength.h"
 #include "B3ReduceStrength.h"
 #include "B3SlotBaseValue.h"
-#include "B3StackSlot.h"
 #include "B3StackmapGenerationParams.h"
 #include "B3SwitchValue.h"
 #include "B3UpsilonValue.h"
@@ -67,10 +65,12 @@
 #include "FPRInfo.h"
 #include "GPRInfo.h"
 #include "InitializeThreading.h"
+#include "JITCompilation.h"
 #include "JSCInlines.h"
 #include "LinkBuffer.h"
 #include "PureNaN.h"
 #include <cmath>
+#include <regex>
 #include <string>
 #include <wtf/FastTLS.h>
 #include <wtf/IndexSet.h>
@@ -91,14 +91,14 @@ inline void usage()
         exit(1);
 }
 
-#if ENABLE(B3_JIT)
+#if ENABLE(B3_JIT) && !CPU(ARM)
 
 using namespace JSC;
 using namespace JSC::B3;
 
-inline bool shouldBeVerbose()
+inline bool shouldBeVerbose(Procedure& procedure)
 {
-    return shouldDumpIR(B3Mode);
+    return shouldDumpIR(procedure, B3Mode);
 }
 
 extern Lock crashLock;
@@ -196,9 +196,9 @@ inline std::unique_ptr<Compilation> compileProc(Procedure& procedure, unsigned o
 }
 
 template<typename T, typename... Arguments>
-T invoke(MacroAssemblerCodePtr<B3CompilationPtrTag> ptr, Arguments... arguments)
+T invoke(CodePtr<JITCompilationPtrTag> ptr, Arguments... arguments)
 {
-    void* executableAddress = untagCFunctionPtr<B3CompilationPtrTag>(ptr.executableAddress());
+    void* executableAddress = untagCFunctionPtr<JITCompilationPtrTag>(ptr.taggedPtr());
     T (*function)(Arguments...) = bitwise_cast<T(*)(Arguments...)>(executableAddress);
     return function(arguments...);
 }
@@ -219,13 +219,13 @@ inline void lowerToAirForTesting(Procedure& proc)
 {
     proc.resetReachability();
     
-    if (shouldBeVerbose())
+    if (shouldBeVerbose(proc))
         dataLog("B3 before lowering:\n", proc);
     
     validate(proc);
     lowerToAir(proc);
     
-    if (shouldBeVerbose())
+    if (shouldBeVerbose(proc))
         dataLog("Air after lowering:\n", proc.code());
     
     Air::validate(proc.code());
@@ -244,11 +244,13 @@ void checkDisassembly(Compilation& compilation, const Func& func, const CString&
     CRASH();
 }
 
-inline void checkUsesInstruction(Compilation& compilation, const char* text)
+inline void checkUsesInstruction(Compilation& compilation, const char* text, bool regex = false)
 {
     checkDisassembly(
         compilation,
         [&] (const char* disassembly) -> bool {
+            if (regex)
+                return std::regex_match(disassembly, std::regex(text, std::regex::extended));
             return strstr(disassembly, text);
         },
         toCString("Expected to find ", text, " but didnt!"));
@@ -270,6 +272,7 @@ struct B3Operand {
     Type value;
 };
 
+typedef B3Operand<v128_t> V128Operand;
 typedef B3Operand<int64_t> Int64Operand;
 typedef B3Operand<int32_t> Int32Operand;
 typedef B3Operand<int16_t> Int16Operand;
@@ -290,6 +293,8 @@ void populateWithInterestingValues(Vector<B3Operand<FloatType>>& operands)
     operands.append({ "-0.6", static_cast<FloatType>(-0.6) });
     operands.append({ "1.", static_cast<FloatType>(1.) });
     operands.append({ "-1.", static_cast<FloatType>(-1.) });
+    operands.append({ "1.1", static_cast<FloatType>(1.1) });
+    operands.append({ "-1.1", static_cast<FloatType>(-1.1) });
     operands.append({ "2.", static_cast<FloatType>(2.) });
     operands.append({ "-2.", static_cast<FloatType>(-2.) });
     operands.append({ "M_PI", static_cast<FloatType>(M_PI) });
@@ -310,6 +315,30 @@ Vector<B3Operand<FloatType>> floatingPointOperands()
     populateWithInterestingValues(operands);
     return operands;
 };
+
+inline Vector<V128Operand> v128Operands()
+{
+    Vector<V128Operand> operands;
+    operands.append({ "0,0", v128_t { 0, 0 } });
+    operands.append({ "1,0", v128_t { 1, 0 } });
+    operands.append({ "0,1", v128_t { 0, 1 } });
+    operands.append({ "42,0", v128_t { 42, 0 } });
+    operands.append({ "0,42", v128_t { 0, 42 } });
+    operands.append({ "42,42", v128_t { 42, 42 } });
+    operands.append({ "-42,-42", v128_t { static_cast<uint64_t>(-42), static_cast<uint64_t>(-42) } });
+    operands.append({ "0,-42", v128_t { 0, static_cast<uint64_t>(-42) } });
+    operands.append({ "-42,0", v128_t { static_cast<uint64_t>(-42), 0 } });
+    operands.append({ "int64-max,int64-max", v128_t { static_cast<uint64_t>(std::numeric_limits<int64_t>::max()), static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) } });
+    operands.append({ "int64-min,int64-min", v128_t { static_cast<uint64_t>(std::numeric_limits<int64_t>::min()), static_cast<uint64_t>(std::numeric_limits<int64_t>::min()) } });
+    operands.append({ "int32-max,int32-max", v128_t { static_cast<uint64_t>(std::numeric_limits<int32_t>::max()), static_cast<uint64_t>(std::numeric_limits<int32_t>::max()) } });
+    operands.append({ "int32-min,int32-min", v128_t { static_cast<uint64_t>(std::numeric_limits<int32_t>::min()), static_cast<uint64_t>(std::numeric_limits<int32_t>::min()) } });
+    operands.append({ "uint64-max,uint64-max", v128_t { static_cast<uint64_t>(std::numeric_limits<uint64_t>::max()), static_cast<uint64_t>(std::numeric_limits<uint64_t>::max()) } });
+    operands.append({ "uint64-min,uint64-min", v128_t { static_cast<uint64_t>(std::numeric_limits<uint64_t>::min()), static_cast<uint64_t>(std::numeric_limits<uint64_t>::min()) } });
+    operands.append({ "uint32-max,uint32-max", v128_t { static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()), static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) } });
+    operands.append({ "uint32-min,uint32-min", v128_t { static_cast<uint64_t>(std::numeric_limits<uint32_t>::min()), static_cast<uint64_t>(std::numeric_limits<uint32_t>::min()) } });
+
+    return operands;
+}
 
 inline Vector<Int64Operand> int64Operands()
 {
@@ -414,8 +443,80 @@ inline double modelLoad<double, double>(double value) { return value; }
 
 void run(const char* filter);
 void testBitAndSExt32(int32_t value, int64_t mask);
+void testUbfx32ShiftAnd();
+void testUbfx32AndShift();
+void testUbfx64ShiftAnd();
+void testUbfx64AndShift();
+void testUbfiz32AndShiftValueMask();
+void testUbfiz32AndShiftMaskValue();
+void testUbfiz32ShiftAnd();
+void testUbfiz32AndShift();
+void testUbfiz64AndShiftValueMask();
+void testUbfiz64AndShiftMaskValue();
+void testUbfiz64ShiftAnd();
+void testUbfiz64AndShift();
+void testInsertBitField32();
+void testInsertBitField64();
+void testExtractInsertBitfieldAtLowEnd32();
+void testExtractInsertBitfieldAtLowEnd64();
+void testBIC32();
+void testBIC64();
+void testOrNot32();
+void testOrNot64();
+void testXorNot32();
+void testXorNot64();
+void testXorNotWithLeftShift32();
+void testXorNotWithRightShift32();
+void testXorNotWithUnsignedRightShift32();
+void testXorNotWithLeftShift64();
+void testXorNotWithRightShift64();
+void testXorNotWithUnsignedRightShift64();
+void testBitfieldZeroExtend32();
+void testBitfieldZeroExtend64();
+void testExtractRegister32();
+void testExtractRegister64();
+void testInsertSignedBitfieldInZero32();
+void testInsertSignedBitfieldInZero64();
+void testExtractSignedBitfield32();
+void testExtractSignedBitfield64();
+void testBitAndZeroShiftRightArgImmMask32();
+void testBitAndZeroShiftRightArgImmMask64();
 void testBasicSelect();
 void testSelectTest();
+void testAddWithLeftShift32();
+void testAddWithRightShift32();
+void testAddWithUnsignedRightShift32();
+void testAddWithLeftShift64();
+void testAddWithRightShift64();
+void testAddWithUnsignedRightShift64();
+void testSubWithLeftShift32();
+void testSubWithRightShift32();
+void testSubWithUnsignedRightShift32();
+void testSubWithLeftShift64();
+void testSubWithRightShift64();
+void testSubWithUnsignedRightShift64();
+
+void testAndLeftShift32();
+void testAndRightShift32();
+void testAndUnsignedRightShift32();
+void testAndLeftShift64();
+void testAndRightShift64();
+void testAndUnsignedRightShift64();
+
+void testXorLeftShift32();
+void testXorRightShift32();
+void testXorUnsignedRightShift32();
+void testXorLeftShift64();
+void testXorRightShift64();
+void testXorUnsignedRightShift64();
+
+void testOrLeftShift32();
+void testOrRightShift32();
+void testOrUnsignedRightShift32();
+void testOrLeftShift64();
+void testOrRightShift64();
+void testOrUnsignedRightShift64();
+
 void testSelectCompareDouble();
 void testSelectCompareFloat(float, float);
 void testSelectCompareFloatToDouble(float, float);
@@ -455,7 +556,7 @@ void testPatchpointDoubleRegs();
 void testSpillDefSmallerThanUse();
 void testSpillUseLargerThanDef();
 void testLateRegister();
-void interpreterPrint(Vector<intptr_t>* stream, intptr_t value);
+extern "C" void interpreterPrint(Vector<intptr_t>* stream, intptr_t value);
 void testInterpreter();
 void testReduceStrengthCheckBottomUseInAnotherBlock();
 void testResetReachabilityDanglingReference();
@@ -478,6 +579,8 @@ void testTrappingLoadAddStore();
 void testTrappingLoadDCE();
 void testTrappingStoreElimination();
 void testMoveConstants();
+void testMoveConstantsWithLargeOffsets();
+void testMoveConstantsSIMD();
 void testPCOriginMapDoesntInsertNops();
 void testBitOrBitOrArgImmImm32(int, int, int c);
 void testBitOrImmBitOrArgImm32(int, int, int c);
@@ -614,7 +717,9 @@ void testConvertDoubleToFloatMem(double value);
 void testConvertFloatToDoubleArg(float value);
 void testConvertFloatToDoubleImm(float value);
 void testConvertFloatToDoubleMem(float value);
+void testConvertDoubleToFloatToDouble(double value);
 void testConvertDoubleToFloatToDoubleToFloat(double value);
+void testConvertDoubleToFloatEqual(double value);
 void testLoadFloatConvertDoubleConvertFloatStoreFloat(float value);
 void testFroundArg(double value);
 void testFroundMem(double value);
@@ -632,6 +737,7 @@ void testIToD32Imm(int32_t value);
 void testIToF32Imm(int32_t value);
 void testIToDReducedToIToF64Arg();
 void testIToDReducedToIToF32Arg();
+void testStoreZeroReg();
 void testStore32(int value);
 void testStoreConstant(int value);
 void testStoreConstantPtr(intptr_t value);
@@ -776,6 +882,10 @@ void testMulTreeArg32(int32_t);
 void testArg(int argument);
 void testReturnConst64(int64_t value);
 void testReturnVoid();
+void testLoadZeroExtendIndexAddress();
+void testLoadSignExtendIndexAddress();
+void testStoreZeroExtendIndexAddress();
+void testStoreSignExtendIndexAddress();
 void testAddArg(int);
 void testAddArgs(int, int);
 void testAddArgImm(int, int);
@@ -855,19 +965,28 @@ void testMulNegArgArg(int, int);
 void testMulArgImm(int64_t, int64_t);
 void testMulImmArg(int, int);
 void testMulArgs32(int, int);
-void testMulArgs32SignExtend(int, int);
+void testMulArgs32SignExtend();
+void testMulArgs32ZeroExtend();
 void testMulImm32SignExtend(const int, int);
 void testMulLoadTwice();
 void testMulAddArgsLeft();
 void testMulAddArgsRight();
 void testMulAddArgsLeft32();
 void testMulAddArgsRight32();
+void testMulAddSignExtend32ArgsLeft();
+void testMulAddSignExtend32ArgsRight();
+void testMulAddZeroExtend32ArgsLeft();
+void testMulAddZeroExtend32ArgsRight();
 void testMulSubArgsLeft();
 void testMulSubArgsRight();
 void testMulSubArgsLeft32();
 void testMulSubArgsRight32();
+void testMulSubSignExtend32();
+void testMulSubZeroExtend32();
 void testMulNegArgs();
 void testMulNegArgs32();
+void testMulNegSignExtend32();
+void testMulNegZeroExtend32();
 void testMulArgDouble(double);
 void testMulArgsDouble(double, double);
 void testCallSimpleDouble(double, double);
@@ -1023,6 +1142,7 @@ void testSubMemArg(int64_t, int64_t);
 void testSubImmMem(int64_t, int64_t);
 void testSubMemImm(int64_t, int64_t);
 void testSubArgs32(int, int);
+void testSubArgs32ZeroExtend(int, int);
 void testSubArgImm32(int, int);
 void testSubImmArg32(int, int);
 void testSubMemArg32(int32_t, int32_t);
@@ -1060,13 +1180,38 @@ void addAtomicTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
 void addLoadTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
 void addTupleTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
 
-void testFastForwardCopy32();
-void testByteCopyLoop();
-void testByteCopyLoopStartIsLoopDependent();
-void testByteCopyLoopBoundIsLoopDependent();
-
-void addCopyTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>&);
-
 bool shouldRun(const char* filter, const char* testName);
+
+void testLoadPreIndex32();
+void testLoadPreIndex64();
+void testLoadPostIndex32();
+void testLoadPostIndex64();
+
+void testStorePreIndex32();
+void testStorePreIndex64();
+void testStorePostIndex32();
+void testStorePostIndex64();
+
+void testFloatMaxMin();
+void testDoubleMaxMin();
+
+void testWasmAddressDoesNotCSE();
+void testWasmAddressWithOffset();
+void testStoreAfterClobberExitsSideways();
+void testStoreAfterClobberDifferentWidth();
+void testStoreAfterClobberDifferentWidthSuccessor();
+void testStoreAfterClobberExitsSidewaysSuccessor();
+
+void testVectorOrConstants(v128_t, v128_t);
+void testVectorAndConstants(v128_t, v128_t);
+void testVectorXorConstants(v128_t, v128_t);
+void testVectorOrSelf();
+void testVectorAndSelf();
+void testVectorXorSelf();
+void testVectorXorOrAllOnesToVectorAndXor();
+void testVectorXorAndAllOnesToVectorOrXor();
+void testVectorXorOrAllOnesConstantToVectorAndXor(v128_t);
+void testVectorXorAndAllOnesConstantToVectorOrXor(v128_t);
+void testVectorAndConstantConstant(v128_t, v128_t);
 
 #endif // ENABLE(B3_JIT)

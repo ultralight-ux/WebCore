@@ -29,8 +29,9 @@
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
-#include "GenericEventQueue.h"
+#include "WebCoreOpaqueRoot.h"
 #include <wtf/HashMap.h>
+#include <wtf/LoggerHelper.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 
@@ -39,16 +40,21 @@ namespace WebCore {
 class DeferredPromise;
 class HTMLMediaElement;
 class MediaPlaybackTarget;
+class Node;
 class RemotePlaybackAvailabilityCallback;
 
-class RemotePlayback final : public RefCounted<RemotePlayback>, public ActiveDOMObject, public EventTargetWithInlineData {
+class RemotePlayback final
+    : public RefCounted<RemotePlayback>
+    , public ActiveDOMObject
+    , public EventTarget
+{
     WTF_MAKE_ISO_ALLOCATED(RemotePlayback);
 public:
     static Ref<RemotePlayback> create(HTMLMediaElement&);
     ~RemotePlayback();
 
     void watchAvailability(Ref<RemotePlaybackAvailabilityCallback>&&, Ref<DeferredPromise>&&);
-    void cancelWatchAvailability(Optional<int32_t> id, Ref<DeferredPromise>&&);
+    void cancelWatchAvailability(std::optional<int32_t> id, Ref<DeferredPromise>&&);
     void prompt(Ref<DeferredPromise>&&);
 
     bool hasAvailabilityCallbacks() const;
@@ -69,6 +75,9 @@ public:
     using RefCounted::ref;
     using RefCounted::deref;
 
+    WebCoreOpaqueRoot opaqueRootConcurrently() const;
+    Node* ownerNode() const;
+
 private:
     explicit RemotePlayback(HTMLMediaElement&);
 
@@ -81,13 +90,22 @@ private:
 
     // ActiveDOMObject.
     const char* activeDOMObjectName() const final;
-    void stop() final;
 
-    // EventTargetWithInlineData.
+    // EventTarget.
     EventTargetInterface eventTargetInterface() const final { return RemotePlaybackEventTargetInterfaceType; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
-    WeakPtr<HTMLMediaElement> m_mediaElement;
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const { return m_logger.get(); }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    WTFLogChannel& logChannel() const;
+    const char* logClassName() const { return "RemotePlayback"; }
+
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier { nullptr };
+#endif
+
+    WeakPtr<HTMLMediaElement, WeakPtrImplWithEventTargetData> m_mediaElement;
     uint32_t m_nextId { 0 };
 
     using CallbackMap = HashMap<int32_t, Ref<RemotePlaybackAvailabilityCallback>>;
@@ -99,9 +117,6 @@ private:
     PromiseVector m_promptPromises;
     State m_state { State::Disconnected };
     bool m_available { false };
-
-    UniqueRef<MainThreadGenericEventQueue> m_eventQueue;
-    GenericTaskQueue<Timer> m_taskQueue;
 };
 
 }

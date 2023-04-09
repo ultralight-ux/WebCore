@@ -28,15 +28,15 @@
 
 #pragma once
 
+#include "JSDOMPromiseDeferredForward.h"
 #include "ReadableStreamDefaultController.h"
-#include <wtf/Optional.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-template<typename IDLType> class DOMPromiseDeferred;
-
 class ReadableStreamSource : public RefCounted<ReadableStreamSource> {
 public:
+    ReadableStreamSource();
     virtual ~ReadableStreamSource();
 
     void start(ReadableStreamDefaultController&&, DOMPromiseDeferred<void>&&);
@@ -63,7 +63,29 @@ protected:
 
 private:
     std::unique_ptr<DOMPromiseDeferred<void>> m_promise;
-    Optional<ReadableStreamDefaultController> m_controller;
+    std::optional<ReadableStreamDefaultController> m_controller;
+};
+
+class SimpleReadableStreamSource
+    : public ReadableStreamSource
+    , public CanMakeWeakPtr<SimpleReadableStreamSource> {
+public:
+    static Ref<SimpleReadableStreamSource> create() { return adoptRef(*new SimpleReadableStreamSource); }
+
+    void close();
+    void enqueue(JSC::JSValue);
+
+private:
+    SimpleReadableStreamSource() = default;
+
+    // ReadableStreamSource
+    void setActive() final { }
+    void setInactive() final { }
+    void doStart() final { }
+    void doPull() final { }
+    void doCancel() final;
+
+    bool m_isCancelled { false };
 };
 
 } // namespace WebCore

@@ -34,8 +34,6 @@
 #include "JSCellInlines.h"
 #include "MarkedBlockInlines.h"
 #include <wtf/OSAllocator.h>
-#include <Ultralight/private/util/MemoryTag.h>
-#include <Ultralight/private/tracy/Tracy.hpp>
 
 namespace JSC {
 
@@ -49,29 +47,23 @@ ConservativeRoots::ConservativeRoots(Heap& heap)
 
 ConservativeRoots::~ConservativeRoots()
 {
-    if (m_roots != m_inlineRoots) {
-        ProfileFree(m_roots, MemoryTagToString(MemoryTag::JavaScript));
+    if (m_roots != m_inlineRoots)
         OSAllocator::decommitAndRelease(m_roots, m_capacity * sizeof(HeapCell*));
-    }
 }
 
 void ConservativeRoots::grow()
 {
-    size_t newCapacity = m_capacity == inlineCapacity ? nonInlineCapacity : m_capacity * 2;
-    size_t newSize = newCapacity * sizeof(HeapCell*);
-    HeapCell** newRoots = static_cast<HeapCell**>(OSAllocator::reserveAndCommit(newSize));
-    ProfileAlloc(newRoots, newSize, MemoryTagToString(MemoryTag::JavaScript));
+    size_t newCapacity = m_capacity * 2;
+    HeapCell** newRoots = static_cast<HeapCell**>(OSAllocator::reserveAndCommit(newCapacity * sizeof(HeapCell*)));
     memcpy(newRoots, m_roots, m_size * sizeof(HeapCell*));
-    if (m_roots != m_inlineRoots) {
-        ProfileFree(m_roots, MemoryTagToString(MemoryTag::JavaScript));
+    if (m_roots != m_inlineRoots)
         OSAllocator::decommitAndRelease(m_roots, m_capacity * sizeof(HeapCell*));
-    }
     m_capacity = newCapacity;
     m_roots = newRoots;
 }
 
 template<typename MarkHook>
-inline void ConservativeRoots::genericAddPointer(void* p, HeapVersion markingVersion, HeapVersion newlyAllocatedVersion, TinyBloomFilter filter, MarkHook& markHook)
+inline void ConservativeRoots::genericAddPointer(void* p, HeapVersion markingVersion, HeapVersion newlyAllocatedVersion, TinyBloomFilter<uintptr_t> filter, MarkHook& markHook)
 {
     p = removeArrayPtrTag(p);
     markHook.mark(p);
@@ -102,7 +94,7 @@ void ConservativeRoots::genericAddSpan(void* begin, void* end, MarkHook& markHoo
     RELEASE_ASSERT(isPointerAligned(begin));
     RELEASE_ASSERT(isPointerAligned(end));
 
-    TinyBloomFilter filter = m_heap.objectSpace().blocks().filter(); // Make a local copy of filter to show the compiler it won't alias, and can be register-allocated.
+    TinyBloomFilter<uintptr_t> filter = m_heap.objectSpace().blocks().filter(); // Make a local copy of filter to show the compiler it won't alias, and can be register-allocated.
     HeapVersion markingVersion = m_heap.objectSpace().markingVersion();
     HeapVersion newlyAllocatedVersion = m_heap.objectSpace().newlyAllocatedVersion();
     for (char** it = static_cast<char**>(begin); it != static_cast<char**>(end); ++it)
@@ -150,7 +142,7 @@ private:
 void ConservativeRoots::add(
     void* begin, void* end, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks)
 {
-    LockHolder locker(codeBlocks.getLock());
+    Locker locker { codeBlocks.getLock() };
     CompositeMarkHook markHook(jitStubRoutines, codeBlocks, locker);
     genericAddSpan(begin, end, markHook);
 }

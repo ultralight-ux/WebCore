@@ -44,11 +44,23 @@ function process_definitions () {
 }
 
 function rewrite_headers () {
+    local SOURCE_FILE="${1}"
+    local WORK_FILE="${2}.tmp"
+    local DEST_FILE="${2}"
+
     if [[ "${PLATFORM_NAME}" == "macosx" ]]; then
         [[ -n ${OSX_VERSION} ]] || OSX_VERSION=${MACOSX_DEPLOYMENT_TARGET}
-        [[ -n ${IOS_VERSION} ]] || IOS_VERSION="NA"
         [[ -n ${OSX_VERSION_NUMBER} ]] || OSX_VERSION_NUMBER=${TARGET_MAC_OS_X_VERSION_MAJOR}
-        [[ -n ${IOS_VERSION_NUMBER} ]] || IOS_VERSION_NUMBER="0"
+
+        if [[ "${WK_PLATFORM_NAME}" == "maccatalyst" && "${LLVM_TARGET_TRIPLE_OS_VERSION}" == ios* ]]; then
+            # On Mac Catalyst `LLVM_TARGET_TRIPLE_OS_VERSION` will be in the format `ios{major}.{minor}`.
+            local ALIGNED_IOS_VERSION="${LLVM_TARGET_TRIPLE_OS_VERSION#ios}"
+            [[ -n ${IOS_VERSION} ]] || IOS_VERSION=${ALIGNED_IOS_VERSION}
+            [[ -n ${IOS_VERSION_NUMBER} ]] || IOS_VERSION_NUMBER=${ALIGNED_IOS_VERSION%%.*}
+        else
+            [[ -n ${IOS_VERSION} ]] || IOS_VERSION="NA"
+            [[ -n ${IOS_VERSION_NUMBER} ]] || IOS_VERSION_NUMBER="0"
+        fi
     elif [[ "${PLATFORM_NAME}" =~ "iphone" ]]; then
         [[ -n ${IOS_VERSION} ]] || IOS_VERSION=${IPHONEOS_DEPLOYMENT_TARGET}
         [[ -n ${OSX_VERSION} ]] || OSX_VERSION="NA"
@@ -80,8 +92,9 @@ function rewrite_headers () {
 
     SED_OPTIONS+=(${OTHER_SED_OPTIONS[*]})
 
-    ditto "${1}" "${2}"
-    sed -i .tmp -E "${SED_OPTIONS[@]}" "${2}" || exit $?
+    sed -E "${SED_OPTIONS[@]}" "${SOURCE_FILE}" > "${WORK_FILE}" || exit $?
+    cmp -s "${WORK_FILE}" "${DEST_FILE}" && rm -f "${WORK_FILE}" || mv "${WORK_FILE}" "${DEST_FILE}"
+    [[ "${SOURCE_FILE}" -nt "${DEST_FILE}" ]] && touch "${DEST_FILE}" || true
 }
 
 DEFINITIONS_PATH=usr/local/include/WebKitAdditions/Scripts/postprocess-framework-headers-definitions

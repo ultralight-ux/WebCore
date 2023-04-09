@@ -27,8 +27,11 @@
 
 #if ENABLE(APPLE_PAY)
 
+#include "ApplePayAutomaticReloadPaymentRequest.h"
 #include "ApplePayLineItem.h"
 #include "ApplePayPaymentContact.h"
+#include "ApplePayPaymentTokenContext.h"
+#include "ApplePayRecurringPaymentRequest.h"
 #include "ApplePayRequestBase.h"
 #include "ApplePaySessionPaymentRequest.h"
 #include "ApplePayShippingMethod.h"
@@ -41,10 +44,22 @@ struct ApplePayPaymentRequest : ApplePayRequestBase {
     String currencyCode;
 
     ShippingType shippingType { ShippingType::Shipping };
-    Optional<Vector<ApplePayShippingMethod>> shippingMethods;
+    std::optional<Vector<ApplePayShippingMethod>> shippingMethods;
 
     ApplePayLineItem total;
-    Optional<Vector<ApplePayLineItem>> lineItems;
+    std::optional<Vector<ApplePayLineItem>> lineItems;
+
+#if ENABLE(APPLE_PAY_RECURRING_PAYMENTS)
+    std::optional<ApplePayRecurringPaymentRequest> recurringPaymentRequest;
+#endif
+
+#if ENABLE(APPLE_PAY_AUTOMATIC_RELOAD_PAYMENTS)
+    std::optional<ApplePayAutomaticReloadPaymentRequest> automaticReloadPaymentRequest;
+#endif
+
+#if ENABLE(APPLE_PAY_MULTI_MERCHANT_PAYMENTS)
+    std::optional<Vector<ApplePayPaymentTokenContext>> multiTokenContexts;
+#endif
 };
 
 }

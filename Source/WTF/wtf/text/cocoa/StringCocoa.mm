@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,41 +22,26 @@
 #import <wtf/text/WTFString.h>
 
 #import <CoreFoundation/CFString.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 
 namespace WTF {
 
-String::String(NSString *str)
+#if HAVE(SAFARI_FOR_WEBKIT_DEVELOPMENT_REQUIRING_EXTRA_SYMBOLS)
+String::String(NSString *string)
+    : String(bridge_cast(string))
 {
-    if (!str)
-        return;
-
-    CFIndex size = CFStringGetLength((__bridge CFStringRef)str);
-    if (!size)
-        m_impl = StringImpl::empty();
-    else {
-        Vector<LChar, 1024> lcharBuffer(size);
-        CFIndex usedBufLen;
-        CFIndex convertedsize = CFStringGetBytes((__bridge CFStringRef)str, CFRangeMake(0, size), kCFStringEncodingISOLatin1, 0, false, lcharBuffer.data(), size, &usedBufLen);
-        if ((convertedsize == size) && (usedBufLen == size)) {
-            m_impl = StringImpl::create(lcharBuffer.data(), size);
-            return;
-        }
-
-        Vector<UChar, 1024> ucharBuffer(size);
-        CFStringGetCharacters((__bridge CFStringRef)str, CFRangeMake(0, size), reinterpret_cast<UniChar*>(ucharBuffer.data()));
-        m_impl = StringImpl::create(ucharBuffer.data(), size);
-    }
 }
+#endif
 
 RetainPtr<id> makeNSArrayElement(const String& vectorElement)
 {
-    return adoptNS((__bridge_transfer id)vectorElement.createCFString().leakRef());
+    return bridge_cast(vectorElement.createCFString());
 }
 
-Optional<String> makeVectorElement(const String*, id arrayElement)
+std::optional<String> makeVectorElement(const String*, id arrayElement)
 {
     if (![arrayElement isKindOfClass:NSString.class])
-        return WTF::nullopt;
+        return std::nullopt;
     return { { arrayElement } };
 }
 

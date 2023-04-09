@@ -27,14 +27,16 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "B3Compilation.h"
 #include "B3Procedure.h"
+#include "JITCompilation.h"
+#include "SIMDInfo.h"
 #include "VirtualRegister.h"
 #include "WasmFormat.h"
 #include "WasmLimits.h"
 #include "WasmModuleInformation.h"
 #include "WasmOps.h"
 #include "WasmSections.h"
+#include "Width.h"
 #include <type_traits>
 #include <wtf/Expected.h>
 #include <wtf/LEBDecoder.h>
@@ -64,6 +66,12 @@ public:
     size_t offset() const { return m_offset; }
 
 protected:
+    struct RecursionGroupInformation {
+        bool inRecursionGroup;
+        uint32_t start;
+        uint32_t end;
+    };
+
     Parser(const uint8_t*, size_t);
 
     bool WARN_UNUSED_RETURN consumeCharacter(char);
@@ -77,6 +85,8 @@ protected:
     bool WARN_UNUSED_RETURN parseUInt8(uint8_t&);
     bool WARN_UNUSED_RETURN parseUInt32(uint32_t&);
     bool WARN_UNUSED_RETURN parseUInt64(uint64_t&);
+    bool WARN_UNUSED_RETURN parseImmByteArray16(v128_t&);
+    PartialResult WARN_UNUSED_RETURN parseImmLaneIdx(uint8_t laneCount, uint8_t&);
     bool WARN_UNUSED_RETURN parseVarUInt32(uint32_t&);
     bool WARN_UNUSED_RETURN parseVarUInt64(uint64_t&);
 
@@ -84,8 +94,10 @@ protected:
     bool WARN_UNUSED_RETURN parseVarInt64(int64_t&);
 
     PartialResult WARN_UNUSED_RETURN parseBlockSignature(const ModuleInformation&, BlockSignature&);
-    bool WARN_UNUSED_RETURN parseValueType(Type&);
+    bool WARN_UNUSED_RETURN parseValueType(const ModuleInformation&, Type&);
+    bool WARN_UNUSED_RETURN parseRefType(const ModuleInformation&, Type&);
     bool WARN_UNUSED_RETURN parseExternalKind(ExternalKind&);
+    bool WARN_UNUSED_RETURN parseHeapType(const ModuleInformation&, int32_t&);
 
     size_t m_offset = 0;
 
@@ -109,15 +121,20 @@ protected:
 private:
     const uint8_t* m_source;
     size_t m_sourceLength;
-    // We keep a local reference to the global table so we don't have to fetch it to find thunk signatures.
-    const SignatureInformation& m_signatureInformation;
+    // We keep a local reference to the global table so we don't have to fetch it to find thunk types.
+    const TypeInformation& m_typeInformation;
+
+protected:
+    // Used to track whether we are in a recursion group and the group's type indices, if any.
+    RecursionGroupInformation m_recursionGroupInformation;
 };
 
 template<typename SuccessType>
 ALWAYS_INLINE Parser<SuccessType>::Parser(const uint8_t* sourceBuffer, size_t sourceLength)
     : m_source(sourceBuffer)
     , m_sourceLength(sourceLength)
-    , m_signatureInformation(SignatureInformation::singleton())
+    , m_typeInformation(TypeInformation::singleton())
+    , m_recursionGroupInformation({ })
 {
 }
 
@@ -206,7 +223,7 @@ ALWAYS_INLINE bool Parser<SuccessType>::parseUInt32(uint32_t& result)
 {
     if (length() < 4 || m_offset > length() - 4)
         return false;
-    result = *reinterpret_cast<const uint32_t*>(source() + m_offset);
+    memcpy(&result, source() + m_offset, sizeof(uint32_t)); // src can be unaligned
     m_offset += 4;
     return true;
 }
@@ -216,9 +233,28 @@ ALWAYS_INLINE bool Parser<SuccessType>::parseUInt64(uint64_t& result)
 {
     if (length() < 8 || m_offset > length() - 8)
         return false;
-    result = *reinterpret_cast<const uint64_t*>(source() + m_offset);
+    memcpy(&result, source() + m_offset, sizeof(uint64_t)); // src can be unaligned
     m_offset += 8;
     return true;
+}
+
+template<typename SuccessType>
+ALWAYS_INLINE bool Parser<SuccessType>::parseImmByteArray16(v128_t& result)
+{
+    if (length() < 16 || m_offset > length() - 16)
+        return false;
+    std::copy(source() + m_offset, source() + m_offset + 16, result.u8x16);
+    m_offset += 16;
+    return true;
+}
+
+template<typename SuccessType>
+ALWAYS_INLINE typename Parser<SuccessType>::PartialResult Parser<SuccessType>::parseImmLaneIdx(uint8_t laneCount, uint8_t& result)
+{
+    RELEASE_ASSERT(laneCount == 2 || laneCount == 4 || laneCount == 8 || laneCount == 16 || laneCount == 32);
+    WASM_PARSER_FAIL_IF(!parseUInt8(result), "Could not parse the lane index immediate byte.");
+    WASM_PARSER_FAIL_IF(result >= laneCount, "Lane index immediate is too large, saw ", laneCount, ", expected an ImmLaneIdx", laneCount);
+    return { };
 }
 
 template<typename SuccessType>
@@ -274,36 +310,97 @@ ALWAYS_INLINE bool Parser<SuccessType>::parseVarUInt1(uint8_t& result)
 template<typename SuccessType>
 ALWAYS_INLINE typename Parser<SuccessType>::PartialResult Parser<SuccessType>::parseBlockSignature(const ModuleInformation& info, BlockSignature& result)
 {
-    int8_t value;
-    if (peekInt7(value) && isValidType(value)) {
-        Type type = static_cast<Type>(value);
-        WASM_PARSER_FAIL_IF(!(isValueType(type) || type == Void), "result type of block: ", makeString(type), " is not a value type or Void");
-        result = m_signatureInformation.thunkFor(type);
+    int8_t typeKind;
+    if (peekInt7(typeKind) && isValidTypeKind(typeKind)) {
+        Type type = { static_cast<TypeKind>(typeKind), 0 };
+        WASM_PARSER_FAIL_IF(!(isValueType(type) || type.isVoid()), "result type of block: ", makeString(type.kind), " is not a value type or Void");
+        result = m_typeInformation.thunkFor(type);
         m_offset++;
         return { };
     }
 
-    WASM_PARSER_FAIL_IF(!Options::useWebAssemblyMultiValues(), "Type table indices for block signatures are not supported yet");
-
     int64_t index;
     WASM_PARSER_FAIL_IF(!parseVarInt64(index), "Block-like instruction doesn't return value type but can't decode type section index");
     WASM_PARSER_FAIL_IF(index < 0, "Block-like instruction signature index is negative");
-    WASM_PARSER_FAIL_IF(static_cast<size_t>(index) >= info.usedSignatures.size(), "Block-like instruction signature index is out of bounds. Index: ", index, " type index space: ", info.usedSignatures.size());
+    WASM_PARSER_FAIL_IF(static_cast<size_t>(index) >= info.typeCount(), "Block-like instruction signature index is out of bounds. Index: ", index, " type index space: ", info.typeCount());
 
-    result = &info.usedSignatures[index].get();
+    result = &info.typeSignatures[index].get();
     return { };
 }
 
 template<typename SuccessType>
-ALWAYS_INLINE bool Parser<SuccessType>::parseValueType(Type& result)
+ALWAYS_INLINE bool Parser<SuccessType>::parseHeapType(const ModuleInformation& info, int32_t& result)
 {
-    int8_t value;
-    if (!parseInt7(value))
+    if (!Options::useWebAssemblyTypedFunctionReferences())
         return false;
-    if (!isValidType(value) || !isValueType(static_cast<Type>(value)))
+
+    int32_t heapType;
+    if (!parseVarInt32(heapType))
         return false;
-    result = static_cast<Type>(value);
+
+    if (heapType < 0) {
+        if (isValidHeapTypeKind(static_cast<TypeKind>(heapType))) {
+            result = heapType;
+            return true;
+        }
+        return false;
+    }
+
+    if (static_cast<size_t>(heapType) >= info.typeCount() && (!m_recursionGroupInformation.inRecursionGroup || !(static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end)))
+        return false;
+
+    result = heapType;
     return true;
+}
+
+template<typename SuccessType>
+ALWAYS_INLINE bool Parser<SuccessType>::parseValueType(const ModuleInformation& info, Type& result)
+{
+    int8_t kind;
+    if (!parseInt7(kind))
+        return false;
+    if (!isValidTypeKind(kind))
+        return false;
+
+    TypeKind typeKind = static_cast<TypeKind>(kind);
+    TypeIndex typeIndex = 0;
+    if (Options::useWebAssemblyTypedFunctionReferences() && isValidHeapTypeKind(typeKind)) {
+        typeIndex = static_cast<TypeIndex>(typeKind);
+        typeKind = TypeKind::RefNull;
+    } else if (typeKind == TypeKind::Ref || typeKind == TypeKind::RefNull) {
+        int32_t heapType;
+        if (!parseHeapType(info, heapType))
+            return false;
+        if (heapType < 0)
+            typeIndex = static_cast<TypeIndex>(heapType);
+        else {
+            // For recursive references inside recursion groups, we construct a
+            // placeholder projection with an invalid group index. These should
+            // be replaced with a real type index in expand() before use.
+            if (m_recursionGroupInformation.inRecursionGroup && static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start) {
+                ASSERT(static_cast<uint32_t>(heapType) >= info.typeCount() && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end);
+                ProjectionIndex groupIndex = static_cast<ProjectionIndex>(heapType - m_recursionGroupInformation.start);
+                RefPtr<TypeDefinition> def = TypeInformation::typeDefinitionForProjection(Projection::PlaceholderGroup, groupIndex);
+                typeIndex = def->index();
+            } else {
+                ASSERT(static_cast<uint32_t>(heapType) < info.typeCount());
+                typeIndex = TypeInformation::get(info.typeSignatures[heapType].get());
+            }
+        }
+    }
+
+    Type type = { typeKind, typeIndex };
+    if (!isValueType(type))
+        return false;
+    result = type;
+    return true;
+}
+
+template<typename SuccessType>
+ALWAYS_INLINE bool Parser<SuccessType>::parseRefType(const ModuleInformation& info, Type& result)
+{
+    const bool parsed = parseValueType(info, result);
+    return parsed && isRefType(result);
 }
 
 template<typename SuccessType>

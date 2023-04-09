@@ -357,7 +357,7 @@ void SQLTransactionBackend::doCleanup()
 
     m_frontend.releaseOriginLockIfNeeded();
 
-    LockHolder locker(m_frontend.m_statementMutex);
+    Locker locker { m_frontend.m_statementLock };
     m_frontend.m_statementQueue.clear();
 
     if (m_frontend.m_sqliteTransaction) {
@@ -417,7 +417,7 @@ SQLTransactionBackend::StateFunction SQLTransactionBackend::stateFunctionFor(SQL
         &SQLTransactionBackend::unreachableState             // 12. deliverSuccessCallback
     };
 
-    ASSERT(WTF_ARRAY_LENGTH(stateFunctions) == static_cast<int>(SQLTransactionState::NumberOfStates));
+    ASSERT(std::size(stateFunctions) == static_cast<int>(SQLTransactionState::NumberOfStates));
     ASSERT(state < SQLTransactionState::NumberOfStates);
 
     return stateFunctions[static_cast<int>(state)];

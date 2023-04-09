@@ -28,6 +28,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 /**
  * \file
  * \brief C++ API: Format and parse dates in a language-independent manner.
@@ -49,6 +51,7 @@ class FieldPositionHandler;
 class TimeZoneFormat;
 class SharedNumberFormat;
 class SimpleDateFormatMutableNFs;
+class DateIntervalFormat;
 
 namespace number {
 class LocalizedNumberFormatter;
@@ -864,7 +867,7 @@ public:
      * @return    A copy of the object.
      * @stable ICU 2.0
      */
-    virtual Format* clone(void) const;
+    virtual SimpleDateFormat* clone() const;
 
     /**
      * Return true if the given Format objects are semantically equal. Objects
@@ -1147,7 +1150,7 @@ public:
      * Overrides base class method and
      * This method clears per field NumberFormat instances
      * previously set by {@see adoptNumberFormat(const UnicodeString&, NumberFormat*, UErrorCode)}
-     * @param adoptNF the NumbeferFormat used
+     * @param formatToAdopt the NumbeferFormat used
      * @stable ICU 54
      */
     void adoptNumberFormat(NumberFormat *formatToAdopt);
@@ -1162,7 +1165,7 @@ public:
      * Per field NumberFormat can also be cleared in {@see DateFormat::setNumberFormat(const NumberFormat& newNumberFormat)}
      *
      * @param fields  the fields to override(like y)
-     * @param adoptNF the NumbeferFormat used
+     * @param formatToAdopt the NumbeferFormat used
      * @param status  Receives a status code, which will be U_ZERO_ERROR
      *                if the operation succeeds.
      * @stable ICU 54
@@ -1217,6 +1220,7 @@ public:
 
 private:
     friend class DateFormat;
+    friend class DateIntervalFormat;
 
     void initializeDefaultCentury(void);
 
@@ -1597,6 +1601,7 @@ private:
 
     UBool                fHasMinute;
     UBool                fHasSecond;
+    UBool                fHasHanYearChar; // pattern contains the Han year character \u5E74
 
     /**
      * Sets fHasMinutes and fHasSeconds.
@@ -1640,7 +1645,7 @@ private:
 
     UBool fHaveDefaultCentury;
 
-    BreakIterator* fCapitalizationBrkIter;
+    const BreakIterator* fCapitalizationBrkIter;
 };
 
 inline UDate
@@ -1652,6 +1657,8 @@ SimpleDateFormat::get2DigitYearStart(UErrorCode& /*status*/) const
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif // _SMPDTFMT
 //eof

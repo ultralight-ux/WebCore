@@ -64,6 +64,7 @@ extern const CFStringRef kCUIUserInterfaceLayoutDirectionLeftToRight;
 extern const CFStringRef kCUIValueKey;
 
 extern const CFStringRef kCUIWidgetKey;
+extern const CFStringRef kCUIWidgetButtonComboBox;
 extern const CFStringRef kCUIWidgetButtonLittleArrows;
 extern const CFStringRef kCUIWidgetProgressIndeterminateBar;
 extern const CFStringRef kCUIWidgetProgressBar;

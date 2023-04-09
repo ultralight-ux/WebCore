@@ -30,7 +30,7 @@ namespace WebCore {
 class LengthBox : public RectEdges<Length> {
 public:
     LengthBox()
-        : LengthBox(Auto)
+        : LengthBox(LengthType::Auto)
     {
     }
 
@@ -40,12 +40,12 @@ public:
     }
 
     explicit LengthBox(int v)
-        : RectEdges(Length(v, Fixed), Length(v, Fixed), Length(v, Fixed), Length(v, Fixed))
+        : RectEdges(Length(v, LengthType::Fixed), Length(v, LengthType::Fixed), Length(v, LengthType::Fixed), Length(v, LengthType::Fixed))
     {
     }
 
     LengthBox(int top, int right, int bottom, int left)
-        : RectEdges(Length(top, Fixed), Length(right, Fixed), Length(bottom, Fixed), Length(left, Fixed))
+        : RectEdges(Length(top, LengthType::Fixed), Length(right, LengthType::Fixed), Length(bottom, LengthType::Fixed), Length(left, LengthType::Fixed))
     {
     }
 
@@ -53,6 +53,9 @@ public:
         : RectEdges { WTFMove(top), WTFMove(right), WTFMove(bottom), WTFMove(left) }
     {
     }
+
+    LengthBox(const LengthBox&) = default;
+    LengthBox& operator=(const LengthBox&) = default;
 
     bool isZero() const
     {
@@ -62,8 +65,17 @@ public:
 
 using LayoutBoxExtent = RectEdges<LayoutUnit>;
 using FloatBoxExtent = RectEdges<float>;
+using IntBoxExtent = RectEdges<int>;
+
+using IntOutsets = IntBoxExtent;
+
+inline LayoutBoxExtent toLayoutBoxExtent(const IntBoxExtent& extent)
+{
+    return { extent.top(), extent.right(), extent.bottom(), extent.left() };
+}
 
 WTF::TextStream& operator<<(WTF::TextStream&, const LengthBox&);
+WTF::TextStream& operator<<(WTF::TextStream&, const IntBoxExtent&);
 WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const FloatBoxExtent&);
 
 } // namespace WebCore

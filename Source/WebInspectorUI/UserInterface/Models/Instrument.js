@@ -46,6 +46,8 @@ WI.Instrument = class Instrument
             return new WI.HeapAllocationsInstrument;
         case WI.TimelineRecord.Type.Media:
             return new WI.MediaInstrument;
+        case WI.TimelineRecord.Type.Screenshots:
+            return new WI.ScreenshotsInstrument;
         default:
             console.error("Unknown TimelineRecord.Type: " + type);
             return null;
@@ -54,7 +56,7 @@ WI.Instrument = class Instrument
 
     static startLegacyTimelineAgent(initiatedByBackend)
     {
-        console.assert(window.TimelineAgent, "Attempted to start legacy timeline agent without TimelineAgent.");
+        console.assert(WI.timelineManager._enabled);
 
         if (WI.Instrument._legacyTimelineAgentStarted)
             return;
@@ -64,11 +66,14 @@ WI.Instrument = class Instrument
         if (initiatedByBackend)
             return;
 
-        TimelineAgent.start();
+        let target = WI.assumingMainTarget();
+        target.TimelineAgent.start();
     }
 
     static stopLegacyTimelineAgent(initiatedByBackend)
     {
+        console.assert(WI.timelineManager._enabled);
+
         if (!WI.Instrument._legacyTimelineAgentStarted)
             return;
 
@@ -77,7 +82,8 @@ WI.Instrument = class Instrument
         if (initiatedByBackend)
             return;
 
-        TimelineAgent.stop();
+        let target = WI.assumingMainTarget();
+        target.TimelineAgent.stop();
     }
 
     // Protected

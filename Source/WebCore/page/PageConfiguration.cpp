@@ -28,7 +28,10 @@
 
 #include "AlternativeTextClient.h"
 #include "ApplicationCacheStorage.h"
+#include "AttachmentElementClient.h"
 #include "BackForwardClient.h"
+#include "BadgeClient.h"
+#include "BroadcastChannelRegistry.h"
 #include "CacheStorageProvider.h"
 #include "CookieJar.h"
 #include "DatabaseProvider.h"
@@ -36,19 +39,22 @@
 #include "DragClient.h"
 #include "EditorClient.h"
 #include "FrameLoaderClient.h"
-#include "LibWebRTCProvider.h"
 #include "MediaRecorderProvider.h"
+#include "ModelPlayerProvider.h"
 #include "PerformanceLoggingClient.h"
-#include "PlugInClient.h"
 #include "PluginInfoProvider.h"
 #include "ProgressTrackerClient.h"
+#include "ScreenOrientationManager.h"
 #include "SocketProvider.h"
+#include "SpeechRecognitionProvider.h"
 #include "SpeechSynthesisClient.h"
 #include "StorageNamespaceProvider.h"
+#include "StorageProvider.h"
 #include "UserContentController.h"
 #include "UserContentURLPattern.h"
 #include "ValidationMessageClient.h"
 #include "VisitedLinkStore.h"
+#include "WebRTCProvider.h"
 #if ENABLE(WEBGL)
 #include "WebGLStateTracker.h"
 #endif
@@ -58,17 +64,23 @@
 
 namespace WebCore {
 
-PageConfiguration::PageConfiguration(PAL::SessionID sessionID, UniqueRef<EditorClient>&& editorClient, Ref<SocketProvider>&& socketProvider, UniqueRef<LibWebRTCProvider>&& libWebRTCProvider, Ref<CacheStorageProvider>&& cacheStorageProvider, Ref<BackForwardClient>&& backForwardClient, Ref<CookieJar>&& cookieJar, UniqueRef<ProgressTrackerClient>&& progressTrackerClient, UniqueRef<FrameLoaderClient>&& loaderClientForMainFrame, UniqueRef<MediaRecorderProvider>&& mediaRecorderProvider)
+PageConfiguration::PageConfiguration(PAL::SessionID sessionID, UniqueRef<EditorClient>&& editorClient, Ref<SocketProvider>&& socketProvider, UniqueRef<WebRTCProvider>&& webRTCProvider, Ref<CacheStorageProvider>&& cacheStorageProvider, Ref<UserContentProvider>&& userContentProvider, Ref<BackForwardClient>&& backForwardClient, Ref<CookieJar>&& cookieJar, UniqueRef<ProgressTrackerClient>&& progressTrackerClient, UniqueRef<FrameLoaderClient>&& loaderClientForMainFrame, UniqueRef<SpeechRecognitionProvider>&& speechRecognitionProvider, UniqueRef<MediaRecorderProvider>&& mediaRecorderProvider, Ref<BroadcastChannelRegistry>&& broadcastChannelRegistry, UniqueRef<StorageProvider>&& storageProvider, UniqueRef<ModelPlayerProvider>&& modelPlayerProvider, Ref<BadgeClient>&& badgeClient)
     : sessionID(sessionID)
     , editorClient(WTFMove(editorClient))
     , socketProvider(WTFMove(socketProvider))
-    , libWebRTCProvider(WTFMove(libWebRTCProvider))
+    , webRTCProvider(WTFMove(webRTCProvider))
     , progressTrackerClient(WTFMove(progressTrackerClient))
     , backForwardClient(WTFMove(backForwardClient))
     , cookieJar(WTFMove(cookieJar))
     , loaderClientForMainFrame(WTFMove(loaderClientForMainFrame))
     , cacheStorageProvider(WTFMove(cacheStorageProvider))
+    , userContentProvider(WTFMove(userContentProvider))
+    , broadcastChannelRegistry(WTFMove(broadcastChannelRegistry))
+    , speechRecognitionProvider(WTFMove(speechRecognitionProvider))
     , mediaRecorderProvider(WTFMove(mediaRecorderProvider))
+    , storageProvider(WTFMove(storageProvider))
+    , modelPlayerProvider(WTFMove(modelPlayerProvider))
+    , badgeClient(WTFMove(badgeClient))
 {
 }
 

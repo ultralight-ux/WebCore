@@ -1,6 +1,7 @@
 #include "config.h"
 #include "JavaScriptCore/JavaScript.h"
 #include "JavaScriptCore/JSTypedArray.h"
+#include <pal/SessionID.h>
 
 namespace WebCore {
 
@@ -31,6 +32,10 @@ WEBCORE_EXPORT void PreserveSymbols() {
   auto _0 = JSObjectMakeTypedArrayWithArrayBufferAndOffset(nullptr, kJSTypedArrayTypeNone, nullptr, 0, 0, nullptr);
   auto _1 = JSObjectMakeTypedArrayWithBytesNoCopy(nullptr, kJSTypedArrayTypeNone, nullptr, 0, nullptr, nullptr, nullptr);
   auto _2 = JSValueGetTypedArrayType(nullptr, nullptr, nullptr);
+
+  auto _3 = PAL::SessionID::generateEphemeralSessionID();
+  auto _4 = PAL::SessionID::generatePersistentSessionID();
+  PAL::SessionID::enableGenerationProtection();
 }
 
 }

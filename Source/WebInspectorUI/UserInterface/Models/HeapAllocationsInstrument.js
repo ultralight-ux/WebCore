@@ -29,17 +29,7 @@ WI.HeapAllocationsInstrument = class HeapAllocationsInstrument extends WI.Instru
     {
         super();
 
-        console.assert(WI.HeapAllocationsInstrument.supported());
-
         this._snapshotIntervalIdentifier = undefined;
-    }
-
-    // Static
-
-    static supported()
-    {
-        // COMPATIBILITY (iOS 9): HeapAgent did not exist.
-        return window.HeapAgent;
     }
 
     // Protected
@@ -54,18 +44,22 @@ WI.HeapAllocationsInstrument = class HeapAllocationsInstrument extends WI.Instru
         // FIXME: Include a "track allocations" option for this instrument.
         // FIXME: Include a periodic snapshot interval option for this instrument.
 
-        if (!initiatedByBackend)
-            HeapAgent.startTracking();
+        if (!initiatedByBackend) {
+            let target = WI.assumingMainTarget();
+            target.HeapAgent.startTracking();
+        }
 
         // Periodic snapshots.
-        const snapshotInterval = 10000;
+        const snapshotInterval = 10_000;
         this._snapshotIntervalIdentifier = setInterval(this._takeHeapSnapshot.bind(this), snapshotInterval);
     }
 
     stopInstrumentation(initiatedByBackend)
     {
-        if (!initiatedByBackend)
-            HeapAgent.stopTracking();
+        if (!initiatedByBackend) {
+            let target = WI.assumingMainTarget();
+            target.HeapAgent.stopTracking();
+        }
 
         window.clearInterval(this._snapshotIntervalIdentifier);
         this._snapshotIntervalIdentifier = undefined;
@@ -75,7 +69,7 @@ WI.HeapAllocationsInstrument = class HeapAllocationsInstrument extends WI.Instru
 
     _takeHeapSnapshot()
     {
-        HeapAgent.snapshot(function(error, timestamp, snapshotStringData) {
+        WI.heapManager.snapshot((error, timestamp, snapshotStringData) => {
             let workerProxy = WI.HeapSnapshotWorkerProxy.singleton();
             workerProxy.createSnapshot(snapshotStringData, ({objectId, snapshot: serializedSnapshot}) => {
                 let snapshot = WI.HeapSnapshotProxy.deserialize(objectId, serializedSnapshot);

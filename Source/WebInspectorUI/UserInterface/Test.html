@@ -39,10 +39,11 @@
     <script src="Base/Platform.js"></script>
     <script src="Base/Debouncer.js"></script>
     <script src="Base/DebuggableType.js"></script>
-    <script src="Base/LinkedList.js"></script>
-    <script src="Base/ListMultimap.js"></script>
+    <script src="Base/IterableWeakSet.js"></script>
     <script src="Base/Multimap.js"></script>
     <script src="Base/Object.js"></script>
+    <script src="Base/ReferencePage.js"></script>
+    <script src="Base/TargetType.js"></script>
     <script src="Base/Throttler.js"></script>
 
     <script src="Test/TestHarness.js"></script>
@@ -54,10 +55,10 @@
     <script src="Test/TestAppController.js"></script>
     <script src="Test/TestUtilities.js"></script>
 
+    <script src="Base/BlobUtilities.js"></script>
     <script src="Base/DOMUtilities.js"></script>
-    <script src="Base/EventListener.js"></script>
-    <script src="Base/EventListenerSet.js"></script>
     <script src="Base/FileUtilities.js"></script>
+    <script src="Base/HTTPUtilities.js"></script>
     <script src="Base/ImageUtilities.js"></script>
     <script src="Base/MIMETypeUtilities.js"></script>
     <script src="Base/ObjectStore.js"></script>
@@ -65,6 +66,8 @@
     <script src="Base/Utilities.js"></script>
     <script src="Base/Setting.js"></script>
     <script src="Base/YieldableTask.js"></script>
+
+    <script src="Base/IDLExtensions.js"></script>
 
     <script src="Protocol/ProtocolTracer.js"></script>
     <script src="Protocol/LoggingProtocolTracer.js"></script>
@@ -78,19 +81,23 @@
 
     <script src="Protocol/DirectBackendTarget.js"></script>
     <script src="Protocol/MultiplexingBackendTarget.js"></script>
-    <script src="Protocol/JavaScriptContextTarget.js"></script>
     <script src="Protocol/PageTarget.js"></script>
     <script src="Protocol/WorkerTarget.js"></script>
 
     <script src="Protocol/InspectorObserver.js"></script>
+    <script src="Protocol/AnimationObserver.js"></script>
+    <script src="Protocol/ApplicationCacheObserver.js"></script>
+    <script src="Protocol/BrowserObserver.js"></script>
     <script src="Protocol/CPUProfilerObserver.js"></script>
     <script src="Protocol/CSSObserver.js"></script>
     <script src="Protocol/CanvasObserver.js"></script>
     <script src="Protocol/ConsoleObserver.js"></script>
     <script src="Protocol/DOMObserver.js"></script>
     <script src="Protocol/DOMStorageObserver.js"></script>
+    <script src="Protocol/DatabaseObserver.js"></script>
     <script src="Protocol/DebuggerObserver.js"></script>
     <script src="Protocol/HeapObserver.js"></script>
+    <script src="Protocol/InspectorObserver.js"></script>
     <script src="Protocol/LayerTreeObserver.js"></script>
     <script src="Protocol/MemoryObserver.js"></script>
     <script src="Protocol/NetworkObserver.js"></script>
@@ -102,7 +109,9 @@
     <script src="Protocol/TimelineObserver.js"></script>
     <script src="Protocol/WorkerObserver.js"></script>
 
+    <script src="Models/Breakpoint.js"></script>
     <script src="Models/BreakpointAction.js"></script>
+    <script src="Models/Collection.js"></script>
     <script src="Models/ConsoleMessage.js"></script>
     <script src="Models/Instrument.js"></script>
     <script src="Models/SourceCode.js"></script>
@@ -116,14 +125,17 @@
     <script src="Models/Script.js"></script>
     <script src="Models/LocalScript.js"></script>
 
-    <script src="Models/Breakpoint.js"></script>
+    <script src="Models/Animation.js"></script>
+    <script src="Models/AnimationCollection.js"></script>
+    <script src="Models/BoxShadow.js"></script>
     <script src="Models/CPUInstrument.js"></script>
     <script src="Models/CPUTimeline.js"></script>
     <script src="Models/CPUTimelineRecord.js"></script>
     <script src="Models/CSSCompletions.js"></script>
+    <script src="Models/CSSGrouping.js"></script>
     <script src="Models/CSSKeywordCompletions.js"></script>
-    <script src="Models/CSSMedia.js"></script>
     <script src="Models/CSSProperty.js"></script>
+    <script src="Models/CSSPropertyNameCompletions.js"></script>
     <script src="Models/CSSRule.js"></script>
     <script src="Models/CSSSelector.js"></script>
     <script src="Models/CSSStyleDeclaration.js"></script>
@@ -132,24 +144,28 @@
     <script src="Models/CallingContextTree.js"></script>
     <script src="Models/CallingContextTreeNode.js"></script>
     <script src="Models/Canvas.js"></script>
-    <script src="Models/Collection.js"></script>
     <script src="Models/CollectionEntry.js"></script>
     <script src="Models/CollectionEntryPreview.js"></script>
     <script src="Models/CollectionTypes.js"></script>
     <script src="Models/Color.js"></script>
     <script src="Models/ConsoleCommandResultMessage.js"></script>
+    <script src="Models/ConsoleSnippet.js"></script>
     <script src="Models/Cookie.js"></script>
     <script src="Models/CookieStorageObject.js"></script>
     <script src="Models/DOMBreakpoint.js"></script>
     <script src="Models/DOMNode.js"></script>
     <script src="Models/DOMNodeStyles.js"></script>
     <script src="Models/DOMStorageObject.js"></script>
+    <script src="Models/DOMStyleable.js"></script>
     <script src="Models/DOMTree.js"></script>
     <script src="Models/DebuggerData.js"></script>
     <script src="Models/EventBreakpoint.js"></script>
     <script src="Models/ExecutionContext.js"></script>
     <script src="Models/ExecutionContextList.js"></script>
     <script src="Models/FPSInstrument.js"></script>
+    <script src="Models/Font.js"></script>
+    <script src="Models/FontStyles.js"></script>
+    <script src="Models/FontVariationAxis.js"></script>
     <script src="Models/Frame.js"></script>
     <script src="Models/GarbageCollection.js"></script>
     <script src="Models/Geometry.js"></script>
@@ -160,12 +176,15 @@
     <script src="Models/IndexedDatabaseObjectStore.js"></script>
     <script src="Models/IndexedDatabaseObjectStoreIndex.js"></script>
     <script src="Models/IssueMessage.js"></script>
+    <script src="Models/JavaScriptBreakpoint.js"></script>
     <script src="Models/Layer.js"></script>
     <script src="Models/LayoutInstrument.js"></script>
     <script src="Models/LayoutTimelineRecord.js"></script>
     <script src="Models/LazySourceCodeLocation.js"></script>
+    <script src="Models/LocalResourceOverride.js"></script>
     <script src="Models/LoggingChannel.js"></script>
     <script src="Models/MediaInstrument.js"></script>
+    <script src="Models/MediaTimeline.js"></script>
     <script src="Models/MediaTimelineRecord.js"></script>
     <script src="Models/MemoryCategory.js"></script>
     <script src="Models/MemoryInstrument.js"></script>
@@ -184,6 +203,8 @@
     <script src="Models/ProfileNodeCall.js"></script>
     <script src="Models/PropertyDescriptor.js"></script>
     <script src="Models/PropertyPreview.js"></script>
+    <script src="Models/QueryMatch.js"></script>
+    <script src="Models/QueryResult.js"></script>
     <script src="Models/Recording.js"></script>
     <script src="Models/RecordingAction.js"></script>
     <script src="Models/RecordingFrame.js"></script>
@@ -192,12 +213,13 @@
     <script src="Models/Redirect.js"></script>
     <script src="Models/RenderingFrameTimelineRecord.js"></script>
     <script src="Models/ResourceCollection.js"></script>
-    <script src="Models/ResourceQueryMatch.js"></script>
     <script src="Models/ResourceQueryResult.js"></script>
     <script src="Models/ResourceTimelineRecord.js"></script>
     <script src="Models/ResourceTimingData.js"></script>
     <script src="Models/Revision.js"></script>
     <script src="Models/ScopeChainNode.js"></script>
+    <script src="Models/ScreenshotsInstrument.js"></script>
+    <script src="Models/ScreenshotsTimelineRecord.js"></script>
     <script src="Models/ScriptInstrument.js"></script>
     <script src="Models/ScriptSyntaxTree.js"></script>
     <script src="Models/ScriptTimelineRecord.js"></script>
@@ -207,10 +229,12 @@
     <script src="Models/SourceCodeTimeline.js"></script>
     <script src="Models/SourceMap.js"></script>
     <script src="Models/StackTrace.js"></script>
+    <script src="Models/SymbolicBreakpoint.js"></script>
     <script src="Models/TextRange.js"></script>
     <script src="Models/TimelineMarker.js"></script>
     <script src="Models/TimelineRecording.js"></script>
     <script src="Models/URLBreakpoint.js"></script>
+    <script src="Models/WebInspectorExtension.js"></script>
     <script src="Models/WebSocketResource.js"></script>
     <script src="Models/WrappedPromise.js"></script>
 
@@ -231,39 +255,54 @@
     <script src="Proxies/HeapSnapshotProxy.js"></script>
     <script src="Proxies/HeapSnapshotWorkerProxy.js"></script>
 
+    <script src="Controllers/QueryController.js"></script>
+
+    <script src="Controllers/AnimationManager.js"></script>
     <script src="Controllers/AuditManager.js"></script>
+    <script src="Controllers/ApplicationCacheManager.js"></script>
     <script src="Controllers/BreakpointLogMessageLexer.js"></script>
+    <script src="Controllers/BrowserManager.js"></script>
     <script src="Controllers/CSSManager.js"></script>
+    <script src="Controllers/CSSQueryController.js"></script>
     <script src="Controllers/CanvasManager.js"></script>
     <script src="Controllers/ConsoleManager.js"></script>
     <script src="Controllers/DOMDebuggerManager.js"></script>
     <script src="Controllers/DOMManager.js"></script>
     <script src="Controllers/DOMStorageManager.js"></script>
+    <script src="Controllers/DatabaseManager.js"></script>
     <script src="Controllers/DebuggerManager.js"></script>
+    <script src="Controllers/FormatterSourceMap.js"></script>
     <script src="Controllers/HARBuilder.js"></script>
     <script src="Controllers/HeapManager.js"></script>
+    <script src="Controllers/IndexedDBManager.js"></script>
     <script src="Controllers/LayerTreeManager.js"></script>
     <script src="Controllers/MemoryManager.js"></script>
     <script src="Controllers/NetworkManager.js"></script>
     <script src="Controllers/RuntimeManager.js"></script>
     <script src="Controllers/TargetManager.js"></script>
     <script src="Controllers/TimelineManager.js"></script>
+    <script src="Controllers/WebInspectorExtensionController.js"></script>
     <script src="Controllers/WorkerManager.js"></script>
 
-    <script src="Controllers/Formatter.js"></script>
     <script src="Controllers/ResourceQueryController.js"></script>
     <script src="Controllers/SelectionController.js"></script>
     <script src="Workers/Formatter/FormatterContentBuilder.js"></script>
     <script src="Views/CodeMirrorAdditions.js"></script>
-    <script src="Views/CodeMirrorFormatters.js"></script>
     <script src="Views/EditingSupport.js"></script>
     <script src="Views/View.js"></script>
+
+    <script src="Controllers/DiagnosticController.js"></script>
+    <script src="Controllers/DiagnosticEventRecorder.js"></script>
 
     <script src="Views/Resizer.js"></script>
     <script src="Views/Table.js"></script>
     <script src="Views/TableColumn.js"></script>
     <script src="Views/TreeElement.js"></script>
     <script src="Views/TreeOutline.js"></script>
+
+    <script src="Debug/DOMManager.js"></script>
+
+    <script src="NonMinified/DefaultAudits.js"></script>
 
     <script type="text/javascript">
         WI.sharedApp = new WI.TestAppController;
@@ -277,6 +316,9 @@
 
         // Best used in combination with dumpActivityToSystemConsole.
         InspectorBackend.dumpInspectorProtocolMessages = false;
+
+        // Only needed when debugging issues related to the Target domain.
+        InspectorBackend.filterMultiplexingBackendInspectorProtocolMessages = true;
     </script>
 </head>
 <body>

@@ -19,7 +19,9 @@
  */
 
 [
-    Plugin
+    Plugin,
+    Exposed=Window,
+    EnabledBySetting=EmbedElementEnabled
 ] interface HTMLEmbedElement : HTMLElement {
     [CEReactions=NotNeeded, Reflect] attribute DOMString align;
     [CEReactions=NotNeeded, Reflect] attribute DOMString height;
@@ -28,5 +30,5 @@
     [CEReactions=NotNeeded, Reflect] attribute DOMString type;
     [CEReactions=NotNeeded, Reflect] attribute DOMString width;
 
-    [CheckSecurityForNode, MayThrowException] Document getSVGDocument();
+    [CheckSecurityForNode] Document getSVGDocument();
 };

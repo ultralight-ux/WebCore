@@ -30,9 +30,9 @@
 #include "CDMInstance.h"
 #include "CDMInstanceSession.h"
 #include <wtf/Function.h>
-#include <wtf/HashMap.h>
+#include <wtf/Observer.h>
 #include <wtf/RetainPtr.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/WeakHashSet.h>
 
 OBJC_CLASS AVContentKeyReportGroup;
 OBJC_CLASS AVContentKeyRequest;
@@ -51,6 +51,7 @@ class Logger;
 namespace WebCore {
 
 class CDMInstanceSessionFairPlayStreamingAVFObjC;
+class CDMPrivateFairPlayStreaming;
 struct CDMMediaCapability;
 
 class AVContentKeySessionDelegateClient {
@@ -71,12 +72,8 @@ public:
 
 class CDMInstanceFairPlayStreamingAVFObjC final : public CDMInstance, public AVContentKeySessionDelegateClient, public CanMakeWeakPtr<CDMInstanceFairPlayStreamingAVFObjC> {
 public:
-    CDMInstanceFairPlayStreamingAVFObjC();
+    CDMInstanceFairPlayStreamingAVFObjC(const CDMPrivateFairPlayStreaming&);
     virtual ~CDMInstanceFairPlayStreamingAVFObjC() = default;
-
-#if !RELEASE_LOG_DISABLED
-    void setLogger(WTF::Logger&, const void* logIdentifier);
-#endif
 
     static bool supportsPersistableState();
     static bool supportsPersistentKeys();
@@ -119,12 +116,22 @@ public:
     CDMInstanceSessionFairPlayStreamingAVFObjC* sessionForGroup(AVContentKeyReportGroup*) const;
     CDMInstanceSessionFairPlayStreamingAVFObjC* sessionForRequest(AVContentKeyRequest*) const;
 
-private:
+    bool isAnyKeyUsable(const Keys&) const;
+
+    using KeyStatusesChangedObserver = Observer<void()>;
+    void addKeyStatusesChangedObserver(const KeyStatusesChangedObserver&);
+
+    void sessionKeyStatusesChanged(const CDMInstanceSessionFairPlayStreamingAVFObjC&);
+
 #if !RELEASE_LOG_DISABLED
-    WTF::Logger* loggerPtr() const { return m_logger.get(); };
+    void setLogIdentifier(const void* logIdentifier) final { m_logIdentifier = logIdentifier; }
+    const Logger& logger() const { return m_logger; };
     const void* logIdentifier() const { return m_logIdentifier; }
     const char* logClassName() const { return "CDMInstanceFairPlayStreamingAVFObjC"; }
 #endif
+
+private:
+    void handleUnexpectedRequests(Vector<RetainPtr<AVContentKeyRequest>>&&);
 
     WeakPtr<CDMInstanceClient> m_client;
     RetainPtr<AVContentKeySession> m_session;
@@ -134,8 +141,9 @@ private:
     RetainPtr<NSURL> m_storageURL;
     Vector<WeakPtr<CDMInstanceSessionFairPlayStreamingAVFObjC>> m_sessions;
     HashSet<RetainPtr<AVContentKeyRequest>> m_unexpectedKeyRequests;
+    WeakHashSet<KeyStatusesChangedObserver> m_keyStatusChangedObservers;
 #if !RELEASE_LOG_DISABLED
-    RefPtr<WTF::Logger> m_logger;
+    Ref<const Logger> m_logger;
     const void* m_logIdentifier { nullptr };
 #endif
 };
@@ -144,10 +152,6 @@ class CDMInstanceSessionFairPlayStreamingAVFObjC final : public CDMInstanceSessi
 public:
     CDMInstanceSessionFairPlayStreamingAVFObjC(Ref<CDMInstanceFairPlayStreamingAVFObjC>&&);
     virtual ~CDMInstanceSessionFairPlayStreamingAVFObjC();
-
-#if !RELEASE_LOG_DISABLED
-    void setLogger(WTF::Logger&, const void* logIdentifier);
-#endif
 
     // CDMInstanceSession
     void requestLicense(LicenseType, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&&) final;
@@ -186,18 +190,22 @@ public:
 
     bool hasRequest(AVContentKeyRequest*) const;
 
+    const KeyStatusVector& keyStatuses() const { return m_keyStatuses; }
+    KeyStatusVector copyKeyStatuses() const;
+
 private:
     bool ensureSessionOrGroup();
     bool isLicenseTypeSupported(LicenseType) const;
 
-    KeyStatusVector keyStatuses(Optional<PlatformDisplayID> = WTF::nullopt) const;
+    void updateKeyStatuses(std::optional<PlatformDisplayID> = std::nullopt);
     void nextRequest();
     AVContentKeyRequest* lastKeyRequest() const;
 
-    bool keyRequestHasInsufficientProtectionForDisplayID(AVContentKeyRequest *, PlatformDisplayID) const;
+    std::optional<CDMKeyStatus> protectionStatusForDisplayID(AVContentKeyRequest *, std::optional<PlatformDisplayID>) const;
 
 #if !RELEASE_LOG_DISABLED
-    WTF::Logger* loggerPtr() const { return m_logger.get(); };
+    void setLogIdentifier(const void* logIdentifier) final { m_logIdentifier = logIdentifier; }
+    const Logger& logger() const { return m_logger; };
     const void* logIdentifier() const { return m_logIdentifier; }
     const char* logClassName() const { return "CDMInstanceSessionFairPlayStreamingAVFObjC"; }
 #endif
@@ -207,7 +215,7 @@ private:
     Ref<CDMInstanceFairPlayStreamingAVFObjC> m_instance;
     RetainPtr<AVContentKeyReportGroup> m_group;
     RetainPtr<AVContentKeySession> m_session;
-    Optional<Request> m_currentRequest;
+    std::optional<Request> m_currentRequest;
     RetainPtr<WebCoreFPSContentKeySessionDelegate> m_delegate;
     Vector<RetainPtr<NSData>> m_expiredSessions;
     WeakPtr<CDMInstanceSessionClient> m_client;
@@ -216,6 +224,7 @@ private:
 
     class UpdateResponseCollector;
     std::unique_ptr<UpdateResponseCollector> m_updateResponseCollector;
+    KeyStatusVector m_keyStatuses;
 
     Vector<Request> m_pendingRequests;
     Vector<Request> m_requests;
@@ -226,7 +235,7 @@ private:
     RemoveSessionDataCallback m_removeSessionDataCallback;
 
 #if !RELEASE_LOG_DISABLED
-    RefPtr<WTF::Logger> m_logger;
+    Ref<const Logger> m_logger;
     const void* m_logIdentifier { nullptr };
 #endif
 };

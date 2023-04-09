@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,41 +29,28 @@
 #if PLATFORM(IOS_FAMILY)
 
 #include <mutex>
+#include <pal/spi/ios/MobileGestaltSPI.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-MGDeviceClass deviceClass()
+bool deviceClassIsSmallScreen()
 {
-    static MGDeviceClass deviceClass = [] {
-        int deviceClassNumber = MGGetSInt32Answer(kMGQDeviceClassNumber, MGDeviceClassInvalid);
-        switch (deviceClassNumber) {
-        case MGDeviceClassInvalid:
-        case MGDeviceClassiPhone:
-        case MGDeviceClassiPod:
-        case MGDeviceClassiPad:
-        case MGDeviceClassAppleTV:
-        case MGDeviceClassWatch:
-            break;
-        default:
-            ASSERT_NOT_REACHED();
-        }
-        return static_cast<MGDeviceClass>(deviceClassNumber);
-    }();
-    return deviceClass;
+    static auto deviceClass = MGGetSInt32Answer(kMGQDeviceClassNumber, MGDeviceClassInvalid);
+    return deviceClass == MGDeviceClassiPhone || deviceClass == MGDeviceClassiPod || deviceClass == MGDeviceClassWatch;
 }
 
 String deviceName()
 {
-#if TARGET_OS_IOS
-    static CFStringRef deviceName;
+#if ENABLE(MOBILE_GESTALT_DEVICE_NAME)
+    static NeverDestroyed<RetainPtr<CFStringRef>> deviceName;
     static std::once_flag onceKey;
     std::call_once(onceKey, [] {
-        deviceName = static_cast<CFStringRef>(MGCopyAnswer(kMGQDeviceName, nullptr));
+        deviceName.get() = adoptCF(static_cast<CFStringRef>(MGCopyAnswer(kMGQDeviceName, nullptr)));
     });
-    return deviceName;
+    return deviceName.get().get();
 #else
     return "iPhone"_s;
 #endif

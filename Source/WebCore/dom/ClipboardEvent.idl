@@ -24,8 +24,10 @@
  *
  */
 
-interface ClipboardEvent : Event {
-    constructor(DOMString type, optional ClipboardEventInit eventInitDict);
+[
+    Exposed=Window
+] interface ClipboardEvent : Event {
+    constructor([AtomString] DOMString type, optional ClipboardEventInit eventInitDict);
 
     readonly attribute DataTransfer? clipboardData;
 };

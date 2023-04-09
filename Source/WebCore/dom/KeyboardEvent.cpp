@@ -40,17 +40,17 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(KeyboardEvent);
 static inline const AtomString& eventTypeForKeyboardEventType(PlatformEvent::Type type)
 {
     switch (type) {
-        case PlatformEvent::KeyUp:
-            return eventNames().keyupEvent;
-        case PlatformEvent::RawKeyDown:
-            return eventNames().keydownEvent;
-        case PlatformEvent::Char:
-            return eventNames().keypressEvent;
-        case PlatformEvent::KeyDown:
-            // The caller should disambiguate the combined event into RawKeyDown or Char events.
-            break;
-        default:
-            break;
+    case PlatformEvent::Type::KeyUp:
+        return eventNames().keyupEvent;
+    case PlatformEvent::Type::RawKeyDown:
+        return eventNames().keydownEvent;
+    case PlatformEvent::Type::Char:
+        return eventNames().keypressEvent;
+    case PlatformEvent::Type::KeyDown:
+        // The caller should disambiguate the combined event into RawKeyDown or Char events.
+        break;
+    default:
+        break;
     }
     ASSERT_NOT_REACHED();
     return eventNames().keydownEvent;
@@ -108,11 +108,11 @@ inline KeyboardEvent::KeyboardEvent(const PlatformKeyboardEvent& key, RefPtr<Win
     , m_underlyingPlatformEvent(makeUnique<PlatformKeyboardEvent>(key))
     , m_key(key.key())
     , m_code(key.code())
-    , m_keyIdentifier(key.keyIdentifier())
+    , m_keyIdentifier(AtomString { key.keyIdentifier() })
     , m_location(keyLocationCode(key))
     , m_repeat(key.isAutoRepeat())
     , m_isComposing(view && is<DOMWindow>(view->window()) && downcast<DOMWindow>(*view->window()).frame() && downcast<DOMWindow>(*view->window()).frame()->editor().hasComposition())
-#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS)
+#if USE(APPKIT) || PLATFORM(IOS_FAMILY)
     , m_handledByInputMethod(key.handledByInputMethod())
 #endif
 #if USE(APPKIT)
@@ -121,8 +121,8 @@ inline KeyboardEvent::KeyboardEvent(const PlatformKeyboardEvent& key, RefPtr<Win
 {
 }
 
-inline KeyboardEvent::KeyboardEvent(const AtomString& eventType, const Init& initializer)
-    : UIEventWithKeyState(eventType, initializer)
+inline KeyboardEvent::KeyboardEvent(const AtomString& eventType, const Init& initializer, IsTrusted isTrusted)
+    : UIEventWithKeyState(eventType, initializer, isTrusted)
     , m_key(initializer.key)
     , m_code(initializer.code)
     , m_keyIdentifier(initializer.keyIdentifier)
@@ -147,13 +147,13 @@ Ref<KeyboardEvent> KeyboardEvent::createForBindings()
     return adoptRef(*new KeyboardEvent);
 }
 
-Ref<KeyboardEvent> KeyboardEvent::create(const AtomString& type, const Init& initializer)
+Ref<KeyboardEvent> KeyboardEvent::create(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
 {
-    return adoptRef(*new KeyboardEvent(type, initializer));
+    return adoptRef(*new KeyboardEvent(type, initializer, isTrusted));
 }
 
 void KeyboardEvent::initKeyboardEvent(const AtomString& type, bool canBubble, bool cancelable, RefPtr<WindowProxy>&& view,
-    const String& keyIdentifier, unsigned location, bool ctrlKey, bool altKey, bool shiftKey, bool metaKey, bool altGraphKey)
+    const AtomString& keyIdentifier, unsigned location, bool ctrlKey, bool altKey, bool shiftKey, bool metaKey, bool altGraphKey)
 {
     if (isBeingDispatched())
         return;
@@ -165,12 +165,12 @@ void KeyboardEvent::initKeyboardEvent(const AtomString& type, bool canBubble, bo
 
     setModifierKeys(ctrlKey, altKey, shiftKey, metaKey, altGraphKey);
 
-    m_charCode = WTF::nullopt;
+    m_charCode = std::nullopt;
     m_isComposing = false;
-    m_keyCode = WTF::nullopt;
+    m_keyCode = std::nullopt;
     m_repeat = false;
     m_underlyingPlatformEvent = nullptr;
-    m_which = WTF::nullopt;
+    m_which = std::nullopt;
     m_code = { };
     m_key = { };
 

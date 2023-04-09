@@ -79,9 +79,9 @@ public:
     ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Font);
     ultralight::String8 family8 = family.utf8();
-    unsigned int family_hash = StringHasher::hashMemory(family8.data(), family8.sizeBytes());
+    unsigned int family_hash = StringHasher::computeHash(family8.data(), (unsigned int)family8.sizeBytes());
     uintptr_t hashCodes[] = { family_hash, (uintptr_t)weight, italic };
-    unsigned int request_hash = StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
+    unsigned int request_hash = StringHasher::computeHash<char>((char*)hashCodes, sizeof(hashCodes));
 
     auto i = font_db_.find(request_hash);
     if (i != font_db_.end()) {
@@ -203,7 +203,7 @@ static int GetRawWeight(FontSelectionValue weight) {
 }
 
 RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, 
-  const Font* originalFontData, IsForPlatformFont, PreferColoredFont preferColoredFont, 
+  const Font& originalFontData, IsForPlatformFont, PreferColoredFont preferColoredFont, 
   const UChar* characters, unsigned length)
 {
   ProfiledZone;
@@ -273,8 +273,12 @@ Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString&)
 }
 */
 
+void FontCache::platformInvalidate()
+{
+}
+
 std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription,
-  const AtomString& family, const FontFeatureSettings*, FontSelectionSpecifiedCapabilities)
+    const AtomString& family, const FontCreationContext&)
 {
   ProfiledZone;
   ProfiledMemoryZone(MemoryTag::Font);
@@ -291,14 +295,14 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   if (!font_loader)
     return nullptr;
 
-  auto font_family = family;
+  WTF::String font_family = family;
   if (font_family.isEmpty())
     font_family = Convert(font_loader->fallback_font());
 
   ultralight::FontDatabase& font_db = ultralight::FontDatabase::instance();
 
   ultralight::RefPtr<ultralight::FontFace> font_face = font_db.LookupFont(
-    Convert(font_family.string()), GetRawWeight(fontDescription.weight()), !!fontDescription.italic());
+    Convert(font_family), GetRawWeight(fontDescription.weight()), !!fontDescription.italic());
 
   if (!font_face)
     return nullptr;
@@ -306,9 +310,10 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   return std::make_unique<FontPlatformData>(font_face, fontDescription);;
 }
 
-const AtomString& FontCache::platformAlternateFamilyName(const AtomString&) {
+std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&)
+{
   // TODO
-  return nullAtom();
+  return std::nullopt;
 }
 
 void FontCache::platformPurgeInactiveFontData()

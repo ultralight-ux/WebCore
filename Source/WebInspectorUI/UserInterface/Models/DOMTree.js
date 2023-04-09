@@ -51,8 +51,14 @@ WI.DOMTree = class DOMTree extends WI.Object
 
     disconnect()
     {
-        WI.domManager.removeEventListener(null, null, this);
-        this._frame.removeEventListener(null, null, this);
+        this._frame.removeEventListener(WI.Frame.Event.PageExecutionContextChanged, this._framePageExecutionContextChanged, this);
+
+        WI.domManager.removeEventListener(WI.DOMManager.Event.DocumentUpdated, this._documentUpdated, this);
+
+        if (!this._frame.isMainFrame()) {
+            WI.domManager.removeEventListener(WI.DOMManager.Event.NodeRemoved, this._nodeRemoved, this);
+            this._frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._frameMainResourceDidChange, this);
+        }
     }
 
     invalidate()
@@ -187,8 +193,9 @@ WI.DOMTree = class DOMTree extends WI.Object
         if (this._frame.isMainFrame())
             WI.domManager.requestDocument(mainDocumentAvailable.bind(this));
         else {
+            let target = WI.assumingMainTarget();
             var contextId = this._frame.pageExecutionContext.id;
-            RuntimeAgent.evaluate.invoke({expression: appendWebInspectorSourceURL("document"), objectGroup: "", includeCommandLineAPI: false, doNotPauseOnExceptionsAndMuteConsole: true, contextId, returnByValue: false, generatePreview: false}, rootObjectAvailable.bind(this));
+            target.RuntimeAgent.evaluate.invoke({expression: appendWebInspectorSourceURL("document"), objectGroup: "", includeCommandLineAPI: false, doNotPauseOnExceptionsAndMuteConsole: true, contextId, returnByValue: false, generatePreview: false}, rootObjectAvailable.bind(this));
         }
     }
 

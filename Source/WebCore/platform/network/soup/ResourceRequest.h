@@ -24,176 +24,100 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ResourceRequest_h
-#define ResourceRequest_h
+#pragma once
 
 #include "PageIdentifier.h"
 #include "ResourceRequestBase.h"
 #include "URLSoup.h"
+#include <wtf/glib/GRefPtr.h>
 
 namespace WebCore {
 
-    class BlobRegistryImpl;
+class BlobRegistryImpl;
 
-    class ResourceRequest : public ResourceRequestBase {
-    public:
-        ResourceRequest(const String& url)
-            : ResourceRequestBase(URL({ }, url), ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-        }
-
-        ResourceRequest(const URL& url)
-            : ResourceRequestBase(url, ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-        }
-
-        ResourceRequest(const URL& url, const String& referrer, ResourceRequestCachePolicy policy = ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            : ResourceRequestBase(url, policy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-            setHTTPReferrer(referrer);
-        }
-
-        ResourceRequest()
-            : ResourceRequestBase(URL(), ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-        }
-
-        ResourceRequest(SoupMessage* soupMessage)
-            : ResourceRequestBase(URL(), ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-            updateFromSoupMessage(soupMessage);
-        }
-
-        ResourceRequest(SoupRequest* soupRequest)
-            : ResourceRequestBase(soupURIToURL(soup_request_get_uri(soupRequest)), ResourceRequestCachePolicy::UseProtocolCachePolicy)
-            , m_acceptEncoding(true)
-            , m_soupFlags(static_cast<SoupMessageFlags>(0))
-        {
-            updateFromSoupRequest(soupRequest);
-        }
-
-        void updateFromDelegatePreservingOldProperties(const ResourceRequest& delegateProvidedRequest) { *this = delegateProvidedRequest; }
-
-        bool acceptEncoding() const { return m_acceptEncoding; }
-        void setAcceptEncoding(bool acceptEncoding) { m_acceptEncoding = acceptEncoding; }
-
-        void updateSoupMessageHeaders(SoupMessageHeaders*) const;
-        void updateFromSoupMessageHeaders(SoupMessageHeaders*);
-        void updateSoupMessage(SoupMessage*, BlobRegistryImpl&) const;
-        void updateFromSoupMessage(SoupMessage*);
-        void updateSoupRequest(SoupRequest*) const;
-        void updateFromSoupRequest(SoupRequest*);
-
-        SoupMessageFlags soupMessageFlags() const { return m_soupFlags; }
-        void setSoupMessageFlags(SoupMessageFlags soupFlags) { m_soupFlags = soupFlags; }
-
-        // WebPageProxyIdentifier.
-        Optional<uint64_t> initiatingPageID() const { return m_initiatingPageID; }
-        void setInitiatingPageID(uint64_t pageID) { m_initiatingPageID = pageID; }
-
-        GUniquePtr<SoupURI> createSoupURI() const;
-
-        template<class Encoder> void encodeWithPlatformData(Encoder&) const;
-        template<class Decoder> WARN_UNUSED_RETURN bool decodeWithPlatformData(Decoder&);
-
-    private:
-        friend class ResourceRequestBase;
-
-        bool m_acceptEncoding : 1;
-        SoupMessageFlags m_soupFlags;
-        Optional<uint64_t> m_initiatingPageID;
-
-        void updateSoupMessageMembers(SoupMessage*) const;
-        void updateSoupMessageBody(SoupMessage*, BlobRegistryImpl&) const;
-        void doUpdatePlatformRequest() { }
-        void doUpdateResourceRequest() { }
-        void doUpdatePlatformHTTPBody() { }
-        void doUpdateResourceHTTPBody() { }
-
-        void doPlatformSetAsIsolatedCopy(const ResourceRequest&) { }
-    };
-
-template<class Encoder>
-void ResourceRequest::encodeWithPlatformData(Encoder& encoder) const
-{
-    encodeBase(encoder);
-
-    // FIXME: Do not encode HTTP message body.
-    // 1. It can be large and thus costly to send across.
-    // 2. It is misleading to provide a body with some requests, while others use body streams, which cannot be serialized at all.
-    encoder << static_cast<bool>(m_httpBody);
-    if (m_httpBody)
-        encoder << m_httpBody->flattenToString();
-
-    encoder << static_cast<uint32_t>(m_soupFlags);
-    encoder << m_initiatingPageID;
-    encoder << static_cast<bool>(m_acceptEncoding);
-}
-
-template<class Decoder>
-bool ResourceRequest::decodeWithPlatformData(Decoder& decoder)
-{
-    if (!decodeBase(decoder))
-        return false;
-
-    bool hasHTTPBody;
-    if (!decoder.decode(hasHTTPBody))
-        return false;
-    if (hasHTTPBody) {
-        String httpBody;
-        if (!decoder.decode(httpBody))
-            return false;
-        setHTTPBody(FormData::create(httpBody.utf8()));
-    }
-
-    uint32_t soupMessageFlags;
-    if (!decoder.decode(soupMessageFlags))
-        return false;
-    m_soupFlags = static_cast<SoupMessageFlags>(soupMessageFlags);
-
-    Optional<Optional<uint64_t>> initiatingPageID;
-    decoder >> initiatingPageID;
-    if (!initiatingPageID)
-        return false;
-    m_initiatingPageID = *initiatingPageID;
-
+struct ResourceRequestPlatformData {
+    ResourceRequestBase::RequestData requestData;
+    std::optional<String> flattenedHTTPBody;
     bool acceptEncoding;
-    if (!decoder.decode(acceptEncoding))
-        return false;
-    m_acceptEncoding = acceptEncoding;
+    uint16_t redirectCount;
+};
+using ResourceRequestData = std::variant<ResourceRequestBase::RequestData, ResourceRequestPlatformData>;
 
-    return true;
-}
-
-inline SoupMessagePriority toSoupMessagePriority(ResourceLoadPriority priority)
-{
-    switch (priority) {
-    case ResourceLoadPriority::VeryLow:
-        return SOUP_MESSAGE_PRIORITY_VERY_LOW;
-    case ResourceLoadPriority::Low:
-        return SOUP_MESSAGE_PRIORITY_LOW;
-    case ResourceLoadPriority::Medium:
-        return SOUP_MESSAGE_PRIORITY_NORMAL;
-    case ResourceLoadPriority::High:
-        return SOUP_MESSAGE_PRIORITY_HIGH;
-    case ResourceLoadPriority::VeryHigh:
-        return SOUP_MESSAGE_PRIORITY_VERY_HIGH;
+class ResourceRequest : public ResourceRequestBase {
+public:
+    explicit ResourceRequest(const String& url)
+        : ResourceRequestBase(URL({ }, url), ResourceRequestCachePolicy::UseProtocolCachePolicy)
+    {
     }
 
-    ASSERT_NOT_REACHED();
-    return SOUP_MESSAGE_PRIORITY_VERY_LOW;
-}
+    ResourceRequest(const URL& url)
+        : ResourceRequestBase(url, ResourceRequestCachePolicy::UseProtocolCachePolicy)
+    {
+    }
+
+    ResourceRequest(const URL& url, const String& referrer, ResourceRequestCachePolicy policy = ResourceRequestCachePolicy::UseProtocolCachePolicy)
+        : ResourceRequestBase(url, policy)
+    {
+        setHTTPReferrer(referrer);
+    }
+
+    ResourceRequest()
+        : ResourceRequestBase(URL(), ResourceRequestCachePolicy::UseProtocolCachePolicy)
+    {
+    }
+
+    ResourceRequest(ResourceRequestBase&& base)
+        : ResourceRequestBase(WTFMove(base))
+    {
+    }
+
+    ResourceRequest(ResourceRequestPlatformData&& platformData)
+        : ResourceRequestBase(WTFMove(platformData.requestData))
+    {
+        if (platformData.flattenedHTTPBody)
+            setHTTPBody(FormData::create(platformData.flattenedHTTPBody->utf8()));
+
+        m_acceptEncoding = platformData.acceptEncoding;
+        m_redirectCount =platformData.redirectCount;
+    }
+
+    GRefPtr<SoupMessage> createSoupMessage(BlobRegistryImpl&) const;
+
+    void updateFromDelegatePreservingOldProperties(const ResourceRequest& delegateProvidedRequest) { *this = delegateProvidedRequest; }
+
+    bool acceptEncoding() const { return m_acceptEncoding; }
+    void setAcceptEncoding(bool acceptEncoding) { m_acceptEncoding = acceptEncoding; }
+
+    void incrementRedirectCount() { m_redirectCount++; }
+    uint16_t redirectCount() const { return m_redirectCount; }
+
+    void updateSoupMessageBody(SoupMessage*, BlobRegistryImpl&) const;
+    void updateSoupMessageHeaders(SoupMessageHeaders*) const;
+    void updateFromSoupMessageHeaders(SoupMessageHeaders*);
+
+    ResourceRequestPlatformData getResourceRequestPlatformData() const;
+    WEBCORE_EXPORT static ResourceRequest fromResourceRequestData(ResourceRequestData);
+    WEBCORE_EXPORT ResourceRequestData getRequestDataToSerialize() const;
+
+private:
+    friend class ResourceRequestBase;
+
+#if USE(SOUP2)
+    GUniquePtr<SoupURI> createSoupURI() const;
+#else
+    GRefPtr<GUri> createSoupURI() const;
+#endif
+
+    void doUpdatePlatformRequest() { }
+    void doUpdateResourceRequest() { }
+    void doUpdatePlatformHTTPBody() { }
+    void doUpdateResourceHTTPBody() { }
+
+    void doPlatformSetAsIsolatedCopy(const ResourceRequest&) { }
+
+    bool m_acceptEncoding { true };
+    uint16_t m_redirectCount { 0 };
+};
 
 } // namespace WebCore
 
-#endif // ResourceRequest_h

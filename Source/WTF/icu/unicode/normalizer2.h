@@ -26,6 +26,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 #if !UCONFIG_NO_NORMALIZATION
 
 #include "unicode/stringpiece.h"
@@ -241,7 +243,7 @@ public:
      *                  pass the U_SUCCESS() test, or else the function returns
      *                  immediately. Check for U_FAILURE() on output or use with
      *                  function chaining. (See User Guide for details.)
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual void
     normalizeUTF8(uint32_t options, StringPiece src, ByteSink &sink,
@@ -391,7 +393,7 @@ public:
      *                  immediately. Check for U_FAILURE() on output or use with
      *                  function chaining. (See User Guide for details.)
      * @return TRUE if s is normalized
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual UBool
     isNormalizedUTF8(StringPiece s, UErrorCode &errorCode) const;
@@ -559,7 +561,7 @@ public:
      *                  pass the U_SUCCESS() test, or else the function returns
      *                  immediately. Check for U_FAILURE() on output or use with
      *                  function chaining. (See User Guide for details.)
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual void
     normalizeUTF8(uint32_t options, StringPiece src, ByteSink &sink,
@@ -686,7 +688,7 @@ public:
      *                  immediately. Check for U_FAILURE() on output or use with
      *                  function chaining. (See User Guide for details.)
      * @return TRUE if s is normalized
-     * @draft ICU 60
+     * @stable ICU 60
      */
     virtual UBool
     isNormalizedUTF8(StringPiece s, UErrorCode &errorCode) const U_OVERRIDE;
@@ -771,4 +773,7 @@ private:
 U_NAMESPACE_END
 
 #endif  // !UCONFIG_NO_NORMALIZATION
+
+#endif /* U_SHOW_CPLUSPLUS_API */
+
 #endif  // __NORMALIZER2_H__

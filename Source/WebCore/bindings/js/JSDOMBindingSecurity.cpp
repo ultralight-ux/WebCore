@@ -25,6 +25,7 @@
 #include "DOMWindow.h"
 #include "Document.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "HTTPParsers.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMWindowBase.h"
@@ -52,7 +53,7 @@ static inline bool canAccessDocument(JSC::JSGlobalObject* lexicalGlobalObject, D
 
     DOMWindow& active = activeDOMWindow(*lexicalGlobalObject);
 
-    if (active.document()->securityOrigin().canAccess(targetDocument->securityOrigin()))
+    if (active.document()->securityOrigin().isSameOriginDomain(targetDocument->securityOrigin()))
         return true;
 
     switch (reportingOption) {

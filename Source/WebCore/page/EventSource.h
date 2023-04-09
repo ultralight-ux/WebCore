@@ -46,7 +46,7 @@ class MessageEvent;
 class TextResourceDecoder;
 class ThreadableLoader;
 
-class EventSource final : public RefCounted<EventSource>, public EventTargetWithInlineData, private ThreadableLoaderClient, public ActiveDOMObject {
+class EventSource final : public RefCounted<EventSource>, public EventTarget, private ThreadableLoaderClient, public ActiveDOMObject {
     WTF_MAKE_ISO_ALLOCATED(EventSource);
 public:
     struct Init {
@@ -83,9 +83,9 @@ private:
     void doExplicitLoadCancellation();
 
     // ThreadableLoaderClient
-    void didReceiveResponse(unsigned long, const ResourceResponse&) final;
-    void didReceiveData(const char*, int) final;
-    void didFinishLoading(unsigned long) final;
+    void didReceiveResponse(ResourceLoaderIdentifier, const ResourceResponse&) final;
+    void didReceiveData(const SharedBuffer&) final;
+    void didFinishLoading(ResourceLoaderIdentifier, const NetworkLoadMetrics&) final;
     void didFail(const ResourceError&) final;
 
     // ActiveDOMObject
@@ -93,6 +93,7 @@ private:
     const char* activeDOMObjectName() const final;
     void suspend(ReasonForSuspension) final;
     void resume() final;
+    bool virtualHasPendingActivity() const final;
 
     void connect();
     void networkRequestEnded();
@@ -100,7 +101,7 @@ private:
     void scheduleReconnect();
     void abortConnectionAttempt();
     void parseEventStream();
-    void parseEventStreamLine(unsigned position, Optional<unsigned> fieldLength, unsigned lineLength);
+    void parseEventStreamLine(unsigned position, std::optional<unsigned> fieldLength, unsigned lineLength);
     void dispatchMessageEvent();
 
     bool responseIsValid(const ResourceResponse&) const;

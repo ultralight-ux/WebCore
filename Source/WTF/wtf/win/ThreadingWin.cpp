@@ -104,8 +104,6 @@
 
 namespace WTF {
 
-static Lock globalSuspendLock;
-
 Thread::~Thread()
 {
     // It is OK because FLSAlloc's callback will be called even before there are some open handles.
@@ -159,7 +157,7 @@ static unsigned __stdcall wtfThreadEntryPoint(void* data)
     return 0;
 }
 
-bool Thread::establishHandle(NewThreadContext* data, Optional<size_t> stackSize, const char* name, ThreadType type)
+bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> stackSize, QOS qos, const char* name, ThreadType type)
 {
     unsigned threadIdentifier = 0;
 #if USE(ULTRALIGHT)
@@ -169,7 +167,7 @@ bool Thread::establishHandle(NewThreadContext* data, Optional<size_t> stackSize,
     if (threadFactory) {
         ultralight::CreateThreadResult result;
         bool success = threadFactory->CreateThread(name, (ultralight::ThreadType)type,
-            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
+            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)context, result);
         if (success && result.handle != 0) {
             threadIdentifier = (unsigned int)result.id;
             threadHandle = (HANDLE)result.handle;
@@ -178,14 +176,14 @@ bool Thread::establishHandle(NewThreadContext* data, Optional<size_t> stackSize,
 
     if (!threadHandle) {
         unsigned initFlag = stackSize ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0;
-        threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, stackSize.valueOr(0), wtfThreadEntryPoint, data, initFlag, &threadIdentifier));
+        threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, stackSize.value_or(0), wtfThreadEntryPoint, context, initFlag, &threadIdentifier));
     }
 #else
     unsigned initFlag = stackSize ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0;
-    HANDLE threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, stackSize.valueOr(0), wtfThreadEntryPoint, data, initFlag, &threadIdentifier));
+    HANDLE threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, stackSize.value_or(0), wtfThreadEntryPoint, context, initFlag, &threadIdentifier));
 #endif
     if (!threadHandle) {
-        LOG_ERROR("Failed to create thread at entry point %p with data %p: %ld", wtfThreadEntryPoint, data, errno);
+        LOG_ERROR("Failed to create thread at entry point %p with context %p: %ld", wtfThreadEntryPoint, context, errno);
         return false;
     }
     establishPlatformSpecificHandle(threadHandle, threadIdentifier);
@@ -194,7 +192,7 @@ bool Thread::establishHandle(NewThreadContext* data, Optional<size_t> stackSize,
 
 void Thread::changePriority(int delta)
 {
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     SetThreadPriority(m_handle, THREAD_PRIORITY_NORMAL + delta);
 }
 
@@ -202,7 +200,7 @@ int Thread::waitForCompletion()
 {
     HANDLE handle;
     {
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         handle = m_handle;
     }
 
@@ -210,7 +208,7 @@ int Thread::waitForCompletion()
     if (joinResult == WAIT_FAILED)
         LOG_ERROR("Thread %p was found to be deadlocked trying to quit", this);
 
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     ASSERT(joinableState() == Joinable);
 
     // The thread has already exited, do nothing.
@@ -232,15 +230,14 @@ void Thread::detach()
     // FlsCallback automatically. FlsCallback will call CloseHandle to clean up
     // resource. So in this function, we just mark the thread as detached to
     // avoid calling waitForCompletion for this thread.
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     if (!hasExited())
         didBecomeDetached();
 }
 
-auto Thread::suspend() -> Expected<void, PlatformSuspendError>
+auto Thread::suspend(const ThreadSuspendLocker&) -> Expected<void, PlatformSuspendError>
 {
     RELEASE_ASSERT_WITH_MESSAGE(this != &Thread::current(), "We do not support suspending the current thread itself.");
-    LockHolder locker(globalSuspendLock);
     DWORD result = SuspendThread(m_handle);
     if (result != (DWORD)-1)
         return { };
@@ -248,15 +245,13 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
 }
 
 // During resume, suspend or resume should not be executed from the other threads.
-void Thread::resume()
+void Thread::resume(const ThreadSuspendLocker&)
 {
-    LockHolder locker(globalSuspendLock);
     ResumeThread(m_handle);
 }
 
-size_t Thread::getRegisters(PlatformRegisters& registers)
+size_t Thread::getRegisters(const ThreadSuspendLocker&, PlatformRegisters& registers)
 {
-    LockHolder locker(globalSuspendLock);
     registers.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
     GetThreadContext(m_handle, &registers);
     return sizeof(CONTEXT);
@@ -265,6 +260,7 @@ size_t Thread::getRegisters(PlatformRegisters& registers)
 Thread& Thread::initializeCurrentTLS()
 {
     // Not a WTF-created thread, ThreadIdentifier is not established yet.
+    WTF::initialize();
     Ref<Thread> thread = adoptRef(*new Thread());
 
     HANDLE handle;
@@ -285,7 +281,7 @@ ThreadIdentifier Thread::currentID()
 
 void Thread::establishPlatformSpecificHandle(HANDLE handle, ThreadIdentifier threadID)
 {
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     m_handle = handle;
     m_id = threadID;
 }
@@ -300,6 +296,7 @@ struct Thread::ThreadHolder {
         if (isMainThread())
             return;
         if (thread) {
+            thread->m_clientData = nullptr;
             thread->specificStorage().destroySlots();
             thread->didExit();
         }

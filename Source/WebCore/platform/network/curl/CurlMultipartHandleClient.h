@@ -28,7 +28,7 @@
 namespace WebCore {
 
 class CurlResponse;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 
 class CurlMultipartHandleClient {
 public:

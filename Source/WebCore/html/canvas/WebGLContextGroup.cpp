@@ -28,7 +28,7 @@
 
 #if ENABLE(WEBGL)
 
-#include "GraphicsContextGLOpenGL.h"
+#include "GraphicsContextGL.h"
 #include "WebGLRenderingContextBase.h"
 #include "WebGLSharedObject.h"
 
@@ -49,13 +49,13 @@ bool WebGLContextGroup::hasAContext() const
     return !m_contexts.isEmpty();
 }
 
-GraphicsContextGLOpenGL& WebGLContextGroup::getAGraphicsContextGL()
+GraphicsContextGL& WebGLContextGroup::getAGraphicsContextGL()
 {
     ASSERT(!m_contexts.isEmpty());
     return *(*m_contexts.begin())->graphicsContextGL();
 }
 
-WTF::Lock& WebGLContextGroup::objectGraphLockForAContext()
+Lock& WebGLContextGroup::objectGraphLockForAContext()
 {
     ASSERT(!m_contexts.isEmpty());
     // Since the WEBGL_shared_objects extension never shipped, and is
@@ -100,7 +100,7 @@ void WebGLContextGroup::detachAndRemoveAllObjects()
         return;
     }
 
-    auto locker = holdLock(objectGraphLockForAContext());
+    Locker locker { objectGraphLockForAContext() };
     while (!m_groupObjects.isEmpty())
         (*m_groupObjects.begin())->detachContextGroup(locker);
 }

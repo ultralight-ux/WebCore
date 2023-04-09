@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,48 +24,53 @@
  */
 
 .computed-style-section {
-    padding-bottom: 3px;
+    padding-bottom: var(--computed-style-section-vertical-padding);
     color: var(--text-color-tertiary);
     -webkit-user-select: text;
+
+    --computed-style-section-vertical-padding: 3px;
 }
 
 .computed-style-section .computed-property-item {
     box-sizing: border-box;
     max-width: 100%;
-    min-height: var(--disclosure-button-size);
+    min-height: calc(var(--disclosure-button-size));
     padding-left: calc(var(--disclosure-button-size) + 6px);
     padding-right: var(--css-declaration-horizontal-padding);
-    border-top: 0.5px solid transparent;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .computed-style-section .computed-property-item.expanded {
+    margin-top: -0.5px;
     padding-bottom: 2px;
-    background-color: var(--background-color-code);
-    border-top-color: var(--text-color-quaternary);
+    background-color: var(--background-color-intermediate);
+    border-top: 0.5px solid var(--text-color-quaternary);
+    border-bottom: 0.5px solid var(--text-color-quaternary);
 }
 
-.computed-style-section .computed-property-item.expanded + .computed-property-item {
-    border-top-color: var(--text-color-quaternary);
+.computed-style-section .computed-property-item.expanded + .computed-property-item.expanded {
+    border-top: none;
+}
+
+.computed-style-section .computed-property-item > .disclosure-button:focus {
+    outline: auto -webkit-focus-ring-color;
+    outline-offset: -3px; /* Make focus outline smaller than usual so it doesn't get clipped here. */
+    border-radius: calc((var(--disclosure-button-size) / 2) - 2px);
 }
 
 .computed-style-section .computed-property-item .disclosure-button {
     display: inline-block;
     width: var(--disclosure-button-size);
     height: var(--disclosure-button-size);
-    -webkit-margin-start: calc(-1 * var(--disclosure-button-size));
+    margin-inline-start: calc(-1 * var(--disclosure-button-size));
     border: 0;
     background-color: transparent;
     background-image: url(../Images/DisclosureTriangles.svg#closed-normal);
     background-repeat: no-repeat;
     background-position: center;
     background-size: 13px 13px;
-    -webkit-appearance: none;
-}
-
-body[dir=rtl] .computed-style-section .computed-property-item .disclosure-button {
-    transform: scaleX(-1);
+    appearance: none;
 }
 
 .computed-style-section .computed-property-item .property-traces {
@@ -92,7 +97,6 @@ body[dir=rtl] .computed-style-section .computed-property-item .disclosure-button
 .computed-style-section .computed-property-item .property-trace-item::before {
     content: "\2022";
     display: inline-block;
-    position: absolute;
     margin-left: -0.8em;
 }
 
@@ -146,9 +150,7 @@ body[dir=rtl] .computed-style-section .computed-property-item .disclosure-button
     color: var(--text-color-secondary);
 }
 
-.computed-style-section .property-trace-item .property .name,
-.computed-style-section .property-trace-item .property .colon,
-.computed-style-section .property-trace-item .property .semicolon {
+.computed-style-section .property-trace-item .property :is(.name, .colon, .semicolon, .css-documentation-button) {
     display: none;
 }
 
@@ -157,8 +159,23 @@ body[dir=rtl] .computed-style-section .computed-property-item .disclosure-button
     display: block;
 }
 
-@media (prefers-color-scheme: dark) {
-    .computed-style-section .computed-property-item.expanded {
-        background-color: var(--background-color-code);
-    }
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item > .property .go-to-arrow {
+    vertical-align: bottom;
+    width: var(--disclosure-button-size);
+    height: var(--disclosure-button-size);
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item:not(:hover) > .property .go-to-arrow {
+    display: none;
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item > .property > .content > .css-documentation-button {
+    vertical-align: bottom;
+    width: var(--disclosure-button-size);
+    height: var(--disclosure-button-size);
+    margin-left: 1px;
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item:not(:hover) > .property > .content > .css-documentation-button {
+    display: none;
 }

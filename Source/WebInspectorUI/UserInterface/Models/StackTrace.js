@@ -25,9 +25,10 @@
 
 WI.StackTrace = class StackTrace
 {
-    constructor(callFrames, topCallFrameIsBoundary, truncated, parentStackTrace)
+    constructor(callFrames, {topCallFrameIsBoundary, truncated, parentStackTrace} = {})
     {
-        console.assert(callFrames && callFrames.every((callFrame) => callFrame instanceof WI.CallFrame));
+        console.assert(callFrames.every((callFrame) => callFrame instanceof WI.CallFrame), callFrames);
+        console.assert(!parentStackTrace || parentStackTrace instanceof WI.StackTrace, parentStackTrace);
 
         this._callFrames = callFrames;
         this._topCallFrameIsBoundary = topCallFrameIsBoundary || false;
@@ -44,7 +45,10 @@ WI.StackTrace = class StackTrace
 
         while (payload) {
             let callFrames = payload.callFrames.map((x) => WI.CallFrame.fromPayload(target, x));
-            let stackTrace = new WI.StackTrace(callFrames, payload.topCallFrameIsBoundary, payload.truncated);
+            let stackTrace = new WI.StackTrace(callFrames, {
+                topCallFrameIsBoundary: payload.topCallFrameIsBoundary,
+                truncated: payload.truncated,
+            });
             if (!result)
                 result = stackTrace;
             if (previousStackTrace)
@@ -77,7 +81,7 @@ WI.StackTrace = class StackTrace
         if (stack.length > approximateStackLengthOf50Items)
             return false;
 
-        if (/^[^a-z$_]/i.test(stack[0]))
+        if (/^[^a-z$_@]/i.test(stack[0]))
             return false;
 
         if (!WI.StackTrace._likelyStackTraceRegex) {
@@ -140,38 +144,35 @@ WI.StackTrace = class StackTrace
 
     // Public
 
-    get callFrames()
-    {
-        return this._callFrames;
-    }
+    get callFrames() { return this._callFrames; }
+    get topCallFrameIsBoundary() { return this._topCallFrameIsBoundary; }
+    get truncated() { return this._truncated; }
+    get parentStackTrace() { return this._parentStackTrace; }
 
-    get firstNonNativeCallFrame()
+    get firstNonNativeNonAnonymousNotBlackboxedCallFrame()
     {
-        for (let frame of this._callFrames) {
-            if (!frame.nativeCode)
-                return frame;
-        }
+        let firstNonNativeNonAnonymousCallFrame = null;
 
-        return null;
-    }
-
-    get firstNonNativeNonAnonymousCallFrame()
-    {
         for (let frame of this._callFrames) {
             if (frame.nativeCode)
                 continue;
+
             if (frame.sourceCodeLocation) {
                 let sourceCode = frame.sourceCodeLocation.sourceCode;
                 if (sourceCode instanceof WI.Script && sourceCode.anonymous)
                     continue;
+
+                // Save the first non-native non-anonymous call frame so it can be used as a
+                // fallback if all remaining call frames are blackboxed.
+                firstNonNativeNonAnonymousCallFrame ??= frame;
             }
+
+            if (frame.blackboxed)
+                continue;
+
             return frame;
         }
 
-        return null;
+        return firstNonNativeNonAnonymousCallFrame;
     }
-
-    get topCallFrameIsBoundary() { return this._topCallFrameIsBoundary; }
-    get truncated() { return this._truncated; }
-    get parentStackTrace() { return this._parentStackTrace; }
 };

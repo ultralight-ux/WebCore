@@ -25,31 +25,39 @@
 
 WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrowserTabContentView
 {
-    constructor(identifier)
+    constructor()
     {
-        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.ElementsTabContentView.tabInfo());
+        let detailsSidebarPanelConstructors = [
+            WI.RulesStyleDetailsSidebarPanel,
+            WI.ComputedStyleDetailsSidebarPanel,
+        ];
 
-        let detailsSidebarPanelConstructors = [WI.RulesStyleDetailsSidebarPanel, WI.ComputedStyleDetailsSidebarPanel, WI.ChangesDetailsSidebarPanel, WI.DOMNodeDetailsSidebarPanel];
-        if (window.LayerTreeAgent)
+        // COMPATIBILITY (iOS 14.5): `DOM.showGridOverlay` did not exist yet.
+        if (InspectorBackend.hasCommand("DOM.showGridOverlay"))
+            detailsSidebarPanelConstructors.push(WI.LayoutDetailsSidebarPanel);
+
+        // COMPATIBILITY (iOS 14.0): `CSS.getFontDataForNode` did not exist yet.
+        if (InspectorBackend.hasCommand("CSS.getFontDataForNode"))
+            detailsSidebarPanelConstructors.push(WI.FontDetailsSidebarPanel);
+        detailsSidebarPanelConstructors.push(WI.ChangesDetailsSidebarPanel, WI.DOMNodeDetailsSidebarPanel);
+        if (InspectorBackend.hasDomain("LayerTree"))
             detailsSidebarPanelConstructors.push(WI.LayerTreeDetailsSidebarPanel);
 
-        super(identifier || "elements", "elements", tabBarItem, null, detailsSidebarPanelConstructors, true);
-
-        WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
-        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        super(ElementsTabContentView.tabInfo(), {detailsSidebarPanelConstructors, hideBackForwardButtons: true, disableBackForwardNavigation: true});
     }
 
     static tabInfo()
     {
         return {
+            identifier: ElementsTabContentView.Type,
             image: "Images/Elements.svg",
-            title: WI.UIString("Elements"),
+            displayName: WI.UIString("Elements", "Elements Tab Name", "Name of Elements Tab"),
         };
     }
 
     static isTabAllowed()
     {
-        return !!window.DOMAgent;
+        return InspectorBackend.hasDomain("DOM");
     }
 
     // Public
@@ -64,6 +72,11 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         return true;
     }
 
+    get detailsSidebarExpandedByDefault()
+    {
+        return true;
+    }
+
     canShowRepresentedObject(representedObject)
     {
         return representedObject instanceof WI.DOMTree;
@@ -71,8 +84,7 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
 
     showRepresentedObject(representedObject, cookie)
     {
-        if (!this.contentBrowser.currentContentView)
-            this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
 
         if (!cookie || !cookie.nodeToSelect)
             return;
@@ -87,36 +99,61 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         cookie.nodeToSelect = undefined;
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
-        if (!this.contentBrowser.currentContentView)
-            this._showDOMTreeContentView();
+        WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        this._showDOMTreeContentViewIfNeeded();
+    }
+
+    detached()
+    {
+        WI.networkManager.removeEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        super.detached();
+    }
+
+    initialLayout()
+    {
+        super.initialLayout();
+
+        this.element.appendChild(WI.ReferencePage.ElementsTab.DOMTree.createLinkElement());
     }
 
     closed()
     {
         super.closed();
 
-        WI.networkManager.removeEventListener(null, null, this);
-        WI.Frame.removeEventListener(null, null, this);
+        WI.networkManager.removeEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+    }
+
+    get allowMultipleDetailSidebars()
+    {
+        return true;
     }
 
     // Private
 
-    _showDOMTreeContentView()
+    _showDOMTreeContentViewIfNeeded()
     {
-        this.contentBrowser.contentViewContainer.closeAllContentViews();
+        let mainDOMTree = WI.networkManager.mainFrame?.domTree;
+        if (!mainDOMTree)
+            return;
 
-        var mainFrame = WI.networkManager.mainFrame;
-        if (mainFrame)
-            this.contentBrowser.showContentViewForRepresentedObject(mainFrame.domTree);
+        if (this.contentBrowser.currentContentView?.representedObject === mainDOMTree)
+            return;
+
+        this.contentBrowser.showContentViewForRepresentedObject(mainDOMTree);
     }
 
     _mainFrameDidChange(event)
     {
-        this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
     }
 
     _mainResourceDidChange(event)
@@ -124,7 +161,7 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         if (!event.target.isMainFrame())
             return;
 
-        this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
     }
 };
 

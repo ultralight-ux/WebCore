@@ -9,7 +9,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE OFF)
 
 WEBKIT_OPTION_END()
 
-
+set(WebCore_LIBRARY_TYPE SHARED)
 
 include(UltralightDefinitions)
 
@@ -38,6 +38,8 @@ if (MSVC)
 
     # Use CRT security features
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1)
+    
+    add_definitions(-D_ENABLE_EXTENDED_ALIGNED_STORAGE=1)
     
     # If <winsock2.h> is not included before <windows.h> redefinition errors occur
     # unless _WINSOCKAPI_ is defined before <windows.h> is included

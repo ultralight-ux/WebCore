@@ -26,7 +26,7 @@
 
 namespace WebCore {
 
-// FIXME: Delete this class after fixing FormAssociatedElement to avoid calling getElementById during a tree removal.
+// FIXME: Delete this class after fixing FormListedElement to avoid calling getElementById during a tree removal.
 #if ASSERT_ENABLED
 class ContainerChildRemovalScope {
 public:
@@ -61,8 +61,13 @@ public:
 };
 #endif // not ASSERT_ENABLED
 
-NodeVector notifyChildNodeInserted(ContainerNode& parentOfInsertedTree, Node&);
-void notifyChildNodeRemoved(ContainerNode& oldParentOfRemovedTree, Node&);
+void notifyChildNodeInserted(ContainerNode& parentOfInsertedTree, Node&, NodeVector& postInsertionNotificationTargets);
+
+enum class RemovedSubtreeObservability {
+    NotObservable,
+    MaybeObservableByRefPtr,
+};
+RemovedSubtreeObservability notifyChildNodeRemoved(ContainerNode& oldParentOfRemovedTree, Node&);
 void removeDetachedChildrenInContainer(ContainerNode&);
 
 enum SubframeDisconnectPolicy {

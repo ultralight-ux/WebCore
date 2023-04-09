@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,29 +22,32 @@
 #if ENABLE(OFFSCREEN_CANVAS)
 
 #include "JSOffscreenCanvasRenderingContext2D.h"
+#include "WebCoreOpaqueRoot.h"
 
 namespace WebCore {
 using namespace JSC;
 
-inline void* root(OffscreenCanvas* canvas)
+inline WebCoreOpaqueRoot root(OffscreenCanvas* canvas)
 {
-    return canvas;
+    return WebCoreOpaqueRoot { canvas };
 }
 
-bool JSOffscreenCanvasRenderingContext2DOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor, const char** reason)
+bool JSOffscreenCanvasRenderingContext2DOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, AbstractSlotVisitor& visitor, const char** reason)
 {
     if (UNLIKELY(reason))
         *reason = "Canvas is opaque root";
 
-    JSOffscreenCanvasRenderingContext2D* jsOffscreenCanvasRenderingContext = jsCast<JSOffscreenCanvasRenderingContext2D*>(handle.slot()->asCell());
-    void* root = WebCore::root(&jsOffscreenCanvasRenderingContext->wrapped().canvas());
-    return visitor.containsOpaqueRoot(root);
+    auto* jsOffscreenCanvasRenderingContext = jsCast<JSOffscreenCanvasRenderingContext2D*>(handle.slot()->asCell());
+    return containsWebCoreOpaqueRoot(visitor, jsOffscreenCanvasRenderingContext->wrapped().canvas());
 }
 
-void JSOffscreenCanvasRenderingContext2D::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSOffscreenCanvasRenderingContext2D::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(root(&wrapped().canvas()));
+    addWebCoreOpaqueRoot(visitor, wrapped().canvas());
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSOffscreenCanvasRenderingContext2D);
 
 } // namespace WebCore
 

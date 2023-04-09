@@ -25,21 +25,17 @@
 
 #pragma once
 
-#include "CallTracerTypes.h"
-#include "CanvasRenderingContext.h"
+#include "InspectorCanvasCallTracer.h"
+#include <JavaScriptCore/AsyncStackTrace.h>
 #include <JavaScriptCore/InspectorProtocolObjects.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/ScriptCallFrame.h>
 #include <JavaScriptCore/ScriptCallStack.h>
 #include <initializer_list>
+#include <variant>
 #include <wtf/HashSet.h>
-#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
-
-#if ENABLE(WEBGPU)
-#include "WebGPUDevice.h"
-#endif
 
 namespace WebCore {
 
@@ -54,28 +50,16 @@ class ImageData;
 #if ENABLE(OFFSCREEN_CANVAS)
 class OffscreenCanvas;
 #endif
-#if ENABLE(CSS_TYPED_OM)
-class TypedOMCSSImageValue;
-#endif
-
-typedef String ErrorString;
+class CSSStyleImageValue;
 
 class InspectorCanvas final : public RefCounted<InspectorCanvas> {
 public:
     static Ref<InspectorCanvas> create(CanvasRenderingContext&);
-#if ENABLE(WEBGPU)
-    static Ref<InspectorCanvas> create(WebGPUDevice&);
-#endif
 
     const String& identifier() const { return m_identifier; }
 
     CanvasRenderingContext* canvasContext() const;
     HTMLCanvasElement* canvasElement() const;
-
-#if ENABLE(WEBGPU)
-    WebGPUDevice* deviceContext() const;
-    bool isDeviceForCanvasContext(CanvasRenderingContext&) const;
-#endif
 
     ScriptExecutionContext* scriptExecutionContext() const;
 
@@ -88,7 +72,14 @@ public:
     void resetRecordingData();
     bool hasRecordingData() const;
     bool currentFrameHasData() const;
-    void recordAction(const String&, std::initializer_list<RecordCanvasActionVariant>&& = { });
+
+    // InspectorCanvasCallTracer
+#define PROCESS_ARGUMENT_DECLARATION(ArgumentType) \
+    std::optional<InspectorCanvasCallTracer::ProcessedArgument> processArgument(ArgumentType); \
+// end of PROCESS_ARGUMENT_DECLARATION
+    FOR_EACH_INSPECTOR_CANVAS_CALL_TRACER_ARGUMENT(PROCESS_ARGUMENT_DECLARATION)
+#undef PROCESS_ARGUMENT_DECLARATION
+    void recordAction(String&&, InspectorCanvasCallTracer::ProcessedArguments&& = { });
 
     Ref<JSON::ArrayOf<Inspector::Protocol::Recording::Frame>> releaseFrames() { return m_frames.releaseNonNull(); }
 
@@ -107,17 +98,14 @@ public:
     Ref<Inspector::Protocol::Canvas::Canvas> buildObjectForCanvas(bool captureBacktrace);
     Ref<Inspector::Protocol::Recording::Recording> releaseObjectForRecording();
 
-    String getCanvasContentAsDataURL(ErrorString&);
+    String getCanvasContentAsDataURL(Inspector::Protocol::ErrorString&);
 
 private:
     InspectorCanvas(CanvasRenderingContext&);
-#if ENABLE(WEBGPU)
-    InspectorCanvas(WebGPUDevice&);
-#endif
 
     void appendActionSnapshotIfNeeded();
 
-    using DuplicateDataVariant = Variant<
+    using DuplicateDataVariant = std::variant<
         RefPtr<CanvasGradient>,
         RefPtr<CanvasPattern>,
         RefPtr<HTMLCanvasElement>,
@@ -128,9 +116,8 @@ private:
         RefPtr<ImageData>,
         RefPtr<ImageBitmap>,
         RefPtr<Inspector::ScriptCallStack>,
-#if ENABLE(CSS_TYPED_OM)
-        RefPtr<TypedOMCSSImageValue>,
-#endif
+        RefPtr<Inspector::AsyncStackTrace>,
+        RefPtr<CSSStyleImageValue>,
         Inspector::ScriptCallFrame,
 #if ENABLE(OFFSCREEN_CANVAS)
         RefPtr<OffscreenCanvas>,
@@ -139,21 +126,19 @@ private:
     >;
 
     int indexForData(DuplicateDataVariant);
+    Ref<JSON::Value> valueIndexForData(DuplicateDataVariant);
     String stringIndexForKey(const String&);
     Ref<Inspector::Protocol::Recording::InitialState> buildInitialState();
-    Ref<JSON::ArrayOf<JSON::Value>> buildAction(const String&, std::initializer_list<RecordCanvasActionVariant>&& = { });
+    Ref<JSON::ArrayOf<JSON::Value>> buildAction(String&&, InspectorCanvasCallTracer::ProcessedArguments&& = { });
     Ref<JSON::ArrayOf<JSON::Value>> buildArrayForCanvasGradient(const CanvasGradient&);
     Ref<JSON::ArrayOf<JSON::Value>> buildArrayForCanvasPattern(const CanvasPattern&);
     Ref<JSON::ArrayOf<JSON::Value>> buildArrayForImageData(const ImageData&);
 
     String m_identifier;
 
-    Variant<
+    std::variant<
         std::reference_wrapper<CanvasRenderingContext>,
-#if ENABLE(WEBGPU)
-        std::reference_wrapper<WebGPUDevice>,
-#endif
-        Monostate
+        std::monostate
     > m_context;
 
     RefPtr<Inspector::Protocol::Recording::InitialState> m_initialState;
@@ -167,7 +152,7 @@ private:
     MonotonicTime m_currentFrameStartTime { MonotonicTime::nan() };
     size_t m_bufferLimit { 100 * 1024 * 1024 };
     size_t m_bufferUsed { 0 };
-    Optional<size_t> m_frameCount;
+    std::optional<size_t> m_frameCount;
     size_t m_framesCaptured { 0 };
     bool m_contentChanged { false };
 };

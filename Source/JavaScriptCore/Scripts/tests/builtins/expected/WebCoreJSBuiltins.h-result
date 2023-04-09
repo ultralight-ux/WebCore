@@ -199,7 +199,7 @@ class JSBuiltinInternalFunctions {
 public:
     explicit JSBuiltinInternalFunctions(JSC::VM&);
 
-    void visit(JSC::SlotVisitor&);
+    template<typename Visitor> void visit(Visitor&);
     void initialize(JSDOMGlobalObject&);
 
 #if ENABLE(FETCH_API)
@@ -286,7 +286,8 @@ JSBuiltinInternalFunctions::JSBuiltinInternalFunctions(JSC::VM& vm)
     UNUSED_PARAM(vm);
 }
 
-void JSBuiltinInternalFunctions::visit(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSBuiltinInternalFunctions::visit(Visitor& visitor)
 {
 #if ENABLE(FETCH_API)
     m_anotherGuardedInternalBuiltin.visit(visitor);
@@ -300,7 +301,10 @@ void JSBuiltinInternalFunctions::visit(JSC::SlotVisitor& visitor)
     UNUSED_PARAM(visitor);
 }
 
-void JSBuiltinInternalFunctions::initialize(JSDOMGlobalObject& globalObject)
+template void JSBuiltinInternalFunctions::visit(AbstractSlotVisitor&);
+template void JSBuiltinInternalFunctions::visit(SlotVisitor&);
+
+SUPPRESS_ASAN void JSBuiltinInternalFunctions::initialize(JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(globalObject);
 #if ENABLE(FETCH_API)
@@ -337,7 +341,7 @@ void JSBuiltinInternalFunctions::initialize(JSDOMGlobalObject& globalObject)
 #undef DECLARE_GLOBAL_STATIC
 #endif // ENABLE(TEST_XML_CASTING_TEST_SEPARATE)
     };
-    globalObject.addStaticGlobals(staticGlobals, WTF_ARRAY_LENGTH(staticGlobals));
+    globalObject.addStaticGlobals(staticGlobals, std::size(staticGlobals));
     UNUSED_PARAM(clientData);
 }
 

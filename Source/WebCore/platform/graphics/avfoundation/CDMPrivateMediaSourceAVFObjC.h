@@ -48,7 +48,7 @@ public:
     static bool supportsKeySystemAndMimeType(const String& keySystem, const String& mimeType);
 
     bool supportsMIMEType(const String& mimeType) override;
-    std::unique_ptr<LegacyCDMSession> createSession(LegacyCDMSessionClient*) override;
+    std::unique_ptr<LegacyCDMSession> createSession(LegacyCDMSessionClient&) override;
 
     LegacyCDM* cdm() const { return m_cdm; }
 
@@ -58,7 +58,7 @@ protected:
         int version;
         Vector<int> protocols;
     };
-    static Optional<KeySystemParameters> parseKeySystem(const String& keySystem);
+    static std::optional<KeySystemParameters> parseKeySystem(const String& keySystem);
     
     LegacyCDM* m_cdm;
     Vector<CDMSessionMediaSourceAVFObjC*> m_sessions;

@@ -35,21 +35,23 @@ namespace WebCore {
 
 class AccessibilitySVGRoot final : public AccessibilitySVGElement {
 public:
-    static Ref<AccessibilitySVGRoot> create(RenderObject*);
+    static Ref<AccessibilitySVGRoot> create(RenderObject*, AXObjectCache*);
     virtual ~AccessibilitySVGRoot();
-    
-    void setParent(AccessibilityRenderObject*);
 
+    void setParent(AccessibilityRenderObject*);
+    bool hasAccessibleContent() const;
 private:
-    explicit AccessibilitySVGRoot(RenderObject*);
-    
+    explicit AccessibilitySVGRoot(RenderObject*, AXObjectCache*);
+
     AccessibilityObject* parentObject() const override;
     bool isAccessibilitySVGRoot() const override { return true; }
+    AccessibilityRole roleValue() const override;
 
     WeakPtr<AccessibilityRenderObject> m_parent;
-    AccessibilityRole roleValue() const override;
 };
-    
+
 } // namespace WebCore 
 
-SPECIALIZE_TYPE_TRAITS_ACCESSIBILITY(AccessibilitySVGRoot, isAccessibilitySVGRoot())
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::AccessibilitySVGRoot) \
+    static bool isType(const WebCore::AccessibilityObject& object) { return object.isAccessibilitySVGRoot(); } \
+SPECIALIZE_TYPE_TRAITS_END()

@@ -26,8 +26,7 @@ public:
 
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset) override;
 
-    virtual void updateContents(TextureMapper& textureMapper,
-      GraphicsLayer* sourceLayer, const IntRect& targetRect,
+    virtual void updateContents(GraphicsLayer* sourceLayer, const IntRect& targetRect,
       const IntPoint& offset, float scale) override;
 
     virtual void updateContents(const void*, const IntRect& target,
@@ -36,7 +35,7 @@ public:
     virtual bool isValid() const override { return !!canvas_; }
 
     virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&,
-        const FilterOperations&) override;
+        const FilterOperations&, bool) override;
 
 protected:
     ultralight::RefPtr<ultralight::Canvas> canvas_;

@@ -113,9 +113,12 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
 
     closed()
     {
-        WI.runtimeManager.removeEventListener(null, null, this);
-        WI.Frame.removeEventListener(null, null, this);
-        WI.debuggerManager.removeEventListener(null, null, this);
+        WI.runtimeManager.removeEventListener(WI.RuntimeManager.Event.DidEvaluate, this._didEvaluateExpression, this);
+        WI.runtimeManager.removeEventListener(WI.RuntimeManager.Event.ActiveExecutionContextChanged, this._activeExecutionContextChanged, this);
+
+        WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ActiveCallFrameDidChange, this._activeCallFrameDidChange, this);
 
         super.closed();
     }
@@ -124,6 +127,11 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
 
     layout()
     {
+        super.layout();
+
+        if (this.layoutReason !== WI.View.LayoutReason.Dirty)
+            return;
+
         let callFrame = this._callFrame;
 
         Promise.all([this._generateWatchExpressionsSection(), this._generateCallFramesSection()]).then(function(sections) {
@@ -262,8 +270,12 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
 
                 let treeOutline = objectTree.treeOutline;
                 treeOutline.registerScrollVirtualizer(this.contentView.element, 16);
-                treeOutline.addEventListener(WI.TreeOutline.Event.ElementAdded, this._treeElementAdded.bind(this, detailsSectionIdentifier), this);
-                treeOutline.addEventListener(WI.TreeOutline.Event.ElementDisclosureDidChanged, this._treeElementDisclosureDidChange.bind(this, detailsSectionIdentifier), this);
+                treeOutline.addEventListener(WI.TreeOutline.Event.ElementAdded, function(event) {
+                    this._treeElementAdded(detailsSectionIdentifier, event);
+                }, this);
+                treeOutline.addEventListener(WI.TreeOutline.Event.ElementDisclosureDidChanged, function(event) {
+                    this._treeElementDisclosureDidChange(detailsSectionIdentifier, event);
+                }, this);
 
                 rows.push(new WI.ObjectPropertiesDetailSectionRow(objectTree, detailsSection));
             }
@@ -298,8 +310,12 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
 
         let treeOutline = objectTree.treeOutline;
         const watchExpressionSectionIdentifier = "watch-expressions";
-        treeOutline.addEventListener(WI.TreeOutline.Event.ElementAdded, this._treeElementAdded.bind(this, watchExpressionSectionIdentifier), this);
-        treeOutline.addEventListener(WI.TreeOutline.Event.ElementDisclosureDidChanged, this._treeElementDisclosureDidChange.bind(this, watchExpressionSectionIdentifier), this);
+        treeOutline.addEventListener(WI.TreeOutline.Event.ElementAdded, function(event) {
+            this._treeElementAdded(watchExpressionSectionIdentifier, event);
+        }, this);
+        treeOutline.addEventListener(WI.TreeOutline.Event.ElementDisclosureDidChanged, function(event) {
+            this._treeElementDisclosureDidChange(watchExpressionSectionIdentifier, event);
+        }, this);
         treeOutline.objectTreeElementAddContextMenuItems = this._objectTreeElementAddContextMenuItems.bind(this);
 
         let promises = [];
@@ -374,7 +390,7 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
             "Enter": () => { this._popoverCommitted = true; popover.dismiss(); },
         });
 
-        let completionController = new WI.CodeMirrorCompletionController(this._codeMirror);
+        let completionController = new WI.CodeMirrorCompletionController(WI.CodeMirrorCompletionController.Mode.FullConsoleCommandLineAPI, this._codeMirror);
         completionController.addExtendedCompletionProvider("javascript", WI.javaScriptRuntimeCompletionProvider);
 
         // Resize the popover as best we can when the CodeMirror editor changes size.
@@ -453,7 +469,7 @@ WI.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel extends W
         if (objectTreeElement.parent !== objectTreeElement.treeOutline)
             return;
 
-        contextMenu.appendItem(WI.UIString("Remove Watch Expression"), () => {
+        contextMenu.appendItem(WI.UIString("Delete Watch Expression"), () => {
             let expression = objectTreeElement.property.name;
             this._removeWatchExpression(expression);
         });

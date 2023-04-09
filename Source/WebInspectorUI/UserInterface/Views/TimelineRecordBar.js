@@ -29,7 +29,7 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
     {
         super();
 
-        this._delegate = delegate;
+        this._delegate = delegate || null;
 
         this._element = document.createElement("div");
         this._element.classList.add("timeline-record-bar");
@@ -38,6 +38,8 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
 
         this.renderMode = renderMode;
         this.records = records;
+
+        this._cachedBarDuration = null;
     }
 
     static createCombinedBars(records, secondsPerPixel, graphDataSource, createBarCallback)
@@ -236,8 +238,10 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
                 this._element.classList.remove(oldRecordEventType);
                 this._element.classList.add(newRecord.eventType);
             }
-            if (newRecord.usesActiveStartTime !== oldRecordUsesActiveStartTime)
-                this._element.classList.toggle("has-inactive-segment", newRecord.usesActiveStartTime);
+            if (newRecord.usesActiveStartTime !== oldRecordUsesActiveStartTime) {
+                if (!this._delegate || !this._delegate.timelineRecordBarCustomChildren)
+                    this._element.classList.toggle("has-inactive-segment", newRecord.usesActiveStartTime);
+            }
         } else
             this._element.classList.remove(oldRecordType, oldRecordEventType, "has-inactive-segment");
     }
@@ -245,7 +249,7 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
     refresh(graphDataSource)
     {
         if (isNaN(graphDataSource.secondsPerPixel))
-            return;
+            return false;
 
         console.assert(graphDataSource.zeroTime);
         console.assert(graphDataSource.startTime);
@@ -281,6 +285,8 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
         if (barUnfinished)
             barEndTime = graphCurrentTime;
 
+        this._cachedBarDuration = barEndTime - barStartTime;
+
         var graphDuration = graphEndTime - graphStartTime;
 
         let newBarPosition = (barStartTime - graphStartTime) / graphDuration;
@@ -289,6 +295,36 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
 
         var newBarWidth = ((barEndTime - graphStartTime) / graphDuration) - newBarPosition;
         this._updateElementPosition(this._element, newBarWidth, "width");
+
+        if (this._delegate && this._delegate.timelineRecordBarCustomChildren) {
+            this._element.removeChildren();
+
+            this._element.classList.add("has-custom-children");
+            this._element.classList.toggle("unfinished", barUnfinished);
+
+            let children = this._delegate.timelineRecordBarCustomChildren(this);
+            for (let child of children) {
+                let childElement;
+                if (child.image) {
+                    childElement = this._element.appendChild(document.createElement("img"));
+                    childElement.src = child.image;
+                } else
+                    childElement = this._element.appendChild(document.createElement("div"));
+
+                childElement.classList.add(...child.classNames);
+                childElement.title = child.title;
+                this._updateElementPosition(childElement, (child.startTime - barStartTime) / this._cachedBarDuration, property);
+
+                if (typeof child.endTime === "number") {
+                    let childEndTime = !isNaN(child.endTime) ? child.endTime : barEndTime;
+                    this._updateElementPosition(childElement, (childEndTime - child.startTime) / this._cachedBarDuration, "width");
+                }
+            }
+
+            return true;
+        }
+
+        this._element.classList.remove("has-custom-children");
 
         if (!this._activeBarElement && this._renderMode !== WI.TimelineRecordBar.RenderMode.InactiveOnly) {
             this._activeBarElement = document.createElement("div");
@@ -325,8 +361,6 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
         else
             var barActiveStartTime = this._records.reduce(function(previousValue, currentValue) { return Math.max(previousValue, currentValue.activeStartTime); }, 0);
 
-        var barDuration = barEndTime - barStartTime;
-
         var inactiveUnfinished = isNaN(barActiveStartTime) || barActiveStartTime >= graphCurrentTime;
         this._element.classList.toggle("unfinished", inactiveUnfinished);
 
@@ -345,7 +379,7 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
         let showInactiveSegment = barActiveStartTime > barStartTime;
         this._element.classList.toggle("has-inactive-segment", showInactiveSegment);
 
-        let middlePercentage = (barActiveStartTime - barStartTime) / barDuration;
+        let middlePercentage = (barActiveStartTime - barStartTime) / this._cachedBarDuration;
         if (showInactiveSegment && this._renderMode !== WI.TimelineRecordBar.RenderMode.ActiveOnly) {
             if (!this._inactiveBarElement) {
                 this._inactiveBarElement = document.createElement("div");
@@ -391,8 +425,40 @@ WI.TimelineRecordBar = class TimelineRecordBar extends WI.Object
         // Ensure that the container "click" listener added by `WI.TimelineOverview` isn't called.
         event.__timelineRecordClickEventHandled = true;
 
-        if (this._delegate.timelineRecordBarClicked)
-            this._delegate.timelineRecordBarClicked(this);
+        if (!this._delegate?.timelineRecordBarClicked)
+            return;
+
+        if (!this._cachedBarDuration)
+            return;
+
+        if (this._records.length === 1) {
+            this._delegate.timelineRecordBarClicked(this._records[0]);
+            return;
+        }
+
+        let relativeMouseX = Number.constrain(event.offsetX / this._element.offsetWidth, 0, 1);
+        let targetRecordTime = this._records[0].startTime + (this._cachedBarDuration * relativeMouseX);
+        let closestRecord = null;
+        let closestRecordTimeDelta = Infinity;
+        for (let record of this._records) {
+            if (record.children.length)
+                continue;
+
+            if (targetRecordTime >= record.startTime && targetRecordTime <= record.endTime) {
+                closestRecord = record;
+                break;
+            }
+
+            let timeBetweenRecordAndTargetTime = Math.min(Math.abs(record.startTime - targetRecordTime), Math.abs(record.endTime - targetRecordTime));
+            if (timeBetweenRecordAndTargetTime > closestRecordTimeDelta)
+                break;
+
+            closestRecord = record;
+            closestRecordTimeDelta = timeBetweenRecordAndTargetTime;
+        }
+
+        console.assert(closestRecord);
+        this._delegate.timelineRecordBarClicked(closestRecord);
     }
 };
 

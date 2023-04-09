@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,12 +31,12 @@
 
 namespace JSC {
 
-const ClassInfo JSArrayIterator::s_info = { "ArrayIterator", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSArrayIterator) };
+const ClassInfo JSArrayIterator::s_info = { "ArrayIterator"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSArrayIterator) };
 
 JSArrayIterator* JSArrayIterator::create(VM& vm, Structure* structure, JSObject* iteratedObject, JSValue kind)
 {
     ASSERT(kind.asUInt32() <= static_cast<uint32_t>(IterationKind::Entries));
-    JSArrayIterator* iterator = new (NotNull, allocateCell<JSArrayIterator>(vm.heap)) JSArrayIterator(vm, structure);
+    JSArrayIterator* iterator = new (NotNull, allocateCell<JSArrayIterator>(vm)) JSArrayIterator(vm, structure);
     iterator->finishCreation(vm);
     iterator->internalField(Field::IteratedObject).set(vm, iterator, iteratedObject);
     iterator->internalField(Field::Kind).set(vm, iterator, kind);
@@ -45,7 +45,7 @@ JSArrayIterator* JSArrayIterator::create(VM& vm, Structure* structure, JSObject*
 
 JSArrayIterator* JSArrayIterator::createWithInitialValues(VM& vm, Structure* structure)
 {
-    JSArrayIterator* iterator = new (NotNull, allocateCell<JSArrayIterator>(vm.heap)) JSArrayIterator(vm, structure);
+    JSArrayIterator* iterator = new (NotNull, allocateCell<JSArrayIterator>(vm)) JSArrayIterator(vm, structure);
     iterator->finishCreation(vm);
     return iterator;
 }
@@ -68,11 +68,14 @@ void JSArrayIterator::finishCreation(VM& vm)
         Base::internalField(index).set(vm, this, values[index]);
 }
 
-void JSArrayIterator::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSArrayIterator::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSArrayIterator*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 }
+
+DEFINE_VISIT_CHILDREN(JSArrayIterator);
 
 } // namespace JSC

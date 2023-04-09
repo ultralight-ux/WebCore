@@ -53,7 +53,7 @@ Vector<uint8_t> MessageParser::createMessage(const uint8_t* data, size_t size)
 
     auto messageBuffer = Vector<uint8_t>(size + sizeof(uint32_t));
     uint32_t uintSize = static_cast<uint32_t>(size);
-    uint32_t nboSize = WTF::htonl(uintSize);
+    uint32_t nboSize = htonl(uintSize);
     memcpy(&messageBuffer[0], &nboSize, sizeof(uint32_t));
     memcpy(&messageBuffer[sizeof(uint32_t)], data, uintSize);
     return messageBuffer;
@@ -64,7 +64,6 @@ void MessageParser::pushReceivedData(const uint8_t* data, size_t size)
     if (!data || !size || !m_listener)
         return;
 
-    m_buffer.reserveCapacity(m_buffer.size() + size);
     m_buffer.append(data, size);
 
     if (!parse())
@@ -86,7 +85,7 @@ bool MessageParser::parse()
 
         uint32_t dataSize = 0;
         memcpy(&dataSize, &m_buffer[0], sizeof(uint32_t));
-        dataSize = WTF::ntohl(dataSize);
+        dataSize = ntohl(dataSize);
         if (!dataSize) {
             LOG_ERROR("Message Parser received an invalid message size");
             return false;

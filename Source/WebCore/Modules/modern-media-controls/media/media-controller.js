@@ -34,16 +34,16 @@ class MediaController
 
         this.fullscreenChangeEventType = media.webkitSupportsPresentationMode ? "webkitpresentationmodechanged" : "webkitfullscreenchange";
 
-        this.hasPlayed = false;
+        this.hasPlayed = !media.paused || !!media.played.length;
 
         this.container = shadowRoot.appendChild(document.createElement("div"));
-        this.container.className = "media-controls-container";
 
         this._updateControlsIfNeeded();
         this._usesLTRUserInterfaceLayoutDirection = false;
 
         if (host) {
-            host.controlsDependOnPageScaleFactor = this.layoutTraits & LayoutTraits.iOS;
+            this.container.className = host.mediaControlsContainerClassName;
+            host.controlsDependOnPageScaleFactor = this.layoutTraits.controlsDependOnPageScaleFactor();
             this.container.insertBefore(host.textTrackContainer, this.controls.element);
             if (host.isInMediaDocument)
                 this.mediaDocumentController = new MediaDocumentController(this);
@@ -96,21 +96,47 @@ class MediaController
 
     get layoutTraits()
     {
-        if (this.host && this.host.compactMode)
-            return LayoutTraits.Compact;
-
-        let traits = window.isIOSFamily ? LayoutTraits.iOS : LayoutTraits.macOS;
-        if (this.isFullscreen)
-            return traits | LayoutTraits.Fullscreen;
-        return traits;
+        let mode = this.isFullscreen ? LayoutTraits.Mode.Fullscreen : LayoutTraits.Mode.Inline;
+    
+        if (this.host) {
+            let LayoutTraitsClass = window.layoutTraitsClasses[this.host.layoutTraitsClassName];
+            return new LayoutTraitsClass(mode);
+        }
+        
+        // Default for when host is not defined.
+        // FIXME: Always require a host and add a JS implemented TestMediaControlsHost for unit tests.
+        return new MacOSLayoutTraits(mode);
     }
 
     togglePlayback()
     {
-        if (this.media.paused)
+        if (this.media.paused || !this.hasPlayed)
             this.media.play().catch(e => {});
         else
             this.media.pause();
+    }
+
+    get canShowMediaControlsContextMenu()
+    {
+        return !!this.host?.showMediaControlsContextMenu;
+    }
+
+    showMediaControlsContextMenu(button, options = {})
+    {
+        if (!this.canShowMediaControlsContextMenu)
+            return false;
+
+        let autoHideController = this.controls.autoHideController;
+
+        let willShowContextMenu = this.host.showMediaControlsContextMenu(button.element, {...button.contextMenuOptions, ...options}, () => {
+            button.on = false;
+            autoHideController.hasSecondaryUIAttached = false;
+        });
+        if (willShowContextMenu) {
+            button.on = true;
+            autoHideController.hasSecondaryUIAttached = true;
+        }
+        return willShowContextMenu;
     }
 
     // Protected
@@ -179,21 +205,85 @@ class MediaController
         }
     }
 
+    // HTMLMediaElement
+
+    setShowingStats(shouldShowStats)
+    {
+        if (!(this.media instanceof HTMLVideoElement))
+            return false;
+
+        if (!shouldShowStats) {
+            this._statsContainer?.remove();
+            this._statsContainer = null;
+            return false;
+        }
+
+        if (this._statsContainer)
+            return true;
+
+        this._statsContainer = this.container.appendChild(document.createElement("div"))
+        this._statsContainer.className = "stats-container";
+
+        let table = this._statsContainer.appendChild(document.createElement("table"));
+
+        function createRow(label) {
+            let rowElement = table.appendChild(document.createElement("tr"));
+
+            let labelElement = rowElement.appendChild(document.createElement("th"));
+            labelElement.textContent = label;
+
+            let valueElement = rowElement.appendChild(document.createElement("td"));
+            return valueElement;
+        }
+        let viewportValueElement = createRow(UIString("Viewport"));
+        let framesValueElement = createRow(UIString("Frames"));
+        let resolutionValueElement = createRow(UIString("Resolution"));
+        let codecsValueElement = createRow(UIString("Codecs"));
+        let colorValueElement = createRow(UIString("Color"));
+
+        let update = () => {
+            if (!this._statsContainer)
+                return;
+
+            let quality = this.media.getVideoPlaybackQuality();
+            let videoTrack = this.media.videoTracks.item(this.media.videoTracks.selectedIndex);
+            let videoTrackConfiguration = videoTrack.configuration;
+            let videoColorSpace = videoTrackConfiguration?.colorSpace;
+
+            viewportValueElement.textContent = UIString("%s\u00d7%s", this.controls.width, this.controls.height) + (window.devicePixelRatio !== 1 ? " " + UIString("(%s)", UIString("%s\u00d7", window.devicePixelRatio)) : "");
+            framesValueElement.textContent = UIString("%s dropped of %s", quality.droppedVideoFrames, quality.totalVideoFrames);
+            resolutionValueElement.textContent = UIString("%s\u00d7%s", videoTrackConfiguration?.width, videoTrackConfiguration?.height) + " " + UIString("(%s)", UIString("%sfps", videoTrackConfiguration?.framerate));
+            codecsValueElement.textContent = videoTrackConfiguration?.codec;
+            colorValueElement.textContent = UIString("%s / %s / %s", videoColorSpace?.primaries, videoColorSpace?.transfer, videoColorSpace?.matrix);
+
+            window.requestAnimationFrame(update);
+        };
+        update();
+
+        return true;
+    }
+
     // Private
 
     _supportingObjectClasses()
     {
-        if (this.layoutTraits & LayoutTraits.Compact)
-            return [CompactMediaControlsSupport];
+        let overridenSupportingObjectClasses = this.layoutTraits.overridenSupportingObjectClasses();
+        if (overridenSupportingObjectClasses)
+            return overridenSupportingObjectClasses;
 
-        return [AirplaySupport, AudioSupport, ControlsVisibilitySupport, FullscreenSupport, MuteSupport, PiPSupport, PlacardSupport, PlaybackSupport, ScrubbingSupport, SeekBackwardSupport, SeekForwardSupport, SkipBackSupport, SkipForwardSupport, StartSupport, StatusSupport, TimeControlSupport, TracksSupport, VolumeSupport, VolumeDownSupport, VolumeUpSupport];
+        let classes = [AudioSupport, CloseSupport, ControlsVisibilitySupport, FullscreenSupport, MuteSupport, OverflowSupport, PiPSupport, PlacardSupport, PlaybackSupport, ScrubbingSupport, SeekBackwardSupport, SeekForwardSupport, SkipBackSupport, SkipForwardSupport, StartSupport, StatusSupport, TimeControlSupport, TracksSupport, VolumeSupport];
+
+        if (this.layoutTraits.supportsAirPlay())
+            classes.push(AirplaySupport);
+
+        return classes;
     }
 
     _updateControlsIfNeeded()
     {
         const layoutTraits = this.layoutTraits;
         const previousControls = this.controls;
-        const ControlsClass = this._controlsClassForLayoutTraits(layoutTraits);
+        const ControlsClass = layoutTraits.mediaControlsClass();
         if (previousControls && previousControls.constructor === ControlsClass) {
             this._updateTextTracksClassList();
             this._updateControlsSize();
@@ -275,19 +365,6 @@ class MediaController
         // Finally, we factor in the scale factor of the controls themselves, which reflects the page's scale factor.
         this.controls.width = Math.round((maxX - minX) * this.controls.scaleFactor);
         this.controls.height = Math.round((maxY - minY) * this.controls.scaleFactor);
-
-        this.controls.shouldCenterControlsVertically = this.isAudio;
-    }
-
-    _controlsClassForLayoutTraits(layoutTraits)
-    {
-        if (layoutTraits & LayoutTraits.Compact)
-            return CompactMediaControls;
-        if (layoutTraits & LayoutTraits.iOS)
-            return IOSInlineMediaControls;
-        if (layoutTraits & LayoutTraits.Fullscreen)
-            return MacOSFullscreenMediaControls;
-        return MacOSInlineMediaControls;
     }
 
     _updateTextTracksClassList()
@@ -295,8 +372,7 @@ class MediaController
         if (!this.host)
             return;
 
-        const layoutTraits = this.layoutTraits;
-        if (layoutTraits & LayoutTraits.Fullscreen)
+        if (this.layoutTraits.isFullscreen)
             return;
 
         this.host.textTrackContainer.classList.toggle("visible-controls-bar", !this.controls.faded);
@@ -312,13 +388,11 @@ class MediaController
 
     _shouldControlsBeAvailable()
     {
-        // Controls are always available with compact layout.
-        if (this.layoutTraits & LayoutTraits.Compact)
+        if (this.layoutTraits.controlsAlwaysAvailable())
             return true;
 
-        // Controls are always available while in fullscreen on macOS, and they are never available when in fullscreen on iOS.
-        if (this.isFullscreen)
-            return !!(this.layoutTraits & LayoutTraits.macOS);
+        if (this.layoutTraits.controlsNeverAvailable())
+            return false;
 
         // Otherwise, for controls to be available, the controls attribute must be present on the media element
         // or the MediaControlsHost must indicate that controls are forced.
@@ -334,6 +408,13 @@ class MediaController
             this._supportingObjects.forEach(supportingObject => supportingObject.enable());
 
         this.controls.visible = shouldControlsBeAvailable;
+    }
+
+    // Testing
+
+    set maximumRightContainerButtonCountOverride(count)
+    {
+        this.controls.maximumRightContainerButtonCountOverride = count;
     }
 
 }

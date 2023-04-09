@@ -58,18 +58,18 @@ WI.MemoryTimelineRecord = class MemoryTimelineRecord extends WI.TimelineRecord
 
         for (let {type, size} of categories) {
             switch (type) {
-            case MemoryAgent.CategoryDataType.JavaScript:
-            case MemoryAgent.CategoryDataType.JIT:
+            case InspectorBackend.Enum.Memory.CategoryDataType.JavaScript:
+            case InspectorBackend.Enum.Memory.CategoryDataType.JIT:
                 javascriptSize += size;
                 break;
-            case MemoryAgent.CategoryDataType.Images:
+            case InspectorBackend.Enum.Memory.CategoryDataType.Images:
                 imagesSize += size;
                 break;
-            case MemoryAgent.CategoryDataType.Layers:
+            case InspectorBackend.Enum.Memory.CategoryDataType.Layers:
                 layersSize += size;
                 break;
-            case MemoryAgent.CategoryDataType.Page:
-            case MemoryAgent.CategoryDataType.Other:
+            case InspectorBackend.Enum.Memory.CategoryDataType.Page:
+            case InspectorBackend.Enum.Memory.CategoryDataType.Other:
                 pageSize += size;
                 break;
             default:
@@ -78,17 +78,21 @@ WI.MemoryTimelineRecord = class MemoryTimelineRecord extends WI.TimelineRecord
             }
         }
 
-        return [
-            {type: WI.MemoryCategory.Type.JavaScript, size: javascriptSize},
-            {type: WI.MemoryCategory.Type.Images, size: imagesSize},
-            {type: WI.MemoryCategory.Type.Layers, size: layersSize},
-            {type: WI.MemoryCategory.Type.Page, size: pageSize},
-        ];
+        let memoryCategories = [];
+        if (javascriptSize)
+            memoryCategories.push({type: WI.MemoryCategory.Type.JavaScript, size: javascriptSize});
+        if (imagesSize)
+            memoryCategories.push({type: WI.MemoryCategory.Type.Images, size: imagesSize});
+        if (layersSize)
+            memoryCategories.push({type: WI.MemoryCategory.Type.Layers, size: layersSize});
+        if (pageSize)
+            memoryCategories.push({type: WI.MemoryCategory.Type.Page, size: pageSize});
+        return memoryCategories;
     }
 
     // Import / Export
 
-    static fromJSON(json)
+    static async fromJSON(json)
     {
         let {timestamp, categories} = json;
         return new WI.MemoryTimelineRecord(timestamp, categories);
@@ -108,6 +112,8 @@ WI.MemoryTimelineRecord = class MemoryTimelineRecord extends WI.TimelineRecord
     get timestamp() { return this._timestamp; }
     get categories() { return this._categories; }
     get totalSize() { return this._totalSize; }
+
+    get unadjustedStartTime() { return this._timestamp; }
 
     adjustStartTime(startTime)
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,33 +48,36 @@ JSValue toJSNewlyCreated(JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<E
     return createWrapper<EventTarget>(globalObject, WTFMove(value));
 }
 
-EventTarget* JSEventTarget::toWrapped(VM& vm, JSValue value)
+EventTarget* JSEventTarget::toWrapped(VM&, JSValue value)
 {
-    if (value.inherits<JSWindowProxy>(vm))
+    if (value.inherits<JSWindowProxy>())
         return &jsCast<JSWindowProxy*>(asObject(value))->wrapped();
-    if (value.inherits<JSDOMWindow>(vm))
+    if (value.inherits<JSDOMWindow>())
         return &jsCast<JSDOMWindow*>(asObject(value))->wrapped();
-    if (value.inherits<JSWorkerGlobalScope>(vm))
+    if (value.inherits<JSWorkerGlobalScope>())
         return &jsCast<JSWorkerGlobalScope*>(asObject(value))->wrapped();
-    if (value.inherits<JSEventTarget>(vm))
+    if (value.inherits<JSEventTarget>())
         return &jsCast<JSEventTarget*>(asObject(value))->wrapped();
     return nullptr;
 }
 
 std::unique_ptr<JSEventTargetWrapper> jsEventTargetCast(VM& vm, JSValue thisValue)
 {
-    if (auto* target = jsDynamicCast<JSEventTarget*>(vm, thisValue))
+    if (auto* target = jsDynamicCast<JSEventTarget*>(thisValue))
         return makeUnique<JSEventTargetWrapper>(target->wrapped(), *target);
-    if (auto* window = toJSDOMWindow(vm, thisValue))
+    if (auto* window = toJSDOMGlobalObject<JSDOMWindow>(vm, thisValue))
         return makeUnique<JSEventTargetWrapper>(window->wrapped(), *window);
-    if (auto* scope = toJSWorkerGlobalScope(vm, thisValue))
+    if (auto* scope = toJSDOMGlobalObject<JSWorkerGlobalScope>(vm, thisValue))
         return makeUnique<JSEventTargetWrapper>(scope->wrapped(), *scope);
     return nullptr;
 }
 
-void JSEventTarget::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSEventTarget::visitAdditionalChildren(Visitor& visitor)
 {
     wrapped().visitJSEventListeners(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSEventTarget);
 
 } // namespace WebCore

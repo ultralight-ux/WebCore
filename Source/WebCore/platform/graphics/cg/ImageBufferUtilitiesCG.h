@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,28 +27,22 @@
 
 #if USE(CG)
 
+#include <optional>
 #include <wtf/Forward.h>
-#include <wtf/Optional.h>
-#include <wtf/RetainPtr.h>
-#include <wtf/Vector.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-class ImageData;
+class PixelBuffer;
 
 WEBCORE_EXPORT uint8_t verifyImageBufferIsBigEnough(const void* buffer, size_t bufferSize);
 
+RetainPtr<CFStringRef> utiFromImageBufferMIMEType(const String& mimeType);
 CFStringRef jpegUTI();
-RetainPtr<CFStringRef> utiFromImageBufferMIMEType(const String&);
+Vector<uint8_t> encodeData(CGImageRef, const String& mimeType, std::optional<double> quality);
+Vector<uint8_t> encodeData(const PixelBuffer&, const String& mimeType, std::optional<double> quality);
 
-bool encodeImage(CGImageRef, CFStringRef uti, Optional<double> quality, CFMutableDataRef);
-
-String dataURL(CFDataRef, const String& mimeType);
-String dataURL(const ImageData&, const String& mimeType, Optional<double> quality);
-
-Vector<uint8_t> dataVector(CFDataRef);
-Vector<uint8_t> data(const ImageData&, const String& mimeType, Optional<double> quality);
+WEBCORE_EXPORT String dataURL(CGImageRef, const String& mimeType, std::optional<double> quality);
+String dataURL(const PixelBuffer&, const String& mimeType, std::optional<double> quality);
 
 } // namespace WebCore
 

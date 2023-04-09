@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,15 +48,15 @@ private:
     }
 
     // Ignore all data.
-    void appendBytes(DocumentWriter&, const char*, size_t) override
+    void appendBytes(DocumentWriter&, const uint8_t*, size_t) override
     {
     }
 };
 
 SinkDocument::SinkDocument(Frame& frame, const URL& url)
-    : HTMLDocument(&frame, url)
+    : HTMLDocument(&frame, frame.settings(), url, { })
 {
-    setCompatibilityMode(DocumentCompatibilityMode::QuirksMode);
+    setCompatibilityMode(DocumentCompatibilityMode::NoQuirksMode);
     lockCompatibilityMode();
 }
 

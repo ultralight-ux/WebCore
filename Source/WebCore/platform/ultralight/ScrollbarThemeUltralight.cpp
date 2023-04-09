@@ -36,7 +36,7 @@ protected:
     int x = scrollbar.x();
     int y = scrollbar.y();
     int thickness = scrollbarThickness();
-    if (scrollbar.orientation() == ScrollbarOrientation::VerticalScrollbar)
+    if (scrollbar.orientation() == ScrollbarOrientation::Vertical)
       y += scrollbar.height() - thickness;
     else
       x += scrollbar.width() - thickness;
@@ -49,7 +49,7 @@ protected:
       return scrollbar.frameRect();
 
     int thickness = scrollbarThickness();
-    if (scrollbar.orientation() == HorizontalScrollbar) {
+    if (scrollbar.orientation() == ScrollbarOrientation::Horizontal) {
       return IntRect(scrollbar.x() + thickness, scrollbar.y(), scrollbar.width() - 2 * thickness, thickness);
     }
     return IntRect(scrollbar.x(), scrollbar.y() + thickness, thickness, scrollbar.height() - 2 * thickness);

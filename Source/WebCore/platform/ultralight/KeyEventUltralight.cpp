@@ -30,15 +30,12 @@ void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCom
 #endif
 }
 
-bool PlatformKeyboardEvent::currentCapsLockState() {
-  // TODO
-  notImplemented();
-  return false;
-}
+OptionSet<PlatformEvent::Modifier> PlatformKeyboardEvent::currentStateOfModifierKeys()
+{
+    // Ultralight TODO
+    notImplemented();
 
-void PlatformKeyboardEvent::getCurrentModifierState(bool& shiftKey, bool& ctrlKey, bool& altKey, bool& metaKey) {
-  // TODO
-  notImplemented();
+    return {}; // FIXME: Implement.
 }
 
 } // namespace WebCore

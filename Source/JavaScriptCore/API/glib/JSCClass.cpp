@@ -35,7 +35,7 @@
 #include <wtf/glib/WTFGType.h>
 
 /**
- * SECTION: JSCClass
+ * JSCClass:
  * @short_description: JavaScript custom class
  * @title: JSCClass
  * @see_also: JSCContext
@@ -110,10 +110,9 @@ private:
 
 static bool isWrappedObject(JSC::JSObject* jsObject)
 {
-    JSC::JSGlobalObject* globalObject = jsObject->globalObject();
     if (jsObject->isGlobalObject())
-        return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>>(globalObject->vm());
-    return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>(globalObject->vm());
+        return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>>();
+    return jsObject->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>();
 }
 
 static JSClassRef wrappedObjectClass(JSC::JSObject* jsObject)
@@ -338,8 +337,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_CONTEXT,
         g_param_spec_object(
             "context",
-            "JSCContext",
-            "JSC Context",
+            nullptr, nullptr,
             JSC_TYPE_CONTEXT,
             static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY)));
 
@@ -352,8 +350,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_NAME,
         g_param_spec_string(
             "name",
-            "Name",
-            "The class name",
+            nullptr, nullptr,
             nullptr,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 
@@ -366,8 +363,7 @@ static void jsc_class_class_init(JSCClassClass* klass)
         PROP_PARENT,
         g_param_spec_object(
             "parent",
-            "Partent",
-            "The parent class",
+            nullptr, nullptr,
             JSC_TYPE_CLASS,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 }
@@ -546,7 +542,7 @@ JSCClass* jsc_class_get_parent(JSCClass* jscClass)
     return jscClass->priv->parentClass;
 }
 
-static GRefPtr<JSCValue> jscClassCreateConstructor(JSCClass* jscClass, const char* name, GCallback callback, gpointer userData, GDestroyNotify destroyNotify, GType returnType, Optional<Vector<GType>>&& parameters)
+static GRefPtr<JSCValue> jscClassCreateConstructor(JSCClass* jscClass, const char* name, GCallback callback, gpointer userData, GDestroyNotify destroyNotify, GType returnType, std::optional<Vector<GType>>&& parameters)
 {
     // If the constructor doesn't have arguments, we need to swap the fake instance and user data to ensure
     // user data is the first parameter and fake instance ignored.
@@ -698,10 +694,10 @@ JSCValue* jsc_class_add_constructor_variadic(JSCClass* jscClass, const char* nam
     if (!name)
         name = priv->name.data();
 
-    return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, WTF::nullopt).leakRef();
+    return jscClassCreateConstructor(jscClass, name ? name : priv->name.data(), callback, userData, destroyNotify, returnType, std::nullopt).leakRef();
 }
 
-static void jscClassAddMethod(JSCClass* jscClass, const char* name, GCallback callback, gpointer userData, GDestroyNotify destroyNotify, GType returnType, Optional<Vector<GType>>&& parameters)
+static void jscClassAddMethod(JSCClass* jscClass, const char* name, GCallback callback, gpointer userData, GDestroyNotify destroyNotify, GType returnType, std::optional<Vector<GType>>&& parameters)
 {
     JSCClassPrivate* priv = jscClass->priv;
     GRefPtr<GClosure> closure = adoptGRef(g_cclosure_new(callback, userData, reinterpret_cast<GClosureNotify>(reinterpret_cast<GCallback>(destroyNotify))));
@@ -823,7 +819,7 @@ void jsc_class_add_method_variadic(JSCClass* jscClass, const char* name, GCallba
     g_return_if_fail(callback);
     g_return_if_fail(jscClass->priv->context);
 
-    jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, WTF::nullopt);
+    jscClassAddMethod(jscClass, name, callback, userData, destroyNotify, returnType, std::nullopt);
 }
 
 /**
@@ -859,5 +855,5 @@ void jsc_class_add_property(JSCClass* jscClass, const char* name, GType property
 
     auto context = jscContextGetOrCreate(priv->context);
     GRefPtr<JSCValue> prototype = jscContextGetOrCreateValue(context.get(), toRef(priv->prototype.get()));
-    jsc_value_object_define_property_accessor(prototype.get(), name, JSC_VALUE_PROPERTY_CONFIGURABLE, propertyType, getter, setter, userData, destroyNotify);
+    jscValueAddPropertyAccessor(prototype.get(), name, propertyType, getter, setter, userData, destroyNotify);
 }

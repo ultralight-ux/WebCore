@@ -24,12 +24,12 @@
 
 #pragma once
 
-#include "Color.h"
 #include "Length.h"
 #include "RenderStyleConstants.h"
+#include "StyleColor.h"
 #include "StyleCustomPropertyData.h"
+#include "StyleTextEdge.h"
 #include "TabSize.h"
-#include "TextDecorationThickness.h"
 #include "TextUnderlineOffset.h"
 #include "TouchAction.h"
 #include <wtf/DataRef.h>
@@ -72,57 +72,62 @@ public:
 
     bool hasColorFilters() const;
 
-    RefPtr<StyleImage> listStyleImage;
-
-    Color textStrokeColor;
     float textStrokeWidth;
-    Color textFillColor;
-    Color textEmphasisColor;
+
+    RefPtr<StyleImage> listStyleImage;
+    AtomString listStyleStringValue;
+
+    StyleColor textStrokeColor;
+    StyleColor textFillColor;
+    StyleColor textEmphasisColor;
     
-    Color visitedLinkTextStrokeColor;
-    Color visitedLinkTextFillColor;
-    Color visitedLinkTextEmphasisColor;
+    StyleColor visitedLinkTextStrokeColor;
+    StyleColor visitedLinkTextFillColor;
+    StyleColor visitedLinkTextEmphasisColor;
 
-    Color caretColor;
-    Color visitedLinkCaretColor;
+    StyleColor caretColor;
+    StyleColor visitedLinkCaretColor;
 
-    std::unique_ptr<ShadowData> textShadow; // Our text shadow information for shadowed text drawing.
+    StyleColor accentColor;
+
+    std::unique_ptr<ShadowData> textShadow;
     
     RefPtr<CursorList> cursorData;
     Length indent;
     float effectiveZoom;
 
     TextUnderlineOffset textUnderlineOffset;
-    TextDecorationThickness textDecorationThickness;
+
+    TextEdge textEdge;
     
     Length wordSpacing;
+    float miterLimit;
 
     DataRef<StyleCustomPropertyData> customProperties;
 
     // Paged media properties.
-    short widows;
-    short orphans;
+    unsigned short widows;
+    unsigned short orphans;
     unsigned hasAutoWidows : 1;
     unsigned hasAutoOrphans : 1;
     
     unsigned textSecurity : 2; // TextSecurity
     unsigned userModify : 2; // UserModify (editing)
     unsigned wordBreak : 2; // WordBreak
-    unsigned overflowWrap : 1; // OverflowWrap
+    unsigned overflowWrap : 2; // OverflowWrap
     unsigned nbspMode : 1; // NBSPMode
     unsigned lineBreak : 3; // LineBreak
     unsigned userSelect : 2; // UserSelect
     unsigned colorSpace : 1; // ColorSpace
     unsigned speakAs : 4; // ESpeakAs
     unsigned hyphens : 2; // Hyphens
+    unsigned textCombine : 1; // text-combine-upright
     unsigned textEmphasisFill : 1; // TextEmphasisFill
     unsigned textEmphasisMark : 3; // TextEmphasisMark
     unsigned textEmphasisPosition : 4; // TextEmphasisPosition
     unsigned textOrientation : 2; // TextOrientation
-#if ENABLE(CSS3_TEXT)
     unsigned textIndentLine : 1; // TextIndentLine
     unsigned textIndentType : 1; // TextIndentType
-#endif
     unsigned lineBoxContain: 7; // OptionSet<LineBoxContain>
     // CSS Image Values Level 3
     unsigned imageOrientation : 1; // ImageOrientation
@@ -136,12 +141,11 @@ public:
     unsigned imageResolutionSource : 1; // ImageResolutionSource
     unsigned imageResolutionSnap : 1; // ImageResolutionSnap
 #endif
-#if ENABLE(CSS3_TEXT)
     unsigned textAlignLast : 3; // TextAlignLast
     unsigned textJustify : 2; // TextJustify
-#endif
-    unsigned textDecorationSkip : 5; // TextDecorationSkip
+    unsigned textDecorationSkipInk : 2; // TextDecorationSkipInk
     unsigned textUnderlinePosition : 2; // TextUnderlinePosition
+    unsigned textWrap : 3; // TextWrap
     unsigned rubyPosition : 2; // RubyPosition
     unsigned textZoom: 1; // TextZoom
 
@@ -157,18 +161,34 @@ public:
     unsigned hasSetStrokeWidth : 1;
     unsigned hasSetStrokeColor : 1;
 
+    unsigned mathStyle : 1;
+
+    unsigned hasAutoCaretColor : 1;
+    unsigned hasVisitedLinkAutoCaretColor : 1;
+
+    unsigned hasAutoAccentColor : 1;
+
+    unsigned effectiveInert : 1;
+
+    unsigned isInSubtreeWithBlendMode : 1;
+
+    unsigned effectiveSkipsContent : 1;
+
     OptionSet<TouchAction> effectiveTouchActions;
     OptionSet<EventListenerRegionType> eventListenerRegionTypes;
 
     Length strokeWidth;
-    Color strokeColor;
-    Color visitedLinkStrokeColor;
-    float miterLimit;
+    StyleColor strokeColor;
+    StyleColor visitedLinkStrokeColor;
 
     AtomString hyphenationString;
-    short hyphenationLimitBefore;
-    short hyphenationLimitAfter;
-    short hyphenationLimitLines;
+    short hyphenationLimitBefore { -1 };
+    short hyphenationLimitAfter { -1 };
+    short hyphenationLimitLines { -1 };
+
+#if ENABLE(DARK_MODE_CSS)
+    StyleColorScheme colorScheme;
+#endif
 
     AtomString textEmphasisCustomMark;
     RefPtr<QuotesData> quotes;
@@ -186,11 +206,7 @@ public:
 #endif
 
 #if ENABLE(TOUCH_EVENTS)
-    Color tapHighlightColor;
-#endif
-
-#if ENABLE(DARK_MODE_CSS)
-    StyleColorScheme colorScheme;
+    StyleColor tapHighlightColor;
 #endif
 
 private:

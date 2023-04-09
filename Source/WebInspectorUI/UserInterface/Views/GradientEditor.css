@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,25 +25,13 @@
  */
 
 .gradient-editor {
+    width: 237px;
     position: relative;
     margin: 5px 11px;
-    padding-bottom: 40px;
-}
-
-.gradient-editor.radial-gradient {
-    padding-bottom: 15px;
-}
-
-.gradient-editor.editing-color {
-    padding-bottom: 30px;
-}
-
-.gradient-editor.radial-gradient.editing-color {
-    padding-bottom: 0;
 }
 
 .gradient-editor > .gradient-type-select {
-    width: 237px;
+    width: 100%;
     margin-left: 1px;
     font-size: 16px;
 }
@@ -51,35 +40,25 @@
     position: relative;
     left: auto;
     margin-top: 7px;
+    margin-bottom: 25px;
 }
 
 .gradient-editor > .color-picker {
-    width: 238px;
+    width: 100%;
     height: auto;
-    margin-top: 25px;
     padding: 0;
 }
 
-.gradient-editor > .color-picker > .slider {
-    top: 2px;
-    width: 186px;
-}
-
-.gradient-editor > .color-picker > .brightness {
-    left: 202px;
-}
-
-.gradient-editor > .color-picker > .opacity {
-    left: 228px;
+.gradient-editor > .color-picker .slider {
+    height: 195px;
 }
 
 .gradient-editor > .gradient-angle {
+    width: 100%;
+    margin-top: 4px;
+    margin-left: 1px;
     display: flex;
     align-items: center;
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
     font-size: 13px;
 }
 
@@ -98,14 +77,8 @@
     margin-right: 2px;
     padding-right: 4px;
     text-align: right;
-    font-size: 13px;
-    background-color: white;
-    border-radius: 4px;
-    border: 1px solid hsl(0, 0%, 60%);
-    box-shadow: inset 0 0 1px 1px hsl(0, 0%, 89%);
-    outline: none;
 }
 
 .gradient-editor > .gradient-angle > input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
+    appearance: none;
 }

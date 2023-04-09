@@ -32,15 +32,13 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
         this.element.classList.add("layers-3d");
 
         this._compositingBordersButtonNavigationItem = new WI.ActivateButtonNavigationItem("layer-borders", WI.UIString("Show compositing borders"), WI.UIString("Hide compositing borders"), "Images/LayerBorders.svg", 13, 13);
-        this._compositingBordersButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._toggleCompositingBorders, this);
-        this._compositingBordersButtonNavigationItem.enabled = !!InspectorBackend.domains.Page;
+        this._compositingBordersButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleCompositingBordersButtonClicked, this);
+        this._compositingBordersButtonNavigationItem.enabled = WI.LayerTreeManager.supportsVisibleCompositingBorders();
         this._compositingBordersButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
 
-        WI.settings.showPaintRects.addEventListener(WI.Setting.Event.Changed, this._showPaintRectsSettingChanged, this);
         this._paintFlashingButtonNavigationItem = new WI.ActivateButtonNavigationItem("paint-flashing", WI.UIString("Enable paint flashing"), WI.UIString("Disable paint flashing"), "Images/Paint.svg", 16, 16);
-        this._paintFlashingButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._togglePaintFlashing, this);
-        this._paintFlashingButtonNavigationItem.enabled = InspectorBackend.domains.Page && !!InspectorBackend.domains.Page.setShowPaintRects;
-        this._paintFlashingButtonNavigationItem.activated = InspectorBackend.domains.Page.setShowPaintRects && WI.settings.showPaintRects.value;
+        this._paintFlashingButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handlePaingFlashingButtonClicked, this);
+        this._paintFlashingButtonNavigationItem.enabled = WI.LayerTreeManager.supportsShowingPaintRects();
         this._paintFlashingButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
 
         this._layers = [];
@@ -74,34 +72,6 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
     get supplementalRepresentedObjects()
     {
         return this._layers;
-    }
-
-    shown()
-    {
-        super.shown();
-
-        this._updateCompositingBordersButtonState();
-
-        this.updateLayout();
-        WI.layerTreeManager.addEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
-
-        if (this.didInitialLayout)
-            this._animate();
-    }
-
-    hidden()
-    {
-        WI.layerTreeManager.removeEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
-        this._stopAnimation();
-
-        super.hidden();
-    }
-
-    closed()
-    {
-        WI.settings.showPaintRects.removeEventListener(WI.Setting.Event.Changed, this._showPaintRectsSettingChanged, this);
-
-        super.closed();
     }
 
     selectLayerById(layerId)
@@ -139,16 +109,50 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
 
     // Protected
 
+    attached()
+    {
+        super.attached();
+
+        WI.layerTreeManager.addEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
+
+        if (this.didInitialLayout)
+            this._animate();
+
+        WI.layerTreeManager.updateCompositingBordersVisibleFromPageIfNeeded();
+
+        WI.layerTreeManager.addEventListener(WI.LayerTreeManager.Event.CompositingBordersVisibleChanged, this._handleCompositingBordersVisibleChanged, this);
+        this._handleCompositingBordersVisibleChanged();
+
+        WI.layerTreeManager.addEventListener(WI.LayerTreeManager.Event.ShowPaintRectsChanged, this._handleShowPaintRectsChanged, this);
+        this._handleShowPaintRectsChanged();
+    }
+
+    detached()
+    {
+        WI.layerTreeManager.removeEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
+
+        this._stopAnimation();
+
+        WI.layerTreeManager.removeEventListener(WI.LayerTreeManager.Event.ShowPaintRectsChanged, this._handleShowPaintRectsChanged, this);
+        WI.layerTreeManager.removeEventListener(WI.LayerTreeManager.Event.CompositingBordersVisibleChanged, this._handleCompositingBordersVisibleChanged, this);
+
+        super.detached();
+    }
+
     initialLayout()
     {
         super.initialLayout();
 
         this._renderer = new THREE.WebGLRenderer({antialias: true});
-        const backgroundColor = window.getComputedStyle(document.documentElement).getPropertyValue("--background-color-content").trim();
-        this._renderer.setClearColor(backgroundColor);
         this._renderer.setSize(this.element.offsetWidth, this.element.offsetHeight);
 
-        this._camera = new THREE.PerspectiveCamera(45, this.element.offsetWidth / this.element.offsetHeight, 1, 100000);
+        let updateBackground = () => {
+            this._renderer.setClearColor(window.getComputedStyle(this.element).getPropertyValue("--background-color-content").trim());
+        };
+        window.matchMedia("(prefers-color-scheme: dark)").addListener(updateBackground);
+        updateBackground();
+
+        this._camera = new THREE.PerspectiveCamera(45, this.element.offsetWidth / this.element.offsetHeight, 1, 100_000);
 
         this._controls = new THREE.OrbitControls(this._camera, this._renderer.domElement);
         this._controls.enableDamping = true;
@@ -170,6 +174,8 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
         this._renderer.domElement.addEventListener("mouseup", this._canvasMouseUp.bind(this));
 
         this.element.appendChild(this._renderer.domElement);
+
+        this.element.appendChild(WI.ReferencePage.LayersTab.createLinkElement());
 
         this._animate();
     }
@@ -265,7 +271,7 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
         const zInterval = 25;
         newLayers.forEach((layer, index) => {
             let layerGroup = this._layerGroupsById.get(layer.layerId);
-            layerGroup.position.set(layer.bounds.x, -layer.bounds.y, index * zInterval);
+            layerGroup.position.set(0, 0, index * zInterval);
         });
 
         this._boundingBox.setFromObject(this._scene);
@@ -282,14 +288,14 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
         return layerGroup;
     }
 
-    _createLayerMesh({width, height}, isOutline = false)
+    _createLayerMesh({x, y, width, height}, isOutline = false)
     {
         let geometry = new THREE.Geometry;
         geometry.vertices.push(
-            new THREE.Vector3(0,     0,       0),
-            new THREE.Vector3(0,     -height, 0),
-            new THREE.Vector3(width, -height, 0),
-            new THREE.Vector3(width, 0,       0),
+            new THREE.Vector3(x, -y, 0),
+            new THREE.Vector3(x, -y - height, 0),
+            new THREE.Vector3(x + width, -y - height, 0),
+            new THREE.Vector3(x + width, -y, 0),
         );
 
         if (isOutline) {
@@ -391,51 +397,24 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
         this._camera.position.add(delta);
     }
 
-    _showPaintRectsSettingChanged(event)
+    _handleCompositingBordersVisibleChanged(event)
     {
-        let activated = WI.settings.showPaintRects.value;
-        this._paintFlashingButtonNavigationItem.activated = activated;
-
-        for (let target of WI.targets) {
-            if (target.PageAgent && target.PageAgent.setShowPaintRects)
-                target.PageAgent.setShowPaintRects(activated);
-        }
+        this._compositingBordersButtonNavigationItem.activated = WI.layerTreeManager.compositingBordersVisible;
     }
 
-    _togglePaintFlashing(event)
+    _handleCompositingBordersButtonClicked(event)
     {
-        WI.settings.showPaintRects.value = !WI.settings.showPaintRects.value;
+        WI.layerTreeManager.compositingBordersVisible = !WI.layerTreeManager.compositingBordersVisible;
     }
 
-    _updateCompositingBordersButtonState()
+    _handleShowPaintRectsChanged(event)
     {
-        if (!WI.targetsAvailable()) {
-            WI.whenTargetsAvailable().then(() => {
-                this._updateCompositingBordersButtonState();
-            });
-            return;
-        }
-
-        if (!window.PageAgent)
-            return;
-
-        // This value can be changed outside of Web Inspector.
-        // FIXME: Have PageAgent dispatch a change event instead?
-        PageAgent.getCompositingBordersVisible((error, compositingBordersVisible) => {
-            this._compositingBordersButtonNavigationItem.activated = error ? false : compositingBordersVisible;
-            this._compositingBordersButtonNavigationItem.enabled = error !== "unsupported";
-        });
+        this._paintFlashingButtonNavigationItem.activated = WI.layerTreeManager.showPaintRects;
     }
 
-    _toggleCompositingBorders(event)
+    _handlePaingFlashingButtonClicked(event)
     {
-        let activated = !this._compositingBordersButtonNavigationItem.activated;
-        this._compositingBordersButtonNavigationItem.activated = activated;
-
-        for (let target of WI.targets) {
-            if (target.PageAgent)
-                target.PageAgent.setCompositingBordersVisible(activated);
-        }
+        WI.layerTreeManager.showPaintRects = !WI.layerTreeManager.showPaintRects;
     }
 
     _buildLayerInfoElement()
@@ -504,6 +483,8 @@ WI.Layers3DContentView = class Layers3DContentView extends WI.ContentView
             addReason(WI.UIString("Element is a plug-in"));
         if (compositingReasons.iFrame)
             addReason(WI.UIString("Element is <iframe>"));
+        if (compositingReasons.model)
+            addReason(WI.UIString("Element is <model>"));
         if (compositingReasons.backfaceVisibilityHidden)
             addReason(WI.UIString("Element has \u201Cbackface-visibility: hidden\u201D style"));
         if (compositingReasons.clipsCompositingDescendants)

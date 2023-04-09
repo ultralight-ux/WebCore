@@ -127,28 +127,23 @@ WI.LayoutTimelineView = class LayoutTimelineView extends WI.TimelineView
         return pathComponents;
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
         this._updateHighlight();
-
-        this._dataGrid.shown();
     }
 
-    hidden()
+    detached()
     {
         this._hideHighlightIfNeeded();
 
-        this._dataGrid.hidden();
-
-        super.hidden();
+        super.detached();
     }
 
     closed()
     {
-        console.assert(this.representedObject instanceof WI.Timeline);
-        this.representedObject.removeEventListener(null, null, this);
+        this.representedObject.removeEventListener(WI.Timeline.Event.RecordAdded, this._layoutTimelineRecordAdded, this);
 
         this._dataGrid.closed();
     }
@@ -281,12 +276,14 @@ WI.LayoutTimelineView = class LayoutTimelineView extends WI.TimelineView
 
         this._showingHighlightForRecord = record;
 
+        let target = WI.assumingMainTarget();
+
         const contentColor = {r: 111, g: 168, b: 220, a: 0.66};
         const outlineColor = {r: 255, g: 229, b: 153, a: 0.66};
 
         var quad = record.quad;
         if (quad) {
-            DOMAgent.highlightQuad(quad.toProtocol(), contentColor, outlineColor);
+            target.DOMAgent.highlightQuad(quad.toProtocol(), contentColor, outlineColor);
             this._showingHighlight = true;
             return;
         }
@@ -294,7 +291,7 @@ WI.LayoutTimelineView = class LayoutTimelineView extends WI.TimelineView
         // This record doesn't have a highlight, so hide any existing highlight.
         if (this._showingHighlight) {
             this._showingHighlight = false;
-            DOMAgent.hideHighlight();
+            target.DOMAgent.hideHighlight();
         }
     }
 
@@ -304,7 +301,9 @@ WI.LayoutTimelineView = class LayoutTimelineView extends WI.TimelineView
 
         if (this._showingHighlight) {
             this._showingHighlight = false;
-            DOMAgent.hideHighlight();
+
+            let target = WI.assumingMainTarget();
+            target.DOMAgent.hideHighlight();
         }
     }
 
@@ -340,3 +339,5 @@ WI.LayoutTimelineView = class LayoutTimelineView extends WI.TimelineView
         this._updateHighlight();
     }
 };
+
+WI.LayoutTimelineView.ReferencePage = WI.ReferencePage.TimelinesTab.LayoutAndRenderingTimeline;

@@ -45,7 +45,7 @@ public:
     WTF_EXPORT_PRIVATE void sendMessage(const char*, GVariant*);
 
     bool isClosed() const { return !m_connection; }
-    void close();
+    WTF_EXPORT_PRIVATE void close();
 
 private:
     WTF_EXPORT_PRIVATE SocketConnection(GRefPtr<GSocketConnection>&&, const MessageHandlers&, gpointer);
@@ -59,9 +59,9 @@ private:
     GRefPtr<GSocketConnection> m_connection;
     const MessageHandlers& m_messageHandlers;
     gpointer m_userData;
-    Vector<char> m_readBuffer;
+    Vector<gchar> m_readBuffer;
     GSocketMonitor m_readMonitor;
-    Vector<char> m_writeBuffer;
+    Vector<gchar> m_writeBuffer;
     GSocketMonitor m_writeMonitor;
 };
 

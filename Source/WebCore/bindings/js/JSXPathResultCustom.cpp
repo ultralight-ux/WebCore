@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Julien Chaffraix <jchaffraix@webkit.org>
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,18 +28,22 @@
 #include "JSXPathResult.h"
 
 #include "JSNodeCustom.h"
+#include "WebCoreOpaqueRoot.h"
 #include "XPathValue.h"
 
 namespace WebCore {
 
-void JSXPathResult::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSXPathResult::visitAdditionalChildren(Visitor& visitor)
 {
     auto& value = wrapped().value();
     if (value.isNodeSet()) {
         // FIXME: This looks like it might race, but I'm not sure.
         for (auto& node : value.toNodeSet())
-            visitor.addOpaqueRoot(root(node.get()));
+            addWebCoreOpaqueRoot(visitor, node.get());
     }
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSXPathResult);
 
 } // namespace WebCore

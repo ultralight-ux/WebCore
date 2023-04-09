@@ -26,16 +26,17 @@
 #include "config.h"
 #include "ProcessWarming.h"
 
+#include "CommonAtomStrings.h"
 #include "CommonVM.h"
 #include "Font.h"
 #include "FontCache.h"
 #include "FontCascadeDescription.h"
 #include "HTMLNames.h"
 #include "MathMLNames.h"
-#include "MediaFeatureNames.h"
+#include "MediaQueryFeatures.h"
 #include "QualifiedName.h"
 #include "SVGNames.h"
-#include "Settings.h"
+#include "TagName.h"
 #include "TelephoneNumberDetector.h"
 #include "UserAgentStyle.h"
 #include "WebKitFontFamilyNames.h"
@@ -44,59 +45,56 @@
 #include "XMLNames.h"
 
 #if ENABLE(GPU_DRIVER_PREWARMING)
-#include "GPUDevice.h"
-#include "GPURequestAdapterOptions.h"
+#include "GPUPrewarming.h"
 #endif
 
 namespace WebCore {
 
 void ProcessWarming::initializeNames()
 {
-    AtomString::init();
+    initializeCommonAtomStrings();
     HTMLNames::init();
     QualifiedName::init();
-    MediaFeatureNames::init();
     SVGNames::init();
     XLinkNames::init();
     MathMLNames::init();
     XMLNSNames::init();
     XMLNames::init();
     WebKitFontFamilyNames::init();
+    initializeTagNameStrings();
 }
 
 void ProcessWarming::prewarmGlobally()
 {
     initializeNames();
     
-    // Initializes default font families.
-    Settings::create(nullptr);
-    
     // Prewarms user agent stylesheet.
-    Style::UserAgentStyle::loadFullDefaultStyle();
+    Style::UserAgentStyle::initDefaultStyleSheet();
+    MQ::Features::allSchemas();
     
     // Prewarms JS VM.
     commonVM();
 
     // Prewarm font cache
-    FontCache::singleton().prewarmGlobally();
+    FontCache::prewarmGlobally();
 
 #if ENABLE(TELEPHONE_NUMBER_DETECTION)
-    TelephoneNumberDetector::isSupported();
+    TelephoneNumberDetector::prewarm();
 #endif
 
 #if ENABLE(GPU_DRIVER_PREWARMING)
-    GPUDevice::tryCreate(WTF::nullopt);
+    prewarmGPU();
 #endif
 }
 
 WebCore::PrewarmInformation ProcessWarming::collectPrewarmInformation()
 {
-    return { FontCache::singleton().collectPrewarmInformation() };
+    return { FontCache::forCurrentThread().collectPrewarmInformation() };
 }
 
-void ProcessWarming::prewarmWithInformation(const PrewarmInformation& prewarmInfo)
+void ProcessWarming::prewarmWithInformation(PrewarmInformation&& prewarmInfo)
 {
-    FontCache::singleton().prewarm(prewarmInfo.fontCache);
+    FontCache::forCurrentThread().prewarm(WTFMove(prewarmInfo.fontCache));
 }
 
 }

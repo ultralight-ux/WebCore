@@ -39,7 +39,7 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
         this._copyText = copyText;
 
         if (this.representedObject.valid)
-            this.representedObject.addEventListener(WI.RecordingAction.Event.ValidityChanged, this._handleValidityChanged, this);
+            this.representedObject.singleFireEventListener(WI.RecordingAction.Event.ValidityChanged, this._handleValidityChanged, this);
     }
 
     // Static
@@ -49,15 +49,20 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
         let parameterCount = recordingAction.parameters.length;
 
         function createParameterElement(parameter, swizzleType, index) {
+            let parameterCopyText = "";
             let parameterElement = document.createElement("span");
             parameterElement.classList.add("parameter");
 
             switch (swizzleType) {
             case WI.Recording.Swizzle.Number:
                 var constantNameForParameter = WI.RecordingAction.constantNameForParameter(recordingType, recordingAction.name, parameter, index, parameterCount);
+                var bitfieldNamesForParameter = WI.RecordingAction.bitfieldNamesForParameter(recordingType, recordingAction.name, parameter, index, parameterCount);
                 if (constantNameForParameter) {
                     parameterElement.classList.add("constant");
                     parameterElement.textContent = "context." + constantNameForParameter;
+                } else if (bitfieldNamesForParameter) {
+                    parameterElement.classList.add("constant");
+                    parameterElement.textContent = bitfieldNamesForParameter.map((p) => p.startsWith("0x") ? p : "context." + p).join(" | ");
                 } else
                     parameterElement.textContent = parameter.maxDecimals(2);
                 break;
@@ -83,6 +88,10 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
             case WI.Recording.Swizzle.Path2D:
             case WI.Recording.Swizzle.CanvasGradient:
             case WI.Recording.Swizzle.CanvasPattern:
+                    parameterElement.classList.add("swizzled");
+                    parameterElement.textContent = WI.Recording.displayNameForSwizzleType(swizzleType);
+                    break;
+
             case WI.Recording.Swizzle.WebGLBuffer:
             case WI.Recording.Swizzle.WebGLFramebuffer:
             case WI.Recording.Swizzle.WebGLRenderbuffer:
@@ -95,8 +104,17 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
             case WI.Recording.Swizzle.WebGLSync:
             case WI.Recording.Swizzle.WebGLTransformFeedback:
             case WI.Recording.Swizzle.WebGLVertexArrayObject:
-                parameterElement.classList.add("swizzled");
-                parameterElement.textContent = WI.Recording.displayNameForSwizzleType(swizzleType);
+                parameterCopyText = WI.Recording.displayNameForSwizzleType(swizzleType);
+
+                parameterElement.textContent = parameterCopyText;
+                if (parameter) {
+                    let objectHandleElement = document.createElement("span");
+                    objectHandleElement.classList.add("parameter");
+                    objectHandleElement.classList.add("object-handle");
+                    objectHandleElement.textContent = `@${parameter}`;
+                    parameterElement.append(" ", objectHandleElement);
+                } else
+                    parameterElement.classList.add("swizzled");
                 break;
             }
 
@@ -105,7 +123,10 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
                 parameterElement.textContent = swizzleType === WI.Recording.Swizzle.None ? parameter : WI.Recording.displayNameForSwizzleType(swizzleType);
             }
 
-            return parameterElement;
+            if (!parameterCopyText.length)
+                   parameterCopyText = parameterElement.textContent;
+
+            return {parameterElement, parameterCopyText};
         }
 
         let titleFragment = document.createDocumentFragment();
@@ -138,13 +159,13 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
         for (let i = 0; i < parameterCount; ++i) {
             let parameter = recordingAction.parameters[i];
             let swizzleType = recordingAction.swizzleTypes[i];
-            let parameterElement = createParameterElement(parameter, swizzleType, i);
+            let {parameterElement, parameterCopyText} = createParameterElement(parameter, swizzleType, i);
             parametersContainer.appendChild(parameterElement);
 
             if (i)
                 copyText += ", ";
 
-            copyText += parameterElement.textContent;
+            copyText += parameterCopyText;
         }
 
         if (recordingAction.isFunction)
@@ -225,8 +246,7 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
                 return null;
         }
 
-        const readOnly = true;
-        return new WI.InlineSwatch(WI.InlineSwatch.Type.Color, color, readOnly);
+        return new WI.InlineSwatch(WI.InlineSwatch.Type.Color, color, {readOnly: true});
     }
 
     static _getClassNames(recordingAction)
@@ -332,6 +352,7 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
         case "shadowOffsetY":
             return "shadow";
 
+        case "createConicGradient":
         case "createLinearGradient":
         case "createPattern":
         case "createRadialGradient":
@@ -421,24 +442,13 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
 
         contextMenu.appendSeparator();
 
-        let sourceCodeLocation = null;
-        for (let callFrame of this.representedObject.trace) {
-            if (callFrame.sourceCodeLocation) {
-                sourceCodeLocation = callFrame.sourceCodeLocation;
-                break;
-            }
-        }
-
+        let sourceCodeLocation = this.representedObject.stackTrace?.firstNonNativeNonAnonymousNotBlackboxedCallFrame;
         if (sourceCodeLocation) {
-            let label = null;
-            if (WI.settings.experimentalEnableSourcesTab.value)
-                label = WI.UIString("Reveal in Sources Tab");
-            else
-                label = WI.UIString("Reveal in Resources Tab");
-            contextMenu.appendItem(label, () => {
+            contextMenu.appendItem(WI.UIString("Reveal in Sources Tab"), () => {
                 WI.showSourceCodeLocation(sourceCodeLocation, {
                     ignoreNetworkTab: true,
                     ignoreSearchTab: true,
+                    initiatorHint: WI.TabBrowser.TabNavigationInitiator.ContextMenu,
                 });
             });
 
@@ -453,7 +463,5 @@ WI.RecordingActionTreeElement = class RecordingActionTreeElement extends WI.Gene
     _handleValidityChanged(event)
     {
         this.addClassName("invalid");
-
-        this.representedObject.removeEventListener(null, null, this);
     }
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,12 +43,12 @@ public:
     template<typename CellType, SubspaceAccess>
     static CompleteSubspace* subspaceFor(VM& vm)
     {
-        static_assert(!CellType::needsDestruction, "");
-        return &vm.variableSizedCellSpace;
+        static_assert(!CellType::needsDestruction);
+        return &vm.variableSizedCellSpace();
     }
 
     using Base = JSSymbolTableObject;
-    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesAnyFormOfGetPropertyNames;
+    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnSpecialPropertyNames | OverridesPut;
 
     WriteBarrierBase<Unknown>* variables()
     {
@@ -74,12 +74,12 @@ public:
     static size_t offsetOfVariable(ScopeOffset offset)
     {
         Checked<size_t> scopeOffset = offset.offset();
-        return (offsetOfVariables() + scopeOffset * sizeof(WriteBarrier<Unknown>)).unsafeGet();
+        return offsetOfVariables() + scopeOffset * sizeof(WriteBarrier<Unknown>);
     }
 
     static size_t allocationSizeForScopeSize(Checked<size_t> scopeSize)
     {
-        return (offsetOfVariables() + scopeSize * sizeof(WriteBarrier<Unknown>)).unsafeGet();
+        return offsetOfVariables() + scopeSize * sizeof(WriteBarrier<Unknown>);
     }
 
     static size_t allocationSize(SymbolTable* symbolTable)
@@ -93,7 +93,7 @@ public:
         JSLexicalEnvironment* result = 
             new (
                 NotNull,
-                allocateCell<JSLexicalEnvironment>(vm.heap, allocationSize(symbolTable)))
+                allocateCell<JSLexicalEnvironment>(vm, allocationSize(symbolTable)))
             JSLexicalEnvironment(vm, structure, currentScope, symbolTable);
         result->finishCreation(vm, initialValue);
         return result;
@@ -106,7 +106,7 @@ public:
     }
         
     static bool getOwnPropertySlot(JSObject*, JSGlobalObject*, PropertyName, PropertySlot&);
-    static void getOwnNonIndexPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
+    static void getOwnSpecialPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, DontEnumPropertiesMode);
 
     static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
 
@@ -134,7 +134,7 @@ protected:
         }
     }
 
-    static void visitChildren(JSCell*, SlotVisitor&);
+    DECLARE_VISIT_CHILDREN;
     static void analyzeHeap(JSCell*, HeapAnalyzer&);
 };
 

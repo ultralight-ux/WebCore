@@ -36,7 +36,6 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
         this._navigationInfo = {identifier, label};
 
         this._nodeStyles = null;
-        this._visible = false;
     }
 
     // Public
@@ -51,24 +50,29 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
         return this._nodeStyles;
     }
 
-    shown()
+    get supportsNewRule()
     {
-        if (this._visible)
-            return;
-
-        this._visible = true;
-
-        this._refreshNodeStyles();
-
-        // FIXME: remove once <https://webkit.org/b/150741> is fixed.
-        this.updateLayoutIfNeeded();
+        // Overridden by subclasses if needed.
+        return false;
     }
 
-    hidden()
+    get supportsToggleCSSClassList()
     {
-        this._visible = false;
+        // Overriden by subclasses if needed.
+        return false;
+    }
 
-        this.cancelLayout();
+    get supportsToggleCSSForcedPseudoClass()
+    {
+        // Overriden by subclasses if needed.
+        return false;
+    }
+
+    attached()
+    {
+        super.attached();
+
+        this._refreshNodeStyles();
     }
 
     markAsNeedsRefresh(domNode)
@@ -85,6 +89,8 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
 
             this._nodeStyles = WI.cssManager.stylesForNode(domNode);
 
+            this.dispatchEventToListeners(WI.StyleDetailsPanel.Event.NodeChanged);
+
             console.assert(this._nodeStyles);
             if (!this._nodeStyles)
                 return;
@@ -95,37 +101,24 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
             this._forceSignificantChange = true;
         }
 
-        if (this._visible)
+        if (this.isAttached)
             this._refreshNodeStyles();
     }
 
     refresh(significantChange)
     {
         // Implemented by subclasses.
-        this.dispatchEventToListeners(WI.StyleDetailsPanel.Event.Refreshed);
     }
 
     // Protected
 
     nodeStylesRefreshed(event)
     {
-        if (this._visible)
+        if (this.isAttached)
             this._refreshPreservingScrollPosition(event.data.significantChange);
     }
 
-    filterDidChange(filterBar)
-    {
-        // Implemented by subclasses.
-    }
-
     // Private
-
-    get _initialScrollOffset()
-    {
-        if (!WI.cssManager.canForcePseudoClasses())
-            return 0;
-        return this.nodeStyles.node.enabledPseudoClasses.length ? 0 : WI.GeneralStyleDetailsSidebarPanel.NoForcedPseudoClassesScrollOffset;
-    }
 
     _refreshNodeStyles()
     {
@@ -138,7 +131,7 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
     {
         significantChange = this._forceSignificantChange || significantChange || false;
 
-        var previousScrollTop = this._initialScrollOffset;
+        let previousScrollTop = 0;
 
         // Only remember the scroll position if the previous node is the same as this one.
         if (this.element.parentNode && this._previousRefreshNodeIdentifier === this._nodeStyles.node.id)
@@ -156,11 +149,11 @@ WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
 
     _nodeStylesNeedsRefreshed(event)
     {
-        if (this._visible)
+        if (this.isAttached)
             this._refreshNodeStyles();
     }
 };
 
 WI.StyleDetailsPanel.Event = {
-    Refreshed: "style-details-panel-refreshed"
+    NodeChanged: "style-details-panel-node-changed",
 };

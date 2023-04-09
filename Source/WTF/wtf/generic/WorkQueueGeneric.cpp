@@ -32,18 +32,27 @@
 
 #include <wtf/threads/BinarySemaphore.h>
 
-void WorkQueue::platformInitialize(const char* name, Type, QOS)
+namespace WTF {
+
+WorkQueueBase::WorkQueueBase(RunLoop& runLoop)
+    : m_runLoop(&runLoop)
 {
-    BinarySemaphore semaphore;
-    Thread::create(name, [&] {
-        m_runLoop = &RunLoop::current();
-        semaphore.signal();
-        m_runLoop->run();
-    })->detach();
-    semaphore.wait();
 }
 
-void WorkQueue::platformInvalidate()
+void WorkQueueBase::platformInitialize(const char* name, Type, QOS qos)
+{
+    m_runLoop = RunLoop::create(name, ThreadType::Unknown, qos).ptr();
+#if ASSERT_ENABLED
+    BinarySemaphore semaphore;
+    m_runLoop->dispatch([&] {
+        m_threadID = Thread::current().uid();
+        semaphore.signal();
+    });
+    semaphore.wait();
+#endif
+}
+
+void WorkQueueBase::platformInvalidate()
 {
     if (m_runLoop) {
         Ref<RunLoop> protector(*m_runLoop);
@@ -54,18 +63,35 @@ void WorkQueue::platformInvalidate()
     }
 }
 
-void WorkQueue::dispatch(Function<void()>&& function)
+void WorkQueueBase::dispatch(Function<void()>&& function)
 {
-    RefPtr<WorkQueue> protect(this);
-    m_runLoop->dispatch([protect, function = WTFMove(function)] {
+    m_runLoop->dispatch([protectedThis = Ref { *this }, function = WTFMove(function)] {
         function();
     });
 }
 
-void WorkQueue::dispatchAfter(Seconds delay, Function<void()>&& function)
+void WorkQueueBase::dispatchAfter(Seconds delay, Function<void()>&& function)
 {
-    RefPtr<WorkQueue> protect(this);
-    m_runLoop->dispatchAfter(delay, [protect, function = WTFMove(function)] {
+    m_runLoop->dispatchAfter(delay, [protectedThis = Ref { *this }, function = WTFMove(function)] {
         function();
     });
+}
+
+WorkQueue::WorkQueue(RunLoop& loop)
+    : WorkQueueBase(loop)
+{
+}
+
+Ref<WorkQueue> WorkQueue::constructMainWorkQueue()
+{
+    return adoptRef(*new WorkQueue(RunLoop::main()));
+}
+
+#if ASSERT_ENABLED
+ThreadLikeAssertion WorkQueue::threadLikeAssertion() const
+{
+    return createThreadLikeAssertion(m_threadID);
+}
+#endif
+
 }

@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2008-2020 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008-2022 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "ErrorType.h"
 #include "JSObject.h"
 #include "RuntimeType.h"
 #include "StackFrame.h"
@@ -29,7 +30,8 @@ namespace JSC {
 class ErrorInstance : public JSNonFinalObject {
 public:
     using Base = JSNonFinalObject;
-    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesAnyFormOfGetPropertyNames;
+
+    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnSpecialPropertyNames | OverridesPut | GetOwnPropertySlotIsImpureForPropertyAbsence;
     static constexpr bool needsDestruction = true;
 
     static void destroy(JSCell* cell)
@@ -38,13 +40,13 @@ public:
     }
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.errorInstanceSpace<mode>();
     }
 
     enum SourceTextWhereErrorOccurred { FoundExactSource, FoundApproximateSource };
-    typedef String (*SourceAppender) (const String& originalMessage, const String& sourceText, RuntimeType, SourceTextWhereErrorOccurred);
+    typedef String (*SourceAppender) (const String& originalMessage, StringView sourceText, RuntimeType, SourceTextWhereErrorOccurred);
 
     DECLARE_EXPORT_INFO;
 
@@ -53,14 +55,14 @@ public:
         return Structure::create(vm, globalObject, prototype, TypeInfo(ErrorInstanceType, StructureFlags), info());
     }
 
-    static ErrorInstance* create(JSGlobalObject* globalObject, VM& vm, Structure* structure, const String& message, SourceAppender appender = nullptr, RuntimeType type = TypeNothing, bool useCurrentFrame = true)
+    static ErrorInstance* create(JSGlobalObject* globalObject, VM& vm, Structure* structure, const String& message, JSValue cause, SourceAppender appender = nullptr, RuntimeType type = TypeNothing, ErrorType errorType = ErrorType::Error, bool useCurrentFrame = true)
     {
-        ErrorInstance* instance = new (NotNull, allocateCell<ErrorInstance>(vm.heap)) ErrorInstance(vm, structure);
-        instance->finishCreation(vm, globalObject, message, appender, type, useCurrentFrame);
+        ErrorInstance* instance = new (NotNull, allocateCell<ErrorInstance>(vm)) ErrorInstance(vm, structure, errorType);
+        instance->finishCreation(vm, globalObject, message, cause, appender, type, useCurrentFrame);
         return instance;
     }
 
-    static ErrorInstance* create(JSGlobalObject*, Structure*, JSValue message, SourceAppender = nullptr, RuntimeType = TypeNothing, bool useCurrentFrame = true);
+    static ErrorInstance* create(JSGlobalObject*, Structure*, JSValue message, JSValue options, SourceAppender = nullptr, RuntimeType = TypeNothing, ErrorType = ErrorType::Error, bool useCurrentFrame = true);
 
     bool hasSourceAppender() const { return !!m_sourceAppender; }
     SourceAppender sourceAppender() const { return m_sourceAppender; }
@@ -70,6 +72,7 @@ public:
     RuntimeType runtimeTypeForCause() const { return m_runtimeTypeForCause; }
     void clearRuntimeTypeForCause() { m_runtimeTypeForCause = TypeNothing; }
 
+    ErrorType errorType() const { return m_errorType; }
     void setStackOverflowError() { m_stackOverflowError = true; }
     bool isStackOverflowError() const { return m_stackOverflowError; }
     void setOutOfMemoryError() { m_outOfMemoryError = true; }
@@ -78,7 +81,14 @@ public:
     void setNativeGetterTypeError() { m_nativeGetterTypeError = true; }
     bool isNativeGetterTypeError() const { return m_nativeGetterTypeError; }
 
+#if ENABLE(WEBASSEMBLY)
+    void setCatchableFromWasm(bool flag) { m_catchableFromWasm = flag; }
+    bool isCatchableFromWasm() const { return m_catchableFromWasm; }
+#endif
+
     JS_EXPORT_PRIVATE String sanitizedToString(JSGlobalObject*);
+    JS_EXPORT_PRIVATE String sanitizedMessageString(JSGlobalObject*);
+    JS_EXPORT_PRIVATE String sanitizedNameString(JSGlobalObject*);
     
     Vector<StackFrame>* stackTrace() { return m_stackTrace.get(); }
 
@@ -88,17 +98,15 @@ public:
     void finalizeUnconditionally(VM&);
 
 protected:
-    explicit ErrorInstance(VM&, Structure*);
+    explicit ErrorInstance(VM&, Structure*, ErrorType);
 
-    void finishCreation(VM&, JSGlobalObject*, const String&, SourceAppender = nullptr, RuntimeType = TypeNothing, bool useCurrentFrame = true);
+    void finishCreation(VM&, JSGlobalObject*, const String& message, JSValue cause, SourceAppender = nullptr, RuntimeType = TypeNothing, bool useCurrentFrame = true);
 
     static bool getOwnPropertySlot(JSObject*, JSGlobalObject*, PropertyName, PropertySlot&);
-    static void getOwnNonIndexPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
-    static void getStructurePropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
+    static void getOwnSpecialPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, DontEnumPropertiesMode);
     static bool defineOwnProperty(JSObject*, JSGlobalObject*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
     static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
     static bool deleteProperty(JSCell*, JSGlobalObject*, PropertyName, DeletePropertySlot&);
-    static String toStringName(const JSObject*, JSGlobalObject*);
 
     void computeErrorInfo(VM&);
 
@@ -109,10 +117,14 @@ protected:
     String m_sourceURL;
     String m_stackString;
     RuntimeType m_runtimeTypeForCause { TypeNothing };
-    bool m_stackOverflowError { false };
-    bool m_outOfMemoryError { false };
-    bool m_errorInfoMaterialized { false };
-    bool m_nativeGetterTypeError { false };
+    ErrorType m_errorType { ErrorType::Error };
+    bool m_stackOverflowError : 1;
+    bool m_outOfMemoryError : 1;
+    bool m_errorInfoMaterialized : 1;
+    bool m_nativeGetterTypeError : 1;
+#if ENABLE(WEBASSEMBLY)
+    bool m_catchableFromWasm : 1;
+#endif
 };
 
 } // namespace JSC

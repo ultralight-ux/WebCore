@@ -30,17 +30,18 @@
  */
 
 [
-    EnabledAtRuntime=DataTransferItems,
+    EnabledBySetting=DataTransferItemsEnabled,
     JSGenerateToNativeObject,
     JSGenerateToJSObject,
+    Exposed=Window
 ] interface DataTransferItemList {
     readonly attribute long length;
     getter DataTransferItem item(unsigned long index);
 
-    [MayThrowException] DataTransferItem? add(DOMString data, DOMString type);
+    [CallWith=CurrentDocument] DataTransferItem? add(DOMString data, DOMString type);
     DataTransferItem? add(File file);
 
-    [MayThrowException] void remove(unsigned long index);
+    undefined remove(unsigned long index);
 
-    void clear();
+    undefined clear();
 };

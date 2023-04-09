@@ -29,16 +29,17 @@
 #include "SourceCode.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/Vector.h>
+#include <wtf/unicode/CharacterNames.h>
 
 namespace JSC {
+
+struct ParsedUnicodeEscapeValue;
 
 enum class LexerFlags : uint8_t {
     IgnoreReservedWords = 1 << 0, 
     DontBuildStrings = 1 << 1,
     DontBuildKeywords = 1 << 2
 };
-
-struct ParsedUnicodeEscapeValue;
 
 bool isLexerKeyword(const Identifier&);
 
@@ -149,7 +150,7 @@ private:
     String invalidCharacterMessage() const;
     ALWAYS_INLINE const T* currentSourcePtr() const;
 
-    ALWAYS_INLINE void setCodeStart(const StringView&);
+    ALWAYS_INLINE void setCodeStart(StringView);
 
     ALWAYS_INLINE const Identifier* makeIdentifier(const LChar* characters, size_t length);
     ALWAYS_INLINE const Identifier* makeIdentifier(const UChar* characters, size_t length);
@@ -179,11 +180,11 @@ private:
     template <bool shouldBuildStrings> ALWAYS_INLINE StringParseResult parseComplexEscape(bool strictMode);
     ALWAYS_INLINE StringParseResult parseTemplateLiteral(JSTokenData*, RawStringsBuildMode);
     
-    using NumberParseResult = Variant<double, const Identifier*>;
-    ALWAYS_INLINE Optional<NumberParseResult> parseHex();
-    ALWAYS_INLINE Optional<NumberParseResult> parseBinary();
-    ALWAYS_INLINE Optional<NumberParseResult> parseOctal();
-    ALWAYS_INLINE Optional<NumberParseResult> parseDecimal();
+    using NumberParseResult = std::variant<double, const Identifier*>;
+    ALWAYS_INLINE std::optional<NumberParseResult> parseHex();
+    ALWAYS_INLINE std::optional<NumberParseResult> parseBinary();
+    ALWAYS_INLINE std::optional<NumberParseResult> parseOctal();
+    ALWAYS_INLINE std::optional<NumberParseResult> parseDecimal();
     ALWAYS_INLINE bool parseNumberAfterDecimalPoint();
     ALWAYS_INLINE bool parseNumberAfterExponentIndicator();
     ALWAYS_INLINE bool parseMultilineComment();
@@ -242,7 +243,7 @@ ALWAYS_INLINE bool Lexer<LChar>::isWhiteSpace(LChar ch)
 template <>
 ALWAYS_INLINE bool Lexer<UChar>::isWhiteSpace(UChar ch)
 {
-    return isLatin1(ch) ? Lexer<LChar>::isWhiteSpace(static_cast<LChar>(ch)) : (u_charType(ch) == U_SPACE_SEPARATOR || ch == 0xFEFF);
+    return isLatin1(ch) ? Lexer<LChar>::isWhiteSpace(static_cast<LChar>(ch)) : (u_charType(ch) == U_SPACE_SEPARATOR || ch == byteOrderMark);
 }
 
 template <>
@@ -303,14 +304,14 @@ ALWAYS_INLINE const Identifier* Lexer<T>::makeEmptyIdentifier()
 }
 
 template <>
-ALWAYS_INLINE void Lexer<LChar>::setCodeStart(const StringView& sourceString)
+ALWAYS_INLINE void Lexer<LChar>::setCodeStart(StringView sourceString)
 {
     ASSERT(sourceString.is8Bit());
     m_codeStart = sourceString.characters8();
 }
 
 template <>
-ALWAYS_INLINE void Lexer<UChar>::setCodeStart(const StringView& sourceString)
+ALWAYS_INLINE void Lexer<UChar>::setCodeStart(StringView sourceString)
 {
     ASSERT(!sourceString.is8Bit());
     m_codeStart = sourceString.characters16();

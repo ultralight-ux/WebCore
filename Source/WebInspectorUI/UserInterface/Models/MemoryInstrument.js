@@ -25,21 +25,6 @@
 
 WI.MemoryInstrument = class MemoryInstrument extends WI.Instrument
 {
-    constructor()
-    {
-        super();
-
-        console.assert(WI.MemoryInstrument.supported());
-    }
-
-    // Static
-
-    static supported()
-    {
-        // COMPATIBILITY (iOS 9): MemoryAgent did not exist.
-        return window.MemoryAgent;
-    }
-
     // Protected
 
     get timelineRecordType()
@@ -49,13 +34,17 @@ WI.MemoryInstrument = class MemoryInstrument extends WI.Instrument
 
     startInstrumentation(initiatedByBackend)
     {
-        if (!initiatedByBackend)
-            MemoryAgent.startTracking();
+        if (!initiatedByBackend) {
+            let target = WI.assumingMainTarget();
+            target.MemoryAgent.startTracking();
+        }
     }
 
     stopInstrumentation(initiatedByBackend)
     {
-        if (!initiatedByBackend)
-            MemoryAgent.stopTracking();
+        if (!initiatedByBackend) {
+            let target = WI.assumingMainTarget();
+            target.MemoryAgent.stopTracking();
+        }
     }
 };

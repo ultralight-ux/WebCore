@@ -22,7 +22,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER)
 
 #include "GStreamerAudioData.h"
 #include "GStreamerAudioStreamDescription.h"
@@ -32,26 +32,32 @@ namespace WebCore {
 
 class MockRealtimeAudioSourceGStreamer final : public MockRealtimeAudioSource {
 public:
-    static Ref<MockRealtimeAudioSource> createForMockAudioCapturer(String&& deviceID, String&& name, String&& hashSalt);
+    static Ref<MockRealtimeAudioSource> createForMockAudioCapturer(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&&);
 
-    ~MockRealtimeAudioSourceGStreamer() = default;
+    static const HashSet<MockRealtimeAudioSource*>& allMockRealtimeAudioSources();
+
+    ~MockRealtimeAudioSourceGStreamer();
 
 protected:
     void render(Seconds) final;
 
 private:
     friend class MockRealtimeAudioSource;
-    MockRealtimeAudioSourceGStreamer(String&& deviceID, String&& name, String&& hashSalt);
+    MockRealtimeAudioSourceGStreamer(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&&);
     void reconfigure();
     void addHum(float amplitude, float frequency, float sampleRate, uint64_t start, float *p, uint64_t count);
 
-    Optional<GStreamerAudioStreamDescription> m_streamFormat;
+    bool interrupted() const final { return m_isInterrupted; };
+    void setInterruptedForTesting(bool) final;
+
+    std::optional<GStreamerAudioStreamDescription> m_streamFormat;
     Vector<float> m_bipBopBuffer;
     uint32_t m_maximiumFrameCount;
     uint64_t m_samplesEmitted { 0 };
     uint64_t m_samplesRendered { 0 };
+    bool m_isInterrupted { false };
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER)

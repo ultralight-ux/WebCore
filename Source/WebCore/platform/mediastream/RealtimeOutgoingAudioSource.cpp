@@ -34,7 +34,6 @@
 #include "LibWebRTCAudioFormat.h"
 #include "LibWebRTCProvider.h"
 #include "Logging.h"
-#include <wtf/CryptographicallyRandomNumber.h>
 
 namespace WebCore {
 
@@ -47,7 +46,7 @@ RealtimeOutgoingAudioSource::~RealtimeOutgoingAudioSource()
 {
     ASSERT(!m_audioSource->hasObserver(*this));
 #if ASSERT_ENABLED
-    auto locker = holdLock(m_sinksLock);
+    Locker locker { m_sinksLock };
 #endif
     ASSERT(m_sinks.isEmpty());
 
@@ -95,13 +94,13 @@ void RealtimeOutgoingAudioSource::sourceEnabledChanged()
 
 void RealtimeOutgoingAudioSource::AddSink(webrtc::AudioTrackSinkInterface* sink)
 {
-    auto locker = holdLock(m_sinksLock);
+    Locker locker { m_sinksLock };
     m_sinks.add(sink);
 }
 
 void RealtimeOutgoingAudioSource::RemoveSink(webrtc::AudioTrackSinkInterface* sink)
 {
-    auto locker = holdLock(m_sinksLock);
+    Locker locker { m_sinksLock };
     m_sinks.remove(sink);
 }
 
@@ -112,7 +111,7 @@ void RealtimeOutgoingAudioSource::sendAudioFrames(const void* audioData, int bit
         ALWAYS_LOG(LOGIDENTIFIER, "chunk ", m_chunksSent);
 #endif
 
-    auto locker = holdLock(m_sinksLock);
+    Locker locker { m_sinksLock };
     for (auto sink : m_sinks)
         sink->OnData(audioData, bitsPerSample, sampleRate, numberOfChannels, numberOfFrames);
 }

@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -36,16 +36,18 @@ class Document;
 class StyleCachedImage final : public StyleImage {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<StyleCachedImage> create(CSSImageValue& cssValue, float scaleFactor = 1);
+    static Ref<StyleCachedImage> create(Ref<CSSImageValue>, float scaleFactor = 1);
+    static Ref<StyleCachedImage> copyOverridingScaleFactor(StyleCachedImage&, float scaleFactor);
     virtual ~StyleCachedImage();
 
-    bool operator==(const StyleImage& other) const final;
+    bool operator==(const StyleImage&) const final;
+    bool equals(const StyleCachedImage&) const;
 
     CachedImage* cachedImage() const final;
 
     WrappedImagePtr data() const final { return m_cachedImage.get(); }
 
-    Ref<CSSValue> cssValue() const final;
+    Ref<CSSValue> computedStyleValue(const RenderStyle&) const final;
     
     bool canRender(const RenderElement*, float multiplier) const final;
     bool isPending() const final;
@@ -58,15 +60,21 @@ public:
     void computeIntrinsicDimensions(const RenderElement*, Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) final;
     bool usesImageContainerSize() const final;
     void setContainerContextForRenderer(const RenderElement&, const FloatSize&, float) final;
-    void addClient(RenderElement*) final;
-    void removeClient(RenderElement*) final;
-    RefPtr<Image> image(RenderElement*, const FloatSize&) const final;
+    void addClient(RenderElement&) final;
+    void removeClient(RenderElement&) final;
+    bool hasClient(RenderElement&) const final;
+    bool hasImage() const final;
+    RefPtr<Image> image(const RenderElement*, const FloatSize&) const final;
     float imageScaleFactor() const final;
-    bool knownToBeOpaque(const RenderElement*) const final;
+    bool knownToBeOpaque(const RenderElement&) const final;
+    bool usesDataProtocol() const final;
+
+    URL reresolvedURL(const Document&) const;
+
+    URL imageURL() const;
 
 private:
-    StyleCachedImage(CSSImageValue&, float);
-    URL imageURL();
+    StyleCachedImage(Ref<CSSImageValue>&&, float);
 
     Ref<CSSImageValue> m_cssValue;
     bool m_isPending { true };

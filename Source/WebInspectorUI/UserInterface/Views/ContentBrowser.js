@@ -25,7 +25,7 @@
 
 WI.ContentBrowser = class ContentBrowser extends WI.View
 {
-    constructor(element, delegate, disableBackForward, disableFindBanner, flexibleNavigationItem, contentViewNavigationItemGroup)
+    constructor(element, delegate, {hideBackForwardButtons, disableBackForwardNavigation, disableFindBanner, flexibleNavigationItem, contentViewNavigationItemGroup} = {})
     {
         super(element);
 
@@ -34,11 +34,11 @@ WI.ContentBrowser = class ContentBrowser extends WI.View
         this._navigationBar = new WI.NavigationBar;
         this.addSubview(this._navigationBar);
 
-        this._contentViewContainer = new WI.ContentViewContainer;
+        this._contentViewContainer = new WI.ContentViewContainer({disableBackForwardNavigation});
         this._contentViewContainer.addEventListener(WI.ContentViewContainer.Event.CurrentContentViewDidChange, this._currentContentViewDidChange, this);
         this.addSubview(this._contentViewContainer);
 
-        if (!disableBackForward) {
+        if (!hideBackForwardButtons) {
             let isRTL = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL;
 
             let goBack = () => { this.goBack(); };
@@ -55,11 +55,11 @@ WI.ContentBrowser = class ContentBrowser extends WI.View
             let forwardButtonImage = isRTL ? leftArrow : rightArrow;
 
             this._backNavigationItem = new WI.ButtonNavigationItem("back", WI.UIString("Back (%s)").format(this._backKeyboardShortcut.displayName), backButtonImage, 8, 13);
-            this._backNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, goBack);
+            this._backNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, goBack, this);
             this._backNavigationItem.enabled = false;
 
             this._forwardNavigationItem = new WI.ButtonNavigationItem("forward", WI.UIString("Forward (%s)").format(this._forwardKeyboardShortcut.displayName), forwardButtonImage, 8, 13);
-            this._forwardNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, goForward);
+            this._forwardNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, goForward, this);
             this._forwardNavigationItem.enabled = false;
 
             let navigationButtonsGroup = new WI.GroupNavigationItem([this._backNavigationItem, this._forwardNavigationItem]);
@@ -140,7 +140,7 @@ WI.ContentBrowser = class ContentBrowser extends WI.View
         if (currentContentView) {
             var supplementalRepresentedObjects = currentContentView.supplementalRepresentedObjects;
             if (supplementalRepresentedObjects && supplementalRepresentedObjects.length)
-                representedObjects = representedObjects.concat(supplementalRepresentedObjects);
+                representedObjects.pushAll(supplementalRepresentedObjects);
         }
 
         return representedObjects;
@@ -231,17 +231,12 @@ WI.ContentBrowser = class ContentBrowser extends WI.View
         this._findBanner.show();
     }
 
-    shown()
+    attached()
     {
+        super.attached();
+
         this._updateContentViewSelectionPathNavigationItem(this.currentContentView);
         this.updateHierarchicalPathForCurrentContentView();
-
-        this._contentViewContainer.shown();
-    }
-
-    hidden()
-    {
-        this._contentViewContainer.hidden();
     }
 
     // Global ContentBrowser KeyboardShortcut handlers
@@ -249,25 +244,50 @@ WI.ContentBrowser = class ContentBrowser extends WI.View
     handlePopulateFindShortcut()
     {
         let currentContentView = this.currentContentView;
-        if (!currentContentView || !currentContentView.supportsSearch)
+        if (!currentContentView?.supportsSearch)
             return;
 
-        let searchQuery = currentContentView.searchQueryWithSelection();
-        if (!searchQuery)
+        if (!WI.updateFindString(currentContentView.searchQueryWithSelection()))
             return;
 
-        this._findBanner.searchQuery = searchQuery;
+        this._findBanner.searchQuery = WI.findString;
 
         currentContentView.performSearch(this._findBanner.searchQuery);
     }
 
-    handleFindNextShortcut()
+    async handleFindNextShortcut()
     {
+        if (!this._findBanner.showing && this._findBanner.searchQuery !== WI.findString) {
+            let searchQuery = WI.findString;
+            this._findBanner.searchQuery = searchQuery;
+
+            let currentContentView = this.currentContentView;
+            if (currentContentView?.supportsSearch) {
+                currentContentView.performSearch(this._findBanner.searchQuery);
+                await currentContentView.awaitEvent(WI.ContentView.Event.NumberOfSearchResultsDidChange, this);
+                if (this._findBanner.searchQuery !== searchQuery || this.currentContentView !== currentContentView)
+                    return;
+            }
+        }
+
         this.findBannerRevealNextResult(this._findBanner);
     }
 
-    handleFindPreviousShortcut()
+    async handleFindPreviousShortcut()
     {
+        if (!this._findBanner.showing && this._findBanner.searchQuery !== WI.findString) {
+            let searchQuery = WI.findString;
+            this._findBanner.searchQuery = searchQuery;
+
+            let currentContentView = this.currentContentView;
+            if (currentContentView?.supportsSearch) {
+                currentContentView.performSearch(this._findBanner.searchQuery);
+                await currentContentView.awaitEvent(WI.ContentView.Event.NumberOfSearchResultsDidChange, this);
+                if (this._findBanner.searchQuery !== searchQuery || this.currentContentView !== currentContentView)
+                    return;
+            }
+        }
+
         this.findBannerRevealPreviousResult(this._findBanner);
     }
 

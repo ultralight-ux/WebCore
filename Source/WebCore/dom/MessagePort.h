@@ -32,7 +32,6 @@
 #include "MessagePortChannel.h"
 #include "MessagePortIdentifier.h"
 #include "MessageWithMessagePorts.h"
-#include "PostMessageOptions.h"
 #include <wtf/WeakPtr.h>
 
 namespace JSC {
@@ -44,30 +43,33 @@ class JSValue;
 namespace WebCore {
 
 class Frame;
+class WebCoreOpaqueRoot;
 
-class MessagePort final : public ActiveDOMObject, public EventTargetWithInlineData, public CanMakeWeakPtr<MessagePort, WeakPtrFactoryInitialization::Eager> {
+struct StructuredSerializeOptions;
+
+class MessagePort final : public ActiveDOMObject, public EventTarget {
     WTF_MAKE_NONCOPYABLE(MessagePort);
     WTF_MAKE_ISO_ALLOCATED(MessagePort);
 public:
     static Ref<MessagePort> create(ScriptExecutionContext&, const MessagePortIdentifier& local, const MessagePortIdentifier& remote);
     virtual ~MessagePort();
 
-    ExceptionOr<void> postMessage(JSC::JSGlobalObject&, JSC::JSValue message, PostMessageOptions&&);
+    ExceptionOr<void> postMessage(JSC::JSGlobalObject&, JSC::JSValue message, StructuredSerializeOptions&&);
 
     void start();
     void close();
     void entangle();
 
     // Returns nullptr if the passed-in vector is empty.
-    static ExceptionOr<TransferredMessagePortArray> disentanglePorts(Vector<RefPtr<MessagePort>>&&);
-    static Vector<RefPtr<MessagePort>> entanglePorts(ScriptExecutionContext&, TransferredMessagePortArray&&);
+    static ExceptionOr<Vector<TransferredMessagePort>> disentanglePorts(Vector<RefPtr<MessagePort>>&&);
+    static Vector<RefPtr<MessagePort>> entanglePorts(ScriptExecutionContext&, Vector<TransferredMessagePort>&&);
 
-    WEBCORE_EXPORT static bool isExistingMessagePortLocallyReachable(const MessagePortIdentifier&);
+    WEBCORE_EXPORT static bool isMessagePortAliveForTesting(const MessagePortIdentifier&);
     WEBCORE_EXPORT static void notifyMessageAvailable(const MessagePortIdentifier&);
 
     WEBCORE_EXPORT void messageAvailable();
     bool started() const { return m_started; }
-    bool closed() const { return m_closed; }
+    bool isDetached() const { return m_isDetached; }
 
     void dispatchMessages();
 
@@ -82,9 +84,7 @@ public:
     WEBCORE_EXPORT void ref() const;
     WEBCORE_EXPORT void deref() const;
 
-    WEBCORE_EXPORT bool isLocallyReachable() const;
-
-    // EventTargetWithInlineData.
+    // EventTarget.
     EventTargetInterface eventTargetInterface() const final { return MessagePortEventTargetInterfaceType; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
     void refEventTarget() final { ref(); }
@@ -92,11 +92,14 @@ public:
 
     void dispatchEvent(Event&) final;
 
+    TransferredMessagePort disentangle();
+    static Ref<MessagePort> entangle(ScriptExecutionContext&, TransferredMessagePort&&);
+
 private:
     explicit MessagePort(ScriptExecutionContext&, const MessagePortIdentifier& local, const MessagePortIdentifier& remote);
 
     bool addEventListener(const AtomString& eventType, Ref<EventListener>&&, const AddEventListenerOptions&) final;
-    bool removeEventListener(const AtomString& eventType, EventListener&, const ListenerOptions&) final;
+    bool removeEventListener(const AtomString& eventType, EventListener&, const EventListenerOptions&) final;
 
     // ActiveDOMObject
     const char* activeDOMObjectName() const final;
@@ -104,24 +107,12 @@ private:
     void stop() final { close(); }
     bool virtualHasPendingActivity() const final;
 
-    void disentangle();
-
-    void registerLocalActivity();
-
-    // A port starts out its life entangled, and remains entangled until it is closed or is cloned.
-    bool isEntangled() const { return !m_closed && m_entangled; }
-
-    void updateActivity(MessagePortChannelProvider::HasActivity);
+    // A port starts out its life entangled, and remains entangled until it is detached or is cloned.
+    bool isEntangled() const { return !m_isDetached && m_entangled; }
 
     bool m_started { false };
-    bool m_closed { false };
+    bool m_isDetached { false };
     bool m_entangled { true };
-
-    // Flags to manage querying the remote port for GC purposes
-    mutable bool m_mightBeEligibleForGC { false };
-    mutable bool m_hasHadLocalActivitySinceLastCheck { false };
-    mutable bool m_isRemoteEligibleForGC { false };
-    mutable bool m_isAskingRemoteAboutGC { false };
     bool m_hasMessageEventListener { false };
 
     MessagePortIdentifier m_identifier;
@@ -129,5 +120,7 @@ private:
 
     mutable std::atomic<unsigned> m_refCount { 1 };
 };
+
+WebCoreOpaqueRoot root(MessagePort*);
 
 } // namespace WebCore

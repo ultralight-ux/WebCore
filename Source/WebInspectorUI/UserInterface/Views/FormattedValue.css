@@ -44,6 +44,7 @@
 
 .formatted-string, .formatted-regexp {
     white-space: pre;
+    unicode-bidi: isolate;
 }
 
 .formatted-string {
@@ -56,6 +57,10 @@
 
 .formatted-symbol {
     color: var(--syntax-highlight-symbol-color);
+}
+
+.formatted-bigint {
+    color: var(--syntax-highlight-bigint-color);
 }
 
 .formatted-null, .formatted-undefined {

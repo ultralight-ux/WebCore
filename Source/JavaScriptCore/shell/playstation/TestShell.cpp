@@ -50,9 +50,6 @@ extern "C" void setupTestRun()
 
     JSC::initialize();
 
-#if ENABLE(WEBASSEMBLY)
-    JSC::Wasm::enableFastMemory();
-#endif
     Gigacage::forbidDisablingPrimitiveGigacage();
 }
 
@@ -62,7 +59,7 @@ extern "C" void preTest()
     JSC::Options::name_() = orig##name_;
     FOR_EACH_JSC_OPTION(INIT_OPTION)
 #undef INIT_OPTION
-    overrideUserPreferredLanguages(platformUserPreferredLanguages());
+    overrideUserPreferredLanguages({ });
 }
 
 extern "C" int runTest(int argc, char* argv[])

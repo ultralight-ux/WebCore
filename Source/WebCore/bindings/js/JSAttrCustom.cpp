@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,13 +30,17 @@
 #include "JSAttr.h"
 
 #include "Element.h"
+#include "WebCoreOpaqueRoot.h"
 
 namespace WebCore {
 
-void JSAttr::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSAttr::visitAdditionalChildren(Visitor& visitor)
 {
-    if (Element* element = wrapped().ownerElement())
-        visitor.addOpaqueRoot(root(element));
+    if (auto* element = wrapped().ownerElement())
+        addWebCoreOpaqueRoot(visitor, *element);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSAttr);
 
 } // namespace WebCore

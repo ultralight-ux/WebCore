@@ -45,8 +45,10 @@ WI.NetworkDetailView = class NetworkDetailView extends WI.View
 
     get representedObject() { return this._representedObject; }
 
-    shown()
+    attached()
     {
+        super.attached();
+
         if (!this._contentBrowser)
             return;
 
@@ -56,13 +58,6 @@ WI.NetworkDetailView = class NetworkDetailView extends WI.View
             this._contentBrowser.showContentView(this._contentBrowser.currentContentView, this._contentViewCookie);
             this._contentViewCookie = null;
         }
-
-        this._contentBrowser.shown();
-    }
-
-    hidden()
-    {
-        this._contentBrowser.hidden();
     }
 
     dispose()
@@ -82,22 +77,20 @@ WI.NetworkDetailView = class NetworkDetailView extends WI.View
     initialLayout()
     {
         let closeNavigationItem = new WI.ButtonNavigationItem("close", WI.UIString("Close detail view"), "Images/CloseLarge.svg", 16, 16);
-        closeNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleCloseButton.bind(this));
+        closeNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleCloseButton, this);
         closeNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
 
-        let contentViewNavigationItemsGroup = new WI.GroupNavigationItem;
-        let contentViewNavigationItemsFlexItem = new WI.FlexibleSpaceNavigationItem(contentViewNavigationItemsGroup, WI.FlexibleSpaceNavigationItem.Align.End);
-        contentViewNavigationItemsFlexItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
+        let contentViewNavigationItemGroup = new WI.GroupNavigationItem;
+        let flexibleNavigationItem = new WI.FlexibleSpaceNavigationItem(contentViewNavigationItemGroup, WI.FlexibleSpaceNavigationItem.Align.End);
+        flexibleNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
 
         const element = null;
-        const disableBackForward = true;
-        const disableFindBanner = false;
-        this._contentBrowser = new WI.ContentBrowser(element, this, disableBackForward, disableFindBanner, contentViewNavigationItemsFlexItem, contentViewNavigationItemsGroup);
+        this._contentBrowser = new WI.ContentBrowser(element, this, {hideBackForwardButtons: true, flexibleNavigationItem, contentViewNavigationItemGroup});
+        this._contentBrowser.addEventListener(WI.ContentBrowser.Event.CurrentContentViewDidChange, this._handleCurrentContentViewDidChange, this);
 
         // Insert all of our custom navigation items at the start of the ContentBrowser's NavigationBar.
         let index = 0;
         this._contentBrowser.navigationBar.insertNavigationItem(closeNavigationItem, index++);
-        this._contentBrowser.navigationBar.insertNavigationItem(new WI.FlexibleSpaceNavigationItem, index++);
         for (let detailNavigationItem of this._detailNavigationItemMap.values())
             this._contentBrowser.navigationBar.insertNavigationItem(detailNavigationItem, index++);
 
@@ -150,6 +143,12 @@ WI.NetworkDetailView = class NetworkDetailView extends WI.View
 
         console.assert(firstNavigationItem, "Should have found at least one navigation item above");
         this._contentBrowser.navigationBar.selectedNavigationItem = firstNavigationItem;
+    }
+
+    _handleCurrentContentViewDidChange(event)
+    {
+        // Redispatch this event since this view is basically just a wrapper.
+        this.dispatchEventToListeners(event.type, event.data);
     }
 
     _navigationItemSelected(event)

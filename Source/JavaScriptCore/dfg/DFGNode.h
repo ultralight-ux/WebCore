@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include "B3SparseCollection.h"
 #include "BasicBlockLocation.h"
+#include "CheckPrivateBrandVariant.h"
 #include "CodeBlock.h"
 #include "DFGAdjacencyList.h"
 #include "DFGArithMode.h"
@@ -48,11 +49,14 @@
 #include "DFGUseKind.h"
 #include "DFGVariableAccessData.h"
 #include "DOMJITSignature.h"
-#include "DeleteByIdVariant.h"
-#include "GetByIdVariant.h"
+#include "DeleteByVariant.h"
+#include "GetByVariant.h"
 #include "JSCJSValue.h"
+#include "JSPropertyNameEnumerator.h"
 #include "Operands.h"
-#include "PutByIdVariant.h"
+#include "PrivateFieldPutKind.h"
+#include "PutByVariant.h"
+#include "SetPrivateBrandVariant.h"
 #include "SpeculatedType.h"
 #include "TypeLocation.h"
 #include "ValueProfile.h"
@@ -88,7 +92,7 @@ struct StorageAccessData {
 
 struct MultiPutByOffsetData {
     unsigned identifierNumber;
-    Vector<PutByIdVariant, 2> variants;
+    Vector<PutByVariant, 2> variants;
     
     bool writesStructures() const;
     bool reallocatesStorage() const;
@@ -96,7 +100,7 @@ struct MultiPutByOffsetData {
 
 struct MultiDeleteByOffsetData {
     unsigned identifierNumber;
-    Vector<DeleteByIdVariant, 2> variants;
+    Vector<DeleteByVariant, 2> variants;
 
     bool writesStructures() const;
     bool allVariantsStoreEmpty() const;
@@ -120,21 +124,31 @@ struct NewArrayBufferData {
         uint64_t asQuadWord;
     };
 };
-static_assert(sizeof(IndexingType) <= sizeof(unsigned), "");
-static_assert(sizeof(NewArrayBufferData) == sizeof(uint64_t), "");
+static_assert(sizeof(IndexingType) <= sizeof(unsigned));
+static_assert(sizeof(NewArrayBufferData) == sizeof(uint64_t));
+
+struct NewArrayWithSpeciesData {
+    unsigned arrayMode { 0 };
+    unsigned indexingMode { 0 };
+
+    uint64_t asQuadWord() const { return bitwise_cast<uint64_t>(*this); }
+};
+static_assert(sizeof(IndexingType) <= sizeof(unsigned));
+static_assert(sizeof(ArrayMode) <= sizeof(unsigned));
 
 struct DataViewData {
     union {
         struct {
             uint8_t byteSize;
             bool isSigned;
+            bool isResizable;
             bool isFloatingPoint; // Used for the DataViewSet node.
             TriState isLittleEndian;
         };
         uint64_t asQuadWord;
     };
 };
-static_assert(sizeof(DataViewData) == sizeof(uint64_t), "");
+static_assert(sizeof(DataViewData) == sizeof(uint64_t));
 
 struct BranchTarget {
     BranchTarget()
@@ -275,7 +289,7 @@ struct StackAccessData {
 };
 
 struct CallDOMGetterData {
-    FunctionPtr<OperationPtrTag> customAccessorGetter;
+    CodePtr<CustomAccessorPtrTag> customAccessorGetter;
     const DOMJIT::GetterSetter* domJIT { nullptr };
     DOMJIT::CallDOMGetterSnippet* snippet { nullptr };
     unsigned identifierNumber { 0 };
@@ -503,9 +517,14 @@ public:
     void convertToIdentity();
     void convertToIdentityOn(Node*);
 
-    bool mustGenerate()
+    bool mustGenerate() const
     {
         return m_flags & NodeMustGenerate;
+    }
+
+    bool hasVarArgs() const
+    {
+        return m_flags & NodeHasVarArgs;
     }
     
     bool isConstant()
@@ -596,7 +615,7 @@ public:
     
     void convertToGetByOffset(StorageAccessData& data, Edge storage, Edge base)
     {
-        ASSERT(m_op == GetById || m_op == GetByIdFlush || m_op == GetByIdDirect || m_op == GetByIdDirectFlush || m_op == MultiGetByOffset);
+        ASSERT(m_op == GetById || m_op == GetByIdFlush || m_op == GetByIdDirect || m_op == GetByIdDirectFlush || m_op == GetPrivateNameById || m_op == MultiGetByOffset);
         m_opInfo = &data;
         children.setChild1(storage);
         children.setChild2(base);
@@ -606,7 +625,7 @@ public:
     
     void convertToMultiGetByOffset(MultiGetByOffsetData* data)
     {
-        RELEASE_ASSERT(m_op == GetById || m_op == GetByIdFlush || m_op == GetByIdDirect || m_op == GetByIdDirectFlush);
+        RELEASE_ASSERT(m_op == GetById || m_op == GetByIdFlush || m_op == GetByIdDirect || m_op == GetByIdDirectFlush || m_op == GetPrivateNameById);
         m_opInfo = data;
         child1().setUseKind(CellUse);
         m_op = MultiGetByOffset;
@@ -615,7 +634,7 @@ public:
     
     void convertToPutByOffset(StorageAccessData& data, Edge storage, Edge base)
     {
-        ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush || m_op == MultiPutByOffset);
+        ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush || m_op == MultiPutByOffset || m_op == PutPrivateNameById);
         m_opInfo = &data;
         children.setChild3(children.child2());
         children.setChild2(base);
@@ -625,7 +644,7 @@ public:
     
     void convertToMultiPutByOffset(MultiPutByOffsetData* data)
     {
-        ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush);
+        ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush || m_op == PutPrivateNameById);
         m_opInfo = data;
         m_op = MultiPutByOffset;
     }
@@ -807,13 +826,17 @@ public:
     }
 
     void convertToNewArrayBuffer(FrozenValue* immutableButterfly);
+    void convertToNewArrayWithSize();
     
     void convertToDirectCall(FrozenValue*);
+
+    void convertToCallWasm(FrozenValue*);
 
     void convertToCallDOM(Graph&);
 
     void convertToRegExpExecNonGlobalOrStickyWithoutChecks(FrozenValue* regExp);
     void convertToRegExpMatchFastGlobalWithoutChecks(FrozenValue* regExp);
+    void convertToRegExpTestInline(FrozenValue* globalObject, FrozenValue* regExp);
 
     void convertToSetRegExpObjectLastIndex()
     {
@@ -901,11 +924,11 @@ public:
     }
      
     template<typename T>
-    T dynamicCastConstant(VM& vm)
+    T dynamicCastConstant()
     {
         if (!isCellConstant())
             return nullptr;
-        return jsDynamicCast<T>(vm, asCell());
+        return jsDynamicCast<T>(asCell());
     }
     
     bool hasLazyJSValue()
@@ -978,7 +1001,6 @@ public:
     {
         switch (op()) {
         case MovHint:
-        case ZombieHint:
             return true;
         default:
             return false;
@@ -1021,7 +1043,6 @@ public:
         switch (op()) {
         case ExtractOSREntryLocal:
         case MovHint:
-        case ZombieHint:
         case KillStack:
             return true;
         default:
@@ -1083,12 +1104,14 @@ public:
         case GetByIdWithThis:
         case GetByIdDirect:
         case GetByIdDirectFlush:
+        case GetPrivateNameById:
         case DeleteById:
         case InById:
         case PutById:
         case PutByIdFlush:
         case PutByIdDirect:
         case PutByIdWithThis:
+        case PutPrivateNameById:
             return true;
         default:
             return false;
@@ -1258,10 +1281,22 @@ public:
         case NewArrayWithSize:
         case NewArrayBuffer:
         case PhantomNewArrayBuffer:
+        case NewArrayWithSpecies:
             return true;
         default:
             return false;
         }
+    }
+
+    bool hasNewArrayWithSpeciesData()
+    {
+        return op() == NewArrayWithSpecies;
+    }
+
+    NewArrayWithSpeciesData newArrayWithSpeciesData()
+    {
+        ASSERT(hasNewArrayWithSpeciesData());
+        return m_opInfo.asNewArrayWithSpeciesData();
     }
 
     BitVector* bitVector()
@@ -1283,6 +1318,8 @@ public:
         ASSERT(hasIndexingType());
         if (op() == NewArrayBuffer || op() == PhantomNewArrayBuffer)
             return static_cast<IndexingType>(newArrayBufferData().indexingMode) & IndexingTypeMask;
+        if (op() == NewArrayWithSpecies)
+            return static_cast<IndexingType>(newArrayWithSpeciesData().indexingMode) & IndexingTypeMask;
         return static_cast<IndexingType>(m_opInfo.as<uint32_t>());
     }
 
@@ -1291,6 +1328,8 @@ public:
         ASSERT(hasIndexingType());
         if (op() == NewArrayBuffer || op() == PhantomNewArrayBuffer)
             return static_cast<IndexingType>(newArrayBufferData().indexingMode);
+        if (op() == NewArrayWithSpecies)
+            return static_cast<IndexingType>(newArrayWithSpeciesData().indexingMode);
         return static_cast<IndexingType>(m_opInfo.as<uint32_t>());
     }
     
@@ -1439,7 +1478,7 @@ public:
         return op() == IsCellWithType;
     }
 
-    Optional<SpeculatedType> speculatedTypeForQuery()
+    std::optional<SpeculatedType> speculatedTypeForQuery()
     {
         return speculationFromJSType(queriedType());
     }
@@ -1756,7 +1795,6 @@ public:
         case ArithFloor:
         case ArithCeil:
         case ArithTrunc:
-        case GetDirectPname:
         case GetById:
         case GetByIdFlush:
         case GetByIdWithThis:
@@ -1764,8 +1802,11 @@ public:
         case GetByIdDirectFlush:
         case GetPrototypeOf:
         case TryGetById:
+        case EnumeratorGetByVal:
         case GetByVal:
         case GetByValWithThis:
+        case GetPrivateName:
+        case GetPrivateNameById:
         case Call:
         case DirectCall:
         case TailCallInlinedCaller:
@@ -1773,11 +1814,12 @@ public:
         case Construct:
         case DirectConstruct:
         case CallVarargs:
-        case CallEval:
+        case CallDirectEval:
         case TailCallVarargsInlinedCaller:
         case ConstructVarargs:
         case CallForwardVarargs:
         case TailCallForwardVarargsInlinedCaller:
+        case CallWasm:
         case GetByOffset:
         case MultiGetByOffset:
         case GetClosureVar:
@@ -1789,12 +1831,14 @@ public:
         case RegExpExec:
         case RegExpExecNonGlobalOrSticky:
         case RegExpTest:
+        case RegExpTestInline:
         case RegExpMatchFast:
         case RegExpMatchFastGlobal:
         case GetGlobalVar:
         case GetGlobalLexicalVariable:
         case StringReplace:
         case StringReplaceRegExp:
+        case StringReplaceString:
         case ToNumber:
         case ToNumeric:
         case ToObject:
@@ -1826,6 +1870,7 @@ public:
         case DataViewGetInt:
         case DataViewGetFloat:
         case DateGetInt32OrNaN:
+        case NewArrayWithSpecies:
             return true;
         default:
             return false;
@@ -1883,8 +1928,21 @@ public:
         case DirectTailCall:
         case DirectConstruct:
         case DirectTailCallInlinedCaller:
+        case CallWasm:
         case RegExpExecNonGlobalOrSticky:
         case RegExpMatchFastGlobal:
+        case RegExpTestInline:
+            return true;
+
+        default:
+            return false;
+        }
+    }
+
+    bool hasCellOperand2()
+    {
+        switch (op()) {
+        case RegExpTestInline:
             return true;
         default:
             return false;
@@ -1896,7 +1954,13 @@ public:
         ASSERT(hasCellOperand());
         return m_opInfo.as<FrozenValue*>();
     }
-    
+
+    FrozenValue* cellOperand2()
+    {
+        ASSERT(hasCellOperand2());
+        return m_opInfo2.as<FrozenValue*>();
+    }
+
     template<typename T>
     T castOperand()
     {
@@ -1929,6 +1993,78 @@ public:
     {
         ASSERT(hasStoragePointer());
         return m_opInfo.as<void*>();
+    }
+
+    bool hasStorageChild() const
+    {
+        switch (op()) {
+        case EnumeratorGetByVal:
+        case GetByVal:
+        case PutByValDirect:
+        case PutByVal:
+        case PutByValAlias:
+        case AtomicsAdd:
+        case AtomicsAnd:
+        case AtomicsCompareExchange:
+        case AtomicsExchange:
+        case AtomicsLoad:
+        case AtomicsOr:
+        case AtomicsStore:
+        case AtomicsSub:
+        case AtomicsXor:
+        case ArrayPush:
+        case ArrayPop:
+        case GetArrayLength:
+        case GetTypedArrayLengthAsInt52:
+        case HasIndexedProperty:
+        case EnumeratorNextUpdateIndexAndMode:
+        case ArrayIndexOf:
+            return true;
+        default:
+            break;
+        }
+        return false;
+    }
+
+    unsigned storageChildIndex()
+    {
+        ASSERT(hasStorageChild());
+        switch (op()) {
+        case EnumeratorGetByVal:
+        case GetByVal:
+            return 2;
+        case PutByValDirect:
+        case PutByVal:
+        case PutByValAlias:
+            return 3;
+        case AtomicsAdd:
+        case AtomicsAnd:
+        case AtomicsCompareExchange:
+        case AtomicsExchange:
+        case AtomicsLoad:
+        case AtomicsOr:
+        case AtomicsStore:
+        case AtomicsSub:
+        case AtomicsXor:
+            return 2 + numExtraAtomicsArgs(op());
+        case ArrayPush:
+            return 0;
+
+        case ArrayPop:
+        case GetArrayLength:
+        case GetTypedArrayLengthAsInt52:
+            return 2;
+
+        case HasIndexedProperty:
+            return 2;
+
+        case EnumeratorNextUpdateIndexAndMode:
+            return 4;
+
+        default:
+            // FIXME: Add ArrayIndexOf but it does non-trivial things to determine storage edge.
+            RELEASE_ASSERT_NOT_REACHED();
+        }
     }
 
     bool hasUidOperand()
@@ -2189,12 +2325,19 @@ public:
         switch (op()) {
         case GetIndexedPropertyStorage:
         case GetArrayLength:
+        case GetTypedArrayLengthAsInt52:
+        case GetTypedArrayByteOffset:
+        case GetTypedArrayByteOffsetAsInt52:
         case GetVectorLength:
         case InByVal:
         case PutByValDirect:
         case PutByVal:
         case PutByValAlias:
         case GetByVal:
+        case EnumeratorNextUpdateIndexAndMode:
+        case EnumeratorGetByVal:
+        case EnumeratorInByVal:
+        case EnumeratorHasOwnProperty:
         case StringCharAt:
         case StringCharCodeAt:
         case StringCodePointAt:
@@ -2215,6 +2358,7 @@ public:
         case AtomicsStore:
         case AtomicsSub:
         case AtomicsXor:
+        case NewArrayWithSpecies:
             return true;
         default:
             return false;
@@ -2226,6 +2370,8 @@ public:
         ASSERT(hasArrayMode());
         if (op() == ArrayifyToStructure)
             return ArrayMode::fromWord(m_opInfo2.as<uint32_t>());
+        if (op() == NewArrayWithSpecies)
+            return ArrayMode::fromWord(newArrayWithSpeciesData().arrayMode);
         return ArrayMode::fromWord(m_opInfo.as<uint32_t>());
     }
     
@@ -2234,6 +2380,12 @@ public:
         ASSERT(hasArrayMode());
         if (this->arrayMode() == arrayMode)
             return false;
+        if (op() == NewArrayWithSpecies) {
+            auto data = newArrayWithSpeciesData();
+            data.arrayMode = arrayMode.asWord();
+            m_opInfo = data.asQuadWord();
+            return true;
+        }
         m_opInfo = arrayMode.asWord();
         return true;
     }
@@ -2241,7 +2393,7 @@ public:
     bool hasECMAMode()
     {
         switch (op()) {
-        case CallEval:
+        case CallDirectEval:
         case DeleteById:
         case DeleteByVal:
         case PutById:
@@ -2264,7 +2416,7 @@ public:
     {
         ASSERT(hasECMAMode());
         switch (op()) {
-        case CallEval:
+        case CallDirectEval:
         case DeleteByVal:
         case PutByValWithThis:
         case ToThis:
@@ -2285,6 +2437,19 @@ public:
         }
     }
     
+    bool hasPrivateFieldPutKind()
+    {
+        if (op() == PutPrivateName || op() == PutPrivateNameById)
+            return true;
+        return false;
+    }
+
+    PrivateFieldPutKind privateFieldPutKind()
+    {
+        ASSERT(hasPrivateFieldPutKind());
+        return PrivateFieldPutKind::fromByte(m_opInfo2.as<uint8_t>());
+    }
+
     bool hasArithMode()
     {
         switch (op()) {
@@ -2773,6 +2938,21 @@ public:
     {
         return isNotCellNorBigIntSpeculation(prediction());
     }
+
+    bool shouldSpeculateNotDouble()
+    {
+        return isNotDoubleSpeculation(prediction());
+    }
+
+    bool shouldSpeculateNeitherDoubleNorHeapBigIntNorString()
+    {
+        return isNeitherDoubleNorHeapBigIntNorStringSpeculation(prediction());
+    }
+
+    bool shouldSpeculateNeitherDoubleNorHeapBigInt()
+    {
+        return isNeitherDoubleNorHeapBigIntSpeculation(prediction());
+    }
     
     bool shouldSpeculateUntypedForArithmetic()
     {
@@ -2982,23 +3162,6 @@ public:
         return nullptr;
     }
 
-    bool hasInternalMethodType() const
-    {
-        return op() == HasIndexedProperty;
-    }
-
-    PropertySlot::InternalMethodType internalMethodType() const
-    {
-        ASSERT(hasInternalMethodType());
-        return static_cast<PropertySlot::InternalMethodType>(m_opInfo2.as<uint32_t>());
-    }
-
-    void setInternalMethodType(PropertySlot::InternalMethodType type)
-    {
-        ASSERT(hasInternalMethodType());
-        m_opInfo2 = static_cast<uint32_t>(type);
-    }
-
     Node* replacement() const
     {
         return m_misc.replacement;
@@ -3102,26 +3265,26 @@ public:
         return m_opInfo.as<GetByStatus*>();
     }
     
-    bool hasInByIdStatus()
+    bool hasInByStatus()
     {
-        return op() == FilterInByIdStatus;
+        return op() == FilterInByStatus;
     }
     
-    InByIdStatus* inByIdStatus()
+    InByStatus* inByStatus()
     {
-        ASSERT(hasInByIdStatus());
-        return m_opInfo.as<InByIdStatus*>();
+        ASSERT(hasInByStatus());
+        return m_opInfo.as<InByStatus*>();
     }
     
-    bool hasPutByIdStatus()
+    bool hasPutByStatus()
     {
-        return op() == FilterPutByIdStatus;
+        return op() == FilterPutByStatus;
     }
     
-    PutByIdStatus* putByIdStatus()
+    PutByStatus* putByStatus()
     {
-        ASSERT(hasPutByIdStatus());
-        return m_opInfo.as<PutByIdStatus*>();
+        ASSERT(hasPutByStatus());
+        return m_opInfo.as<PutByStatus*>();
     }
 
     bool hasDeleteByStatus()
@@ -3133,6 +3296,53 @@ public:
     {
         ASSERT(hasDeleteByStatus());
         return m_opInfo.as<DeleteByStatus*>();
+    }
+
+    bool hasCheckPrivateBrandStatus()
+    {
+        return op() == FilterCheckPrivateBrandStatus;
+    }
+
+    CheckPrivateBrandStatus* checkPrivateBrandStatus()
+    {
+        ASSERT(hasCheckPrivateBrandStatus());
+        return m_opInfo.as<CheckPrivateBrandStatus*>();
+    }
+
+    bool hasSetPrivateBrandStatus()
+    {
+        return op() == FilterSetPrivateBrandStatus;
+    }
+
+    SetPrivateBrandStatus* setPrivateBrandStatus()
+    {
+        ASSERT(hasSetPrivateBrandStatus());
+        return m_opInfo.as<SetPrivateBrandStatus*>();
+    }
+
+    bool hasEnumeratorMetadata() const
+    {
+        switch (op()) {
+        case EnumeratorNextUpdateIndexAndMode:
+        case EnumeratorNextUpdatePropertyName:
+        case EnumeratorHasOwnProperty:
+        case EnumeratorInByVal:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    OptionSet<JSPropertyNameEnumerator::Flag> enumeratorMetadata()
+    {
+        ASSERT(hasEnumeratorMetadata());
+        return OptionSet<JSPropertyNameEnumerator::Flag>::fromRaw(m_opInfo2.as<unsigned>());
+    }
+
+    void resetOpInfo()
+    {
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
     }
 
     void dumpChildren(PrintStream& out)
@@ -3273,6 +3483,11 @@ private:
         ALWAYS_INLINE NewArrayBufferData asNewArrayBufferData() const
         {
             return bitwise_cast<NewArrayBufferData>(u.int64);
+        }
+
+        ALWAYS_INLINE NewArrayWithSpeciesData asNewArrayWithSpeciesData() const
+        {
+            return bitwise_cast<NewArrayWithSpeciesData>(u.int64);
         }
 
         union {

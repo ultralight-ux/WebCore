@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,9 +25,9 @@
 
 #pragma once
 
+#include "ScreenDataOverrides.h"
 #include <wtf/text/StringView.h>
 #include <wtf/text/WTFString.h>
-
 namespace WebCore {
 
 namespace VPConfigurationLevel {
@@ -125,6 +125,7 @@ struct VPCodecConfigurationRecord {
     uint8_t matrixCoefficients { VPConfigurationMatrixCoefficients::BT_709_6 };
 };
 
-WEBCORE_EXPORT Optional<VPCodecConfigurationRecord> parseVPCodecParameters(StringView codecString);
+WEBCORE_EXPORT std::optional<VPCodecConfigurationRecord> parseVPCodecParameters(StringView codecString);
+
 
 }

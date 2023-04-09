@@ -25,12 +25,6 @@
 
 WI.EditableDataGridNode = class EditableDataGridNode extends WI.DataGridNode
 {
-    constructor(data)
-    {
-        const hasChildren = false;
-        super(data, hasChildren);
-    }
-
     // Public
 
     get element()
@@ -52,6 +46,7 @@ WI.EditableDataGridNode = class EditableDataGridNode extends WI.DataGridNode
             return content;
 
         let inputElement = document.createElement("input");
+        inputElement.spellcheck = false;
         inputElement.value = content;
         inputElement.addEventListener("keypress", this._handleKeyPress.bind(this, columnIdentifier));
         inputElement.addEventListener("blur", this._handleBlur.bind(this, columnIdentifier));

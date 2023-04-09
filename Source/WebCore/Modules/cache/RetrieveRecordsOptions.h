@@ -26,56 +26,23 @@
 
 #pragma once
 
+#include "CrossOriginEmbedderPolicy.h"
 #include "ResourceRequest.h"
+#include "SecurityOrigin.h"
 
 namespace WebCore {
 
 struct RetrieveRecordsOptions {
-    RetrieveRecordsOptions isolatedCopy() const { return { request.isolatedCopy(), ignoreSearch, ignoreMethod, ignoreVary, shouldProvideResponse }; }
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<RetrieveRecordsOptions> decode(Decoder&);
+    RetrieveRecordsOptions isolatedCopy() const & { return { request.isolatedCopy(), crossOriginEmbedderPolicy.isolatedCopy(), sourceOrigin->isolatedCopy(), ignoreSearch, ignoreMethod, ignoreVary, shouldProvideResponse }; }
+    RetrieveRecordsOptions isolatedCopy() && { return { WTFMove(request).isolatedCopy(), WTFMove(crossOriginEmbedderPolicy).isolatedCopy(), sourceOrigin->isolatedCopy(), ignoreSearch, ignoreMethod, ignoreVary, shouldProvideResponse }; }
 
     ResourceRequest request;
+    CrossOriginEmbedderPolicy crossOriginEmbedderPolicy;
+    Ref<SecurityOrigin> sourceOrigin;
     bool ignoreSearch { false };
     bool ignoreMethod { false };
     bool ignoreVary { false };
     bool shouldProvideResponse { true };
 };
-
-template<class Encoder> inline void RetrieveRecordsOptions::encode(Encoder& encoder) const
-{
-    encoder << request << ignoreSearch << ignoreMethod << ignoreVary << shouldProvideResponse;
-}
-
-template<class Decoder> inline Optional<RetrieveRecordsOptions> RetrieveRecordsOptions::decode(Decoder& decoder)
-{
-    Optional<ResourceRequest> request;
-    decoder >> request;
-    if (!request)
-        return WTF::nullopt;
-
-    Optional<bool> ignoreSearch;
-    decoder >> ignoreSearch;
-    if (!ignoreSearch)
-        return WTF::nullopt;
-
-    Optional<bool> ignoreMethod;
-    decoder >> ignoreMethod;
-    if (!ignoreMethod)
-        return WTF::nullopt;
-
-    Optional<bool> ignoreVary;
-    decoder >> ignoreVary;
-    if (!ignoreVary)
-        return WTF::nullopt;
-
-    Optional<bool> shouldProvideResponse;
-    decoder >> shouldProvideResponse;
-    if (!shouldProvideResponse)
-        return WTF::nullopt;
-
-    return { { WTFMove(*request), WTFMove(*ignoreSearch), WTFMove(*ignoreMethod), WTFMove(*ignoreVary), WTFMove(*shouldProvideResponse) } };
-}
 
 } // namespace WebCore

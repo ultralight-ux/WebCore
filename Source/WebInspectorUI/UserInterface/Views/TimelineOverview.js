@@ -34,11 +34,9 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         this._timelinesViewModeSettings = this._createViewModeSettings(WI.TimelineOverview.ViewMode.Timelines, WI.TimelineOverview.MinimumDurationPerPixel, WI.TimelineOverview.MaximumDurationPerPixel, 0.01, 0, 15);
         this._instrumentTypes = WI.TimelineManager.availableTimelineTypes();
 
-        if (WI.FPSInstrument.supported()) {
-            let minimumDurationPerPixel = 1 / WI.TimelineRecordFrame.MaximumWidthPixels;
-            let maximumDurationPerPixel = 1 / WI.TimelineRecordFrame.MinimumWidthPixels;
-            this._renderingFramesViewModeSettings = this._createViewModeSettings(WI.TimelineOverview.ViewMode.RenderingFrames, minimumDurationPerPixel, maximumDurationPerPixel, minimumDurationPerPixel, 0, 100);
-        }
+        let minimumDurationPerPixel = 1 / WI.TimelineRecordFrame.MaximumWidthPixels;
+        let maximumDurationPerPixel = 1 / WI.TimelineRecordFrame.MinimumWidthPixels;
+        this._renderingFramesViewModeSettings = this._createViewModeSettings(WI.TimelineOverview.ViewMode.RenderingFrames, minimumDurationPerPixel, maximumDurationPerPixel, minimumDurationPerPixel, 0, 100);
 
         this._recording = timelineRecording;
         this._recording.addEventListener(WI.TimelineRecording.Event.InstrumentAdded, this._instrumentAdded, this);
@@ -57,13 +55,14 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         this._selectedTimelineRecord = null;
         this._overviewGraphsByTypeMap = new Map;
 
-        this._editInstrumentsButton = new WI.ActivateButtonNavigationItem("toggle-edit-instruments", WI.UIString("Edit configuration"), WI.UIString("Save configuration"));
+        this._editInstrumentsButton = new WI.ActivateButtonNavigationItem("toggle-edit-instruments", WI.UIString("Edit configuration"), WI.UIString("Save configuration"), "Images/Pencil.svg", 16, 16);
         this._editInstrumentsButton.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._toggleEditingInstruments, this);
         this._editingInstruments = false;
         this._updateEditInstrumentsButton();
 
         let instrumentsNavigationBar = new WI.NavigationBar;
         instrumentsNavigationBar.element.classList.add("timelines");
+        instrumentsNavigationBar.addNavigationItem(new WI.TextNavigationItem("enabled-timelines", WI.UIString("Enabled Timelines", "Enabled Timelines @ Timelines Tab", "Label for column showing the list of enabled timelines.")));
         instrumentsNavigationBar.addNavigationItem(new WI.FlexibleSpaceNavigationItem);
         instrumentsNavigationBar.addNavigationItem(this._editInstrumentsButton);
         this.addSubview(instrumentsNavigationBar);
@@ -176,9 +175,6 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
 
     set viewMode(x)
     {
-        if (this._editingInstruments)
-            return;
-
         if (this._viewMode === x)
             return;
 
@@ -348,42 +344,38 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
     {
         let height = 0;
         for (let overviewGraph of this._overviewGraphsByTypeMap.values()) {
-            if (overviewGraph.visible)
+            if (!overviewGraph.hidden)
                 height += overviewGraph.height;
         }
         return height;
     }
 
-    get visible()
+    attached()
     {
-        return this._visible;
-    }
-
-    shown()
-    {
-        this._visible = true;
+        super.attached();
 
         for (let [type, overviewGraph] of this._overviewGraphsByTypeMap) {
             if (this._canShowTimelineType(type))
-                overviewGraph.shown();
+                overviewGraph.hidden = false;
         }
 
-        this.updateLayout(WI.View.LayoutReason.Resize);
+        this.needsLayout(WI.View.LayoutReason.Resize);
     }
 
-    hidden()
+    detached()
     {
-        this._visible = false;
-
         for (let overviewGraph of this._overviewGraphsByTypeMap.values())
-            overviewGraph.hidden();
+            overviewGraph.hidden = true;
 
         this.hideScanner();
+
+        super.detached();
     }
 
     closed()
     {
-        WI.timelineManager.removeEventListener(null, null, this);
+        WI.timelineManager.removeEventListener(WI.TimelineManager.Event.CapturingStateChanged, this._handleTimelineCapturingStateChanged, this);
+        WI.timelineManager.removeEventListener(WI.TimelineManager.Event.RecordingImported, this._recordingImported, this);
 
         super.closed();
     }
@@ -411,7 +403,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         if (!overviewGraph)
             return;
 
-        console.assert(overviewGraph.visible, "Record filtered in hidden overview graph", record);
+        console.assert(!overviewGraph.hidden, "Record filtered in hidden overview graph", record);
 
         overviewGraph.recordWasFiltered(record, filtered);
     }
@@ -423,7 +415,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         if (!overviewGraph)
             return;
 
-        console.assert(overviewGraph.visible, "Record selected in hidden overview graph", record);
+        console.assert(!overviewGraph.hidden, "Record selected in hidden overview graph", record);
 
         overviewGraph.selectedRecord = record;
     }
@@ -448,7 +440,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         this._timelineRuler.updateLayoutIfNeeded(layoutReason);
 
         for (let overviewGraph of this._overviewGraphsByTypeMap.values()) {
-            if (overviewGraph.visible)
+            if (!overviewGraph.hidden)
                 overviewGraph.updateLayoutIfNeeded(layoutReason);
         }
     }
@@ -511,7 +503,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         }
 
         for (let overviewGraph of this._overviewGraphsByTypeMap.values()) {
-            if (!overviewGraph.visible)
+            if (overviewGraph.hidden)
                 continue;
 
             overviewGraph.zeroTime = startTime;
@@ -671,7 +663,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
         treeElement.element.style.height = overviewGraph.height + "px";
 
         if (!this._canShowTimelineType(timeline.type)) {
-            overviewGraph.hidden();
+            overviewGraph.hidden = true;
             treeElement.hidden = true;
         }
 
@@ -724,7 +716,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
             return;
 
         for (let overviewGraph of this._overviewGraphsByTypeMap.values()) {
-            if (!overviewGraph.visible)
+            if (overviewGraph.hidden)
                 continue;
 
             let graphRect = overviewGraph.element.getBoundingClientRect();
@@ -815,6 +807,7 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
     _recordingReset(event)
     {
         this._timelineRuler.clearMarkers();
+
         this._timelineRuler.addMarker(this._currentTimeMarker);
     }
 
@@ -829,6 +822,8 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
 
     _viewModeDidChange()
     {
+        this._stopEditingInstruments();
+
         let startTime = 0;
         let isRenderingFramesMode = this._viewMode === WI.TimelineOverview.ViewMode.RenderingFrames;
         if (isRenderingFramesMode) {
@@ -851,16 +846,15 @@ WI.TimelineOverview = class TimelineOverview extends WI.View
             let treeElement = this._treeElementsByTypeMap.get(type);
             console.assert(treeElement, "Missing tree element for timeline type", type);
 
-            treeElement.hidden = !this._canShowTimelineType(type);
-            if (treeElement.hidden)
-                overviewGraph.hidden();
-            else
-                overviewGraph.shown();
+            let hidden = !this._canShowTimelineType(type);
+            treeElement.hidden = hidden;
+            overviewGraph.hidden = hidden;
         }
 
         this.element.classList.toggle("frames", isRenderingFramesMode);
 
-        this.updateLayout(WI.View.LayoutReason.Resize);
+        if (this.didInitialLayout)
+            this.updateLayout(WI.View.LayoutReason.Resize);
     }
 
     _createViewModeSettings(viewMode, minimumDurationPerPixel, maximumDurationPerPixel, durationPerPixel, selectionStartValue, selectionDuration)

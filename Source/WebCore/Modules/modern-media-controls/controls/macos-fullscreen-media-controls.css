@@ -26,8 +26,7 @@
 /* Controls bar */
 
 .media-controls.mac.fullscreen {
-    --controls-bar-width: 468px;
-    --tracks-panel-right-margin: 40px;
+    --controls-bar-width: 468px; /* Keep in sync with `minVideoWidth`. */
 
     width: 100% !important;
     height: 100% !important;
@@ -42,7 +41,7 @@
 
 /* Volume controls */
 
-.media-controls.mac.fullscreen:not(.uses-ltr-user-interface-layout-direction) :is(.volume-down, .volume.slider, .volume-up) {
+.media-controls.mac.fullscreen:not(.uses-ltr-user-interface-layout-direction) .volume.slider {
     transform: scaleX(-1);
 }
 

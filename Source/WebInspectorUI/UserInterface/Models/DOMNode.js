@@ -36,6 +36,8 @@ WI.DOMNode = class DOMNode extends WI.Object
     {
         super();
 
+        this._destroyed = false;
+
         this._domManager = domManager;
         this._isInShadowTree = isInShadowTree;
 
@@ -51,6 +53,10 @@ WI.DOMNode = class DOMNode extends WI.Object
         this._computedRole = null;
         this._contentSecurityPolicyHash = payload.contentSecurityPolicyHash;
 
+        this._layoutFlags = [];
+        this._layoutOverlayShowing = false;
+        this._layoutOverlayColorSetting = null;
+
         if (this._nodeType === Node.DOCUMENT_NODE)
             this.ownerDocument = this;
         else
@@ -59,7 +65,9 @@ WI.DOMNode = class DOMNode extends WI.Object
         this._frame = null;
 
         // COMPATIBILITY (iOS 12.2): DOM.Node.frameId was changed to represent the owner frame, not the content frame.
-        if (InspectorBackend.domains.Timeline && !InspectorBackend.domains.Timeline.hasEvent("programmaticCaptureStarted")) {
+        // Since support can't be tested directly, check for Audit (iOS 13.0+).
+        // FIXME: Use explicit version checking once https://webkit.org/b/148680 is fixed.
+        if (InspectorBackend.hasDomain("Audit")) {
             if (payload.frameId)
                 this._frame = WI.networkManager.frameForIdentifier(payload.frameId);
         }
@@ -74,8 +82,6 @@ WI.DOMNode = class DOMNode extends WI.Object
 
         this._childNodeCount = payload.childNodeCount;
         this._children = null;
-        this._filteredChildren = null;
-        this._filteredChildrenNeedsUpdating = true;
 
         this._nextSibling = null;
         this._previousSibling = null;
@@ -149,11 +155,27 @@ WI.DOMNode = class DOMNode extends WI.Object
         this._domEvents = [];
         this._powerEfficientPlaybackRanges = [];
 
-        if (this._shouldListenForEventListeners())
+        if (this.isMediaElement())
             WI.DOMNode.addEventListener(WI.DOMNode.Event.DidFireEvent, this._handleDOMNodeDidFireEvent, this);
+
+        // COMPATIBILITY (macOS 13.0, iOS 16.0): CSS.LayoutContextType was renamed/expanded to CSS.LayoutFlag.
+        if (!InspectorBackend.Enum.CSS.LayoutFlag) {
+            let layoutFlags = [WI.DOMNode.LayoutFlag.Rendered];
+            if (payload.layoutContextType)
+                layoutFlags.push(payload.layoutContextType);
+            this.layoutFlags = layoutFlags;
+        } else
+            this.layoutFlags = payload.layoutFlags;
     }
 
     // Static
+
+    static resetDefaultLayoutOverlayConfiguration()
+    {
+        let configuration = WI.DOMNode._defaultLayoutOverlayConfiguration;
+        configuration.nextFlexColorIndex = 0;
+        configuration.nextGridColorIndex = 0;
+    }
 
     static getFullscreenDOMEvents(domEvents)
     {
@@ -186,35 +208,25 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     // Public
 
+    get destroyed() { return this._destroyed; }
     get frame() { return this._frame; }
+    get nextSibling() { return this._nextSibling; }
+    get previousSibling() { return this._previousSibling; }
+    get children() { return this._children; }
     get domEvents() { return this._domEvents; }
     get powerEfficientPlaybackRanges() { return this._powerEfficientPlaybackRanges; }
+    get layoutOverlayShowing() { return this._layoutOverlayShowing; }
 
     get attached()
     {
+        if (this._destroyed)
+            return false;
+
         for (let node = this; node; node = node.parentNode) {
             if (node.ownerDocument === node)
                 return true;
         }
         return false;
-    }
-
-    get children()
-    {
-        if (!this._children)
-            return null;
-
-        if (WI.settings.showShadowDOM.value)
-            return this._children;
-
-        if (this._filteredChildrenNeedsUpdating) {
-            this._filteredChildrenNeedsUpdating = false;
-            this._filteredChildren = this._children.filter(function(node) {
-                return !node._isInShadowTree;
-            });
-        }
-
-        return this._filteredChildren;
     }
 
     get firstChild()
@@ -237,49 +249,71 @@ WI.DOMNode = class DOMNode extends WI.Object
         return null;
     }
 
-    get nextSibling()
-    {
-        if (WI.settings.showShadowDOM.value)
-            return this._nextSibling;
-
-        var node = this._nextSibling;
-        while (node) {
-            if (!node._isInShadowTree)
-                return node;
-            node = node._nextSibling;
-        }
-        return null;
-    }
-
-    get previousSibling()
-    {
-        if (WI.settings.showShadowDOM.value)
-            return this._previousSibling;
-
-        var node = this._previousSibling;
-        while (node) {
-            if (!node._isInShadowTree)
-                return node;
-            node = node._previousSibling;
-        }
-        return null;
-    }
-
     get childNodeCount()
     {
         var children = this.children;
         if (children)
             return children.length;
 
-        if (WI.settings.showShadowDOM.value)
-            return this._childNodeCount + this._shadowRoots.length;
-
-        return this._childNodeCount;
+        return this._childNodeCount + this._shadowRoots.length;
     }
 
     set childNodeCount(count)
     {
         this._childNodeCount = count;
+    }
+
+    get layoutFlags()
+    {
+        return this._layoutFlags;
+    }
+
+    set layoutFlags(layoutFlags)
+    {
+        layoutFlags ||= [];
+        console.assert(Array.isArray(layoutFlags), layoutFlags);
+        console.assert(layoutFlags.every((layoutFlag) => Object.values(WI.DOMNode.LayoutFlag).includes(layoutFlag)), layoutFlags);
+        console.assert(layoutFlags.filter((layoutFlag) => WI.DOMNode._LayoutContextTypes.includes(layoutFlag)).length <= 1, layoutFlags);
+        console.assert(!layoutFlags.length || !Array.shallowEqual(layoutFlags, this._layoutFlags), layoutFlags);
+
+        let oldLayoutContextType = this.layoutContextType;
+
+        this._layoutFlags = layoutFlags;
+
+        this.dispatchEventToListeners(WI.DOMNode.Event.LayoutFlagsChanged);
+
+        if (!this._layoutOverlayShowing)
+            return;
+
+        // The overlay is automatically hidden on the backend when the context type changes.
+        this.dispatchEventToListeners(WI.DOMNode.Event.LayoutOverlayHidden);
+
+        switch (oldLayoutContextType) {
+        case WI.DOMNode.LayoutFlag.Flex:
+            WI.settings.flexOverlayShowOrderNumbers.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            break;
+
+        case WI.DOMNode.LayoutFlag.Grid:
+            WI.settings.gridOverlayShowExtendedGridLines.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowLineNames.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowLineNumbers.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowTrackSizes.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowAreaNames.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            break;
+        }
+    }
+
+    get layoutContextType()
+    {
+        return this._layoutFlags.find((layoutFlag) => WI.DOMNode._LayoutContextTypes.includes(layoutFlag)) || null;
+    }
+
+    markDestroyed()
+    {
+        console.assert(!this._destroyed, this);
+        this._destroyed = true;
+
+        this.layoutFlags = [];
     }
 
     computedRole()
@@ -376,7 +410,14 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     setNodeName(name, callback)
     {
-        DOMAgent.setNodeName(this.id, name, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.setNodeName(this.id, name, this._makeUndoableCallback(callback));
     }
 
     localName()
@@ -431,7 +472,14 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     setNodeValue(value, callback)
     {
-        DOMAgent.setNodeValue(this.id, value, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.setNodeValue(this.id, value, this._makeUndoableCallback(callback));
     }
 
     getAttribute(name)
@@ -442,12 +490,36 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     setAttribute(name, text, callback)
     {
-        DOMAgent.setAttributesAsText(this.id, text, name, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.setAttributesAsText(this.id, text, name, this._makeUndoableCallback(callback));
     }
 
     setAttributeValue(name, value, callback)
     {
-        DOMAgent.setAttributeValue(this.id, name, value, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            if (!callback)
+                return Promise.reject("ERROR: node is destroyed");
+
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+
+        if (!callback) {
+            return target.DOMAgent.setAttributeValue(this.id, name, value).then(() => {
+                this._markUndoableState();
+            });
+        }
+
+        target.DOMAgent.setAttributeValue(this.id, name, value, this._makeUndoableCallback(callback));
     }
 
     attributes()
@@ -457,6 +529,12 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     removeAttribute(name, callback)
     {
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
         function mycallback(error, success)
         {
             if (!error) {
@@ -471,7 +549,9 @@ WI.DOMNode = class DOMNode extends WI.Object
 
             this._makeUndoableCallback(callback)(error);
         }
-        DOMAgent.removeAttribute(this.id, name, mycallback.bind(this));
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.removeAttribute(this.id, name, mycallback.bind(this));
     }
 
     toggleClass(className, flag)
@@ -497,6 +577,168 @@ WI.DOMNode = class DOMNode extends WI.Object
         });
     }
 
+    querySelector(selector, callback)
+    {
+        console.assert(!this._destroyed, this);
+
+        let target = WI.assumingMainTarget();
+
+        if (typeof callback !== "function") {
+            if (this._destroyed)
+                return Promise.reject("ERROR: node is destroyed");
+            return target.DOMAgent.querySelector(this.id, selector).then(({nodeId}) => nodeId);
+        }
+
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        target.DOMAgent.querySelector(this.id, selector, WI.DOMManager.wrapClientCallback(callback));
+    }
+
+    querySelectorAll(selector, callback)
+    {
+        console.assert(!this._destroyed, this);
+
+        let target = WI.assumingMainTarget();
+
+        if (typeof callback !== "function") {
+            if (this._destroyed)
+                return Promise.reject("ERROR: node is destroyed");
+            return target.DOMAgent.querySelectorAll(this.id, selector).then(({nodeIds}) => nodeIds);
+        }
+
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        target.DOMAgent.querySelectorAll(this.id, selector, WI.DOMManager.wrapClientCallback(callback));
+    }
+
+    highlight(mode)
+    {
+        if (this._destroyed)
+            return;
+
+        if (this._hideDOMNodeHighlightTimeout) {
+            clearTimeout(this._hideDOMNodeHighlightTimeout);
+            this._hideDOMNodeHighlightTimeout = undefined;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.highlightNode(WI.DOMManager.buildHighlightConfig(mode), this.id);
+    }
+
+    showLayoutOverlay({color} = {})
+    {
+        console.assert(!this._destroyed, this);
+        if (this._destroyed)
+            return Promise.reject("ERROR: node is destroyed");
+
+        console.assert(Object.values(WI.DOMNode._LayoutContextTypes).includes(this.layoutContextType), this);
+
+        console.assert(!color || color instanceof WI.Color, color);
+        color ||= this.layoutOverlayColor;
+
+        let target = WI.assumingMainTarget();
+        let agentCommandFunction = null;
+        let agentCommandArguments = {nodeId: this.id};
+
+        switch (this.layoutContextType) {
+        case WI.DOMNode.LayoutFlag.Grid:
+            agentCommandArguments.gridColor = color.toProtocol();
+            agentCommandArguments.showLineNames = WI.settings.gridOverlayShowLineNames.value;
+            agentCommandArguments.showLineNumbers = WI.settings.gridOverlayShowLineNumbers.value;
+            agentCommandArguments.showExtendedGridLines = WI.settings.gridOverlayShowExtendedGridLines.value;
+            agentCommandArguments.showTrackSizes = WI.settings.gridOverlayShowTrackSizes.value;
+            agentCommandArguments.showAreaNames = WI.settings.gridOverlayShowAreaNames.value;
+            agentCommandFunction = target.DOMAgent.showGridOverlay;
+
+            if (!this._layoutOverlayShowing) {
+                WI.settings.gridOverlayShowExtendedGridLines.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+                WI.settings.gridOverlayShowLineNames.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+                WI.settings.gridOverlayShowLineNumbers.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+                WI.settings.gridOverlayShowTrackSizes.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+                WI.settings.gridOverlayShowAreaNames.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            }
+            break;
+
+        case WI.DOMNode.LayoutFlag.Flex:
+            agentCommandArguments.flexColor = color.toProtocol();
+            agentCommandArguments.showOrderNumbers = WI.settings.flexOverlayShowOrderNumbers.value;
+            agentCommandFunction = target.DOMAgent.showFlexOverlay;
+
+            if (!this._layoutOverlayShowing)
+                WI.settings.flexOverlayShowOrderNumbers.addEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            break;
+        }
+
+        this._layoutOverlayShowing = true;
+
+        this.dispatchEventToListeners(WI.DOMNode.Event.LayoutOverlayShown);
+
+        console.assert(agentCommandFunction);
+        return agentCommandFunction.invoke(agentCommandArguments);
+    }
+
+    hideLayoutOverlay()
+    {
+        console.assert(!this._destroyed, this);
+        if (this._destroyed)
+            return Promise.reject("ERROR: node is destroyed");
+
+        console.assert(Object.values(WI.DOMNode._LayoutContextTypes).includes(this.layoutContextType), this);
+
+        let target = WI.assumingMainTarget();
+        let agentCommandFunction;
+        let agentCommandArguments = {nodeId: this.id};
+
+        switch (this.layoutContextType) {
+        case WI.DOMNode.LayoutFlag.Grid:
+            WI.settings.gridOverlayShowExtendedGridLines.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowLineNames.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowLineNumbers.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowTrackSizes.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+            WI.settings.gridOverlayShowAreaNames.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+
+            agentCommandFunction = target.DOMAgent.hideGridOverlay;
+            break;
+
+        case WI.DOMNode.LayoutFlag.Flex:
+            WI.settings.flexOverlayShowOrderNumbers.removeEventListener(WI.Setting.Event.Changed, this._handleLayoutOverlaySettingChanged, this);
+
+            agentCommandFunction = target.DOMAgent.hideFlexOverlay;
+            break;
+        }
+
+        console.assert(this._layoutOverlayShowing, this);
+        this._layoutOverlayShowing = false;
+
+        this.dispatchEventToListeners(WI.DOMNode.Event.LayoutOverlayHidden);
+
+        console.assert(agentCommandFunction);
+        return agentCommandFunction.invoke(agentCommandArguments);
+    }
+
+    get layoutOverlayColor()
+    {
+        this._createLayoutOverlayColorSettingIfNeeded();
+        return new WI.Color(WI.Color.Format.HSL, this._layoutOverlayColorSetting.value);
+    }
+
+    set layoutOverlayColor(color)
+    {
+        console.assert(color instanceof WI.Color, color);
+
+        this._createLayoutOverlayColorSettingIfNeeded();
+        this._layoutOverlayColorSetting.value = color.hsl;
+
+        if (this._layoutOverlayShowing)
+            this.showLayoutOverlay({color});
+    }
+
     scrollIntoView()
     {
         WI.RemoteObject.resolveNode(this).then((object) => {
@@ -517,79 +759,119 @@ WI.DOMNode = class DOMNode extends WI.Object
             return;
         }
 
+        if (this._destroyed) {
+            callback(this.children);
+            return;
+        }
+
         function mycallback(error) {
             if (!error && callback)
                 callback(this.children);
         }
 
-        DOMAgent.requestChildNodes(this.id, mycallback.bind(this));
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.requestChildNodes(this.id, mycallback.bind(this));
     }
 
     getSubtree(depth, callback)
     {
+        if (this._destroyed) {
+            callback(this.children);
+            return;
+        }
+
         function mycallback(error)
         {
             if (callback)
                 callback(error ? null : this.children);
         }
 
-        DOMAgent.requestChildNodes(this.id, depth, mycallback.bind(this));
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.requestChildNodes(this.id, depth, mycallback.bind(this));
     }
 
     getOuterHTML(callback)
     {
-        DOMAgent.getOuterHTML(this.id, callback);
+        console.assert(!this._destroyed, this);
+
+        let target = WI.assumingMainTarget();
+
+        if (typeof callback !== "function") {
+            if (this._destroyed)
+                return Promise.reject("ERROR: node is destroyed");
+            return target.DOMAgent.getOuterHTML(this.id).then(({outerHTML}) => outerHTML);
+        }
+
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        target.DOMAgent.getOuterHTML(this.id, callback);
     }
 
     setOuterHTML(html, callback)
     {
-        DOMAgent.setOuterHTML(this.id, html, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.setOuterHTML(this.id, html, this._makeUndoableCallback(callback));
     }
 
     insertAdjacentHTML(position, html)
     {
+        console.assert(!this._destroyed, this);
+        if (this._destroyed)
+            return;
+
         if (this.nodeType() !== Node.ELEMENT_NODE)
             return;
 
-        // COMPATIBILITY (iOS 11.0): DOM.insertAdjacentHTML did not exist.
-        if (!DOMAgent.insertAdjacentHTML) {
-            WI.RemoteObject.resolveNode(this).then((object) => {
-                function inspectedPage_node_insertAdjacentHTML(position, html) {
-                    this.insertAdjacentHTML(position, html);
-                }
-
-                object.callFunction(inspectedPage_node_insertAdjacentHTML, [position, html]);
-                object.release();
-            });
-            return;
-        }
-
-        DOMAgent.insertAdjacentHTML(this.id, position, html, this._makeUndoableCallback());
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.insertAdjacentHTML(this.id, position, html, this._makeUndoableCallback());
     }
 
     removeNode(callback)
     {
-        DOMAgent.removeNode(this.id, this._makeUndoableCallback(callback));
-    }
-
-    copyNode()
-    {
-        function copy(error, text)
-        {
-            if (!error)
-                InspectorFrontendHost.copyText(text);
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
         }
-        DOMAgent.getOuterHTML(this.id, copy);
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.removeNode(this.id, this._makeUndoableCallback(callback));
     }
 
-    getEventListeners(callback)
+    getEventListeners({includeAncestors} = {})
     {
-        console.assert(WI.domManager.inspectedNode === this);
-        DOMAgent.getEventListenersForNode(this.id, callback);
+        console.assert(!this._destroyed, this);
+        if (this._destroyed)
+            return Promise.reject("ERROR: node is destroyed");
+
+        includeAncestors ??= true;
+
+        console.assert(WI.domManager.inspectedNode === this || !includeAncestors, this, includeAncestors);
+
+        let target = WI.assumingMainTarget();
+        return target.DOMAgent.getEventListenersForNode.invoke({
+            nodeId: this.id,
+            includeAncestors,
+        });
     }
 
     accessibilityProperties(callback)
     {
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback({});
+            return;
+        }
+
         function accessibilityPropertiesCallback(error, accessibilityProperties)
         {
             if (!error && callback && accessibilityProperties) {
@@ -631,7 +913,9 @@ WI.DOMNode = class DOMNode extends WI.Object
                 });
             }
         }
-        DOMAgent.getAccessibilityPropertiesForNode(this.id, accessibilityPropertiesCallback.bind(this));
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.getAccessibilityPropertiesForNode(this.id, accessibilityPropertiesCallback.bind(this));
     }
 
     path()
@@ -648,39 +932,12 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     get escapedIdSelector()
     {
-        let id = this.getAttribute("id");
-        if (!id)
-            return "";
-
-        id = id.trim();
-        if (!id.length)
-            return "";
-
-        id = CSS.escape(id);
-        if (/[\s'"]/.test(id))
-            return `[id="${id}"]`;
-
-        return `#${id}`;
+        return this._idSelector(true);
     }
 
     get escapedClassSelector()
     {
-        let classes = this.getAttribute("class");
-        if (!classes)
-            return "";
-
-        classes = classes.trim();
-        if (!classes.length)
-            return "";
-
-        let foundClasses = new Set;
-        return classes.split(/\s+/).reduce((selector, className) => {
-            if (!className.length || foundClasses.has(className))
-                return selector;
-
-            foundClasses.add(className);
-            return `${selector}.${CSS.escape(className)}`;
-        }, "");
+        return this._classSelector(true);
     }
 
     get displayName()
@@ -688,6 +945,15 @@ WI.DOMNode = class DOMNode extends WI.Object
         if (this.isPseudoElement())
             return "::" + this._pseudoType;
         return this.nodeNameInCorrectCase() + this.escapedIdSelector + this.escapedClassSelector;
+    }
+
+    get unescapedSelector()
+    {
+        if (this.isPseudoElement())
+            return "::" + this._pseudoType;
+
+        const shouldEscape = false;
+        return this.nodeNameInCorrectCase() + this._idSelector(shouldEscape) + this._classSelector(shouldEscape);
     }
 
     appropriateSelectorFor(justSelector)
@@ -744,6 +1010,12 @@ WI.DOMNode = class DOMNode extends WI.Object
     isSVGElement()
     {
         return !!this.ownerSVGElement;
+    }
+
+    isMediaElement()
+    {
+        let lowerCaseName = this.localName() || this.nodeName().toLowerCase();
+        return lowerCaseName === "video" || lowerCaseName === "audio";
     }
 
     didFireEvent(eventName, timestamp, data)
@@ -803,12 +1075,6 @@ WI.DOMNode = class DOMNode extends WI.Object
         this.dispatchEventToListeners(WI.DOMNode.Event.DidFireEvent, {domEvent});
     }
 
-    _shouldListenForEventListeners()
-    {
-        let lowerCaseName = this.localName() || this.nodeName().toLowerCase();
-        return lowerCaseName === "video" || lowerCaseName === "audio";
-    }
-
     _setAttributesPayload(attrs)
     {
         this._attributes = [];
@@ -861,8 +1127,6 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     _renumber()
     {
-        this._filteredChildrenNeedsUpdating = true;
-
         var childNodeCount = this._children.length;
         if (childNodeCount === 0)
             return;
@@ -903,7 +1167,14 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     moveTo(targetNode, anchorNode, callback)
     {
-        DOMAgent.moveTo(this.id, targetNode.id, anchorNode ? anchorNode.id : undefined, this._makeUndoableCallback(callback));
+        console.assert(!this._destroyed, this);
+        if (this._destroyed) {
+            callback("ERROR: node is destroyed");
+            return;
+        }
+
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.moveTo(this.id, targetNode.id, anchorNode ? anchorNode.id : undefined, this._makeUndoableCallback(callback));
     }
 
     isXMLNode()
@@ -935,20 +1206,107 @@ WI.DOMNode = class DOMNode extends WI.Object
                 this.dispatchEventToListeners(WI.DOMNode.Event.EnabledPseudoClassesChanged);
         }
 
-        CSSAgent.forcePseudoState(this.id, pseudoClasses, changed.bind(this));
+        let target = WI.assumingMainTarget();
+        target.CSSAgent.forcePseudoState(this.id, pseudoClasses, changed.bind(this));
+    }
+
+    _markUndoableState()
+    {
+        let target = WI.assumingMainTarget();
+        if (target.hasCommand("DOM.markUndoableState"))
+            target.DOMAgent.markUndoableState();
     }
 
     _makeUndoableCallback(callback)
     {
-        return function(error)
-        {
-            if (!error)
-                DOMAgent.markUndoableState();
+        return (...args) => {
+            if (!args[0]) // error
+                this._markUndoableState();
 
             if (callback)
-                callback.apply(null, arguments);
+                callback.apply(null, args);
         };
     }
+
+    _idSelector(shouldEscape)
+    {
+        let id = this.getAttribute("id");
+        if (!id)
+            return "";
+
+        id = id.trim();
+        if (!id.length)
+            return "";
+
+        if (shouldEscape)
+            id = CSS.escape(id);
+        if (/[\s'"]/.test(id))
+            return `[id="${id}"]`;
+
+        return `#${id}`;
+    }
+
+    _classSelector(shouldEscape) {
+        let classes = this.getAttribute("class");
+        if (!classes)
+            return "";
+
+        classes = classes.trim();
+        if (!classes.length)
+            return "";
+
+        let foundClasses = new Set;
+        return classes.split(/\s+/).reduce((selector, className) => {
+            if (!className.length || foundClasses.has(className))
+                return selector;
+
+            foundClasses.add(className);
+            return `${selector}.${(shouldEscape ? CSS.escape(className) : className)}`;
+        }, "");
+    }
+
+    _createLayoutOverlayColorSettingIfNeeded()
+    {
+        if (this._layoutOverlayColorSetting)
+            return;
+
+        let defaultConfiguration = WI.DOMNode._defaultLayoutOverlayConfiguration;
+
+        let url = this.ownerDocument.documentURL || WI.networkManager.mainFrame.url;
+
+        let nextColorIndex;
+        switch (this.layoutContextType) {
+        case WI.DOMNode.LayoutFlag.Grid:
+            nextColorIndex = defaultConfiguration.nextGridColorIndex;
+            defaultConfiguration.nextGridColorIndex = (nextColorIndex + 1) % defaultConfiguration.colors.length;
+            break;
+
+        case WI.DOMNode.LayoutFlag.Flex:
+            nextColorIndex = defaultConfiguration.nextFlexColorIndex;
+            defaultConfiguration.nextFlexColorIndex = (nextColorIndex + 1) % defaultConfiguration.colors.length;
+            break;
+        }
+
+        this._layoutOverlayColorSetting = new WI.Setting(`overlay-color-${url.hash}-${this.path().hash}`, defaultConfiguration.colors[nextColorIndex]);
+    }
+
+    _handleLayoutOverlaySettingChanged(event)
+    {
+        if (this._layoutOverlayShowing)
+            this.showLayoutOverlay();
+    }
+};
+
+WI.DOMNode._defaultLayoutOverlayConfiguration = {
+    colors: [
+        [329, 91, 70],
+        [207, 96, 69],
+        [92, 90, 64],
+        [291, 73, 68],
+        [40, 97, 57],
+    ],
+    nextFlexColorIndex: 0,
+    nextGridColorIndex: 0,
 };
 
 WI.DOMNode.Event = {
@@ -958,6 +1316,9 @@ WI.DOMNode.Event = {
     EventListenersChanged: "dom-node-event-listeners-changed",
     DidFireEvent: "dom-node-did-fire-event",
     PowerEfficientPlaybackStateChanged: "dom-node-power-efficient-playback-state-changed",
+    LayoutFlagsChanged: "dom-node-layout-flags-changed",
+    LayoutOverlayShown: "dom-node-layout-overlay-shown",
+    LayoutOverlayHidden: "dom-node-layout-overlay-hidden",
 };
 
 WI.DOMNode.PseudoElementType = {
@@ -977,3 +1338,19 @@ WI.DOMNode.CustomElementState = {
     Waiting: "waiting",
     Failed: "failed",
 };
+
+// Corresponds to `CSS.LayoutFlag`.
+WI.DOMNode.LayoutFlag = {
+    Rendered: "rendered",
+    Event: "event",
+    Scrollable: "scrollable",
+
+    // These are mutually exclusive.
+    Flex: "flex",
+    Grid: "grid",
+};
+
+WI.DOMNode._LayoutContextTypes = [
+    WI.DOMNode.LayoutFlag.Flex,
+    WI.DOMNode.LayoutFlag.Grid,
+];

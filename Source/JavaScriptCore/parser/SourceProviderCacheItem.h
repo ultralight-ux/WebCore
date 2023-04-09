@@ -34,22 +34,23 @@
 namespace JSC {
 
 struct SourceProviderCacheItemCreationParameters {
-    unsigned lastTokenLine;
-    unsigned lastTokenStartOffset;
-    unsigned lastTokenEndOffset;
-    unsigned lastTokenLineStartOffset;
-    unsigned endFunctionOffset;
-    unsigned parameterCount;
-    bool needsFullActivation;
-    bool usesEval;
-    bool strictMode;
-    bool needsSuperBinding;
-    InnerArrowFunctionCodeFeatures innerArrowFunctionFeatures;
+    unsigned lastTokenLine { 0 };
+    unsigned lastTokenStartOffset { 0 };
+    unsigned lastTokenEndOffset { 0 };
+    unsigned lastTokenLineStartOffset { 0 };
+    unsigned endFunctionOffset { 0 };
+    unsigned parameterCount { 0 };
+    LexicalScopeFeatures lexicalScopeFeatures { 0 };
+    InnerArrowFunctionCodeFeatures innerArrowFunctionFeatures { 0 };
     Vector<UniquedStringImpl*, 8> usedVariables;
-    bool isBodyArrowExpression { false };
     JSTokenType tokenType { CLOSEBRACE };
     ConstructorKind constructorKind;
     SuperBinding expectedSuperBinding;
+    bool needsFullActivation : 1 { false };
+    bool usesEval : 1 { false };
+    bool usesImportMeta : 1 { false };
+    bool needsSuperBinding : 1 { false };
+    bool isBodyArrowExpression : 1 { false };
 };
 
 #if COMPILER(MSVC)
@@ -78,6 +79,14 @@ public:
         return token;
     }
 
+    LexicalScopeFeatures lexicalScopeFeatures() const
+    {
+        LexicalScopeFeatures features = NoLexicalFeatures;
+        if (strictMode)
+            features |= StrictModeLexicalFeature;
+        return features;
+    }
+
     bool needsFullActivation : 1;
     unsigned endFunctionOffset : 31;
     bool usesEval : 1;
@@ -94,6 +103,7 @@ public:
     unsigned tokenType : 24; // JSTokenType
     unsigned innerArrowFunctionFeatures : 6; // InnerArrowFunctionCodeFeatures
     unsigned constructorKind : 2; // ConstructorKind
+    bool usesImportMeta : 1 { false };
 
     PackedPtr<UniquedStringImpl>* usedVariables() const { return const_cast<PackedPtr<UniquedStringImpl>*>(m_variables); }
 
@@ -122,7 +132,7 @@ inline SourceProviderCacheItem::SourceProviderCacheItem(const SourceProviderCach
     , endFunctionOffset(parameters.endFunctionOffset)
     , usesEval(parameters.usesEval)
     , lastTokenLine(parameters.lastTokenLine)
-    , strictMode(parameters.strictMode)
+    , strictMode(parameters.lexicalScopeFeatures & StrictModeLexicalFeature)
     , lastTokenStartOffset(parameters.lastTokenStartOffset)
     , expectedSuperBinding(static_cast<unsigned>(parameters.expectedSuperBinding))
     , lastTokenEndOffset(parameters.lastTokenEndOffset)
@@ -134,6 +144,7 @@ inline SourceProviderCacheItem::SourceProviderCacheItem(const SourceProviderCach
     , tokenType(static_cast<unsigned>(parameters.tokenType))
     , innerArrowFunctionFeatures(static_cast<unsigned>(parameters.innerArrowFunctionFeatures))
     , constructorKind(static_cast<unsigned>(parameters.constructorKind))
+    , usesImportMeta(parameters.usesImportMeta)
 {
     ASSERT(tokenType == static_cast<unsigned>(parameters.tokenType));
     ASSERT(innerArrowFunctionFeatures == static_cast<unsigned>(parameters.innerArrowFunctionFeatures));

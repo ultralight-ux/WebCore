@@ -35,15 +35,12 @@
 namespace JSC {
 
 struct APICallbackFunction {
-
-template <typename T> static EncodedJSValue JSC_HOST_CALL call(JSGlobalObject*, CallFrame*);
-template <typename T> static EncodedJSValue JSC_HOST_CALL call_ex(JSGlobalObject*, CallFrame*);
-template <typename T> static EncodedJSValue JSC_HOST_CALL construct(JSGlobalObject*, CallFrame*);
-
+    template <typename T> static EncodedJSValue callImpl(JSGlobalObject*, CallFrame*);
+    template <typename T> static EncodedJSValue constructImpl(JSGlobalObject*, CallFrame*);
 };
 
 template <typename T>
-EncodedJSValue JSC_HOST_CALL APICallbackFunction::call(JSGlobalObject* globalObject, CallFrame* callFrame)
+EncodedJSValue APICallbackFunction::callImpl(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
     VM& vm = getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -76,52 +73,25 @@ EncodedJSValue JSC_HOST_CALL APICallbackFunction::call(JSGlobalObject* globalObj
 }
 
 template <typename T>
-EncodedJSValue JSC_HOST_CALL APICallbackFunction::call_ex(JSGlobalObject* globalObject, CallFrame* callFrame)
+EncodedJSValue APICallbackFunction::constructImpl(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
     VM& vm = getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSContextRef execRef = toRef(globalObject);
-    JSObjectRef functionRef = toRef(callFrame->jsCallee());
-    JSObjectRef thisObjRef = toRef(jsCast<JSObject*>(callFrame->thisValue().toThis(globalObject, ECMAMode::sloppy())));
-
-    int argumentCount = static_cast<int>(callFrame->argumentCount());
-    Vector<JSValueRef, 16> arguments;
-    arguments.reserveInitialCapacity(argumentCount);
-    for (int i = 0; i < argumentCount; i++)
-        arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
-
-    JSValueRef exception = nullptr;
-    JSValueRef result;
-    {
-        JSLock::DropAllLocks dropAllLocks(globalObject);
-        T* functionInstance = jsCast<T*>(toJS(functionRef));
-
-        RefPtr<OpaqueJSString> name = OpaqueJSString::tryCreate(functionInstance->name());
-        result = functionInstance->functionCallbackEx()(execRef, functionInstance->callClass(), name.get(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
-    }
-    if (exception) {
-        throwException(globalObject, scope, toJS(globalObject, exception));
-        return JSValue::encode(jsUndefined());
-    }
-
-    // result must be a valid JSValue.
-    if (!result)
-        return JSValue::encode(jsUndefined());
-
-    return JSValue::encode(toJS(globalObject, result));
-}
-
-template <typename T>
-EncodedJSValue JSC_HOST_CALL APICallbackFunction::construct(JSGlobalObject* globalObject, CallFrame* callFrame)
-{
-    VM& vm = getVM(globalObject);
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSObject* constructor = callFrame->jsCallee();
+    JSValue callee = callFrame->jsCallee();
+    T* constructor = jsCast<T*>(callFrame->jsCallee());
     JSContextRef ctx = toRef(globalObject);
     JSObjectRef constructorRef = toRef(constructor);
 
-    JSObjectCallAsConstructorCallback callback = jsCast<T*>(constructor)->constructCallback();
+    JSObjectCallAsConstructorCallback callback = constructor->constructCallback();
     if (callback) {
+        JSValue prototype;
+        JSValue newTarget = callFrame->newTarget();
+        // If we are doing a derived class construction get the .prototype property off the new target first so we behave closer to normal JS.
+        if (newTarget != constructor) {
+            prototype = newTarget.get(globalObject, vm.propertyNames->prototype);
+            RETURN_IF_EXCEPTION(scope, { });
+        }
+
         size_t argumentCount = callFrame->argumentCount();
         Vector<JSValueRef, 16> arguments;
         arguments.reserveInitialCapacity(argumentCount);
@@ -134,6 +104,7 @@ EncodedJSValue JSC_HOST_CALL APICallbackFunction::construct(JSGlobalObject* glob
             JSLock::DropAllLocks dropAllLocks(globalObject);
             result = callback(ctx, constructorRef, argumentCount, arguments.data(), &exception);
         }
+
         if (exception) {
             throwException(globalObject, scope, toJS(globalObject, exception));
             return JSValue::encode(jsUndefined());
@@ -141,10 +112,19 @@ EncodedJSValue JSC_HOST_CALL APICallbackFunction::construct(JSGlobalObject* glob
         // result must be a valid JSValue.
         if (!result)
             return throwVMTypeError(globalObject, scope);
-        return JSValue::encode(toJS(result));
+
+        JSObject* newObject = toJS(result);
+        // This won't trigger proxy traps on newObject's prototype handler but that's probably desirable here anyway.
+        if (newTarget != constructor && newObject->getPrototypeDirect() == constructor->get(globalObject, vm.propertyNames->prototype)) {
+            RETURN_IF_EXCEPTION(scope, { });
+            newObject->setPrototype(vm, globalObject, prototype);
+            RETURN_IF_EXCEPTION(scope, { });
+        }
+
+        return JSValue::encode(newObject);
     }
     
-    return JSValue::encode(toJS(JSObjectMake(ctx, jsCast<JSCallbackConstructor*>(constructor)->classRef(), nullptr)));
+    return JSValue::encode(toJS(JSObjectMake(ctx, jsCast<JSCallbackConstructor*>(callee)->classRef(), nullptr)));
 }
 
 } // namespace JSC

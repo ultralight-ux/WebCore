@@ -19,7 +19,6 @@
  */
 
 #include "config.h"
-#if ENABLE(METER_ELEMENT)
 #include "RenderMeter.h"
 
 #include "HTMLMeterElement.h"
@@ -55,8 +54,8 @@ void RenderMeter::updateLogicalWidth()
 {
     RenderBox::updateLogicalWidth();
 
-    IntSize frameSize = theme().meterSizeForBounds(*this, snappedIntRect(frameRect()));
-    setLogicalWidth(isHorizontalWritingMode() ? frameSize.width() : frameSize.height());
+    auto frameSize = theme().meterSizeForBounds(*this, snappedIntRect(frameRect()));
+    setLogicalWidth(LayoutUnit(isHorizontalWritingMode() ? frameSize.width() : frameSize.height()));
 }
 
 RenderBox::LogicalExtentComputedValues RenderMeter::computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop) const
@@ -67,7 +66,7 @@ RenderBox::LogicalExtentComputedValues RenderMeter::computeLogicalHeight(LayoutU
         frame.setHeight(computedValues.m_extent);
     else
         frame.setWidth(computedValues.m_extent);
-    IntSize frameSize = theme().meterSizeForBounds(*this, snappedIntRect(frame));
+    auto frameSize = theme().meterSizeForBounds(*this, snappedIntRect(frame));
     computedValues.m_extent = isHorizontalWritingMode() ? frameSize.height() : frameSize.width();
     return computedValues;
 }
@@ -78,5 +77,3 @@ void RenderMeter::updateFromElement()
 }
 
 } // namespace WebCore
-
-#endif

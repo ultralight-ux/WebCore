@@ -34,6 +34,9 @@
 #include "RegisterSet.h"
 #include "ValueRecovery.h"
 #include <wtf/PrintStream.h>
+#if ENABLE(WEBASSEMBLY)
+#include "WasmValueLocation.h"
+#endif
 
 namespace JSC {
 
@@ -113,13 +116,37 @@ public:
         u.reg = reg;
     }
 
-    ValueRep(const ValueRep&) = default;
-
     ValueRep(Kind kind)
         : m_kind(kind)
     {
         ASSERT(kind == WarmAny || kind == ColdAny || kind == LateColdAny || kind == SomeRegister || kind == SomeRegisterWithClobber || kind == SomeEarlyRegister || kind == SomeLateRegister);
     }
+
+#if ENABLE(WEBASSEMBLY)
+    ValueRep(Wasm::ValueLocation location)
+    {
+        switch (location.kind()) {
+        case Wasm::ValueLocation::Kind::GPRRegister:
+            m_kind = Register;
+            u.reg = location.jsr().payloadGPR();
+            break;
+        case Wasm::ValueLocation::Kind::FPRRegister:
+            m_kind = Register;
+            u.reg = location.fpr();
+            break;
+        case Wasm::ValueLocation::Kind::Stack:
+            m_kind = Stack;
+            u.offsetFromFP = location.offsetFromFP();
+            break;
+        case Wasm::ValueLocation::Kind::StackArgument:
+            m_kind = StackArgument;
+            u.offsetFromSP = location.offsetFromSP();
+            break;
+        default:
+            ASSERT_NOT_REACHED();
+        }
+    }
+#endif
 
     static ValueRep reg(Reg reg)
     {
@@ -257,17 +284,17 @@ public:
         }
     }
 
-    void addUsedRegistersTo(RegisterSet&) const;
+    void addUsedRegistersTo(bool isSIMDContext, RegisterSetBuilder&) const;
     
-    RegisterSet usedRegisters() const;
+    RegisterSetBuilder usedRegisters(bool isSIMDContext) const;
 
     // Get the used registers for a vector of ValueReps.
     template<typename VectorType>
-    static RegisterSet usedRegisters(const VectorType& vector)
+    static RegisterSetBuilder usedRegisters(bool isSIMDContext, const VectorType& vector)
     {
-        RegisterSet result;
+        RegisterSetBuilder result;
         for (const ValueRep& value : vector)
-            value.addUsedRegistersTo(result);
+            value.addUsedRegistersTo(isSIMDContext, result);
         return result;
     }
 

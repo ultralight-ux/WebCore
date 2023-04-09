@@ -31,10 +31,14 @@
     height: 1em;
     margin-right: 3px;
     vertical-align: -2px;
-    background-color: var(--background-color);
     border-radius: 2px;
     overflow: hidden;
     cursor: default;
+}
+
+.inline-swatch:not(.box-shadow),
+.inline-swatch.box-shadow:matches(:hover, :active) {
+    background-color: var(--background-color-content);
 }
 
 .inline-swatch:matches(.color, .gradient) {
@@ -50,19 +54,19 @@
     color: var(--glyph-color-active);
 }
 
-.inline-swatch:matches(.bezier, .spring, .variable) {
+.inline-swatch:matches(.bezier, .box-shadow, .spring, .variable) {
     margin-right: 2px;
 }
 
-.inline-swatch:not(.read-only):matches(.bezier, .spring, .variable):hover {
+.inline-swatch:not(.read-only):matches(.bezier, .box-shadow, .spring, .variable, .alignment):hover {
     filter: brightness(0.9);
 }
 
-.inline-swatch:not(.read-only):matches(.bezier, .spring, .variable):active {
+.inline-swatch:not(.read-only):matches(.bezier, .box-shadow, .spring, .variable, .alignment):active {
     filter: brightness(0.8);
 }
 
-@media (-webkit-max-device-pixel-ratio: 1) {
+@media (max-resolution: 1dppx) {
     /* Ensure the color swatch is even by even so that it looks okay checkered. */
     .inline-swatch {
         vertical-align: -1px;
@@ -90,13 +94,17 @@
     border-color: hsl(0, 0%, 25%);
 }
 
-.inline-swatch:matches(.bezier, .spring, .variable) > span {
+.inline-swatch:matches(.bezier, .box-shadow, .spring, .variable) > span {
     display: none;
 }
 
-.inline-swatch.image > span {
+.inline-swatch:is(.image, .alignment) > span {
     background-size: cover;
     background-repeat: no-repeat;
+}
+
+.inline-swatch.alignment > span.rotate-left {
+    rotate: -90deg;
 }
 
 .inline-swatch-variable-popover {
@@ -113,4 +121,16 @@
 
 .inline-swatch-variable-popover .CodeMirror pre {
     padding: 0 3px;
+}
+
+.inline-swatch-variable-popover .CodeMirror-sizer {
+    /* Override min-height set as inline style by CodeMirror which sizes its container disproportionally tall. */
+    min-height: fit-content !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .inline-swatch.box-shadow > svg,
+    .inline-swatch.alignment > span {
+        filter: invert();
+    }
 }

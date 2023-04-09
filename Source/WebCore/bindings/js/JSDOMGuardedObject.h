@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,7 +40,7 @@ public:
 
     bool isSuspended() const { return !m_guarded || !canInvokeCallback(); } // The wrapper world has gone away or active DOM objects have been suspended.
 
-    void visitAggregate(JSC::SlotVisitor& visitor) { visitor.append(m_guarded); }
+    template<typename Visitor> void visitAggregate(Visitor& visitor) { visitor.append(m_guarded); }
 
     JSC::JSValue guardedObject() const { return m_guarded.get(); }
     JSDOMGlobalObject* globalObject() const { return m_globalObject.get(); }
@@ -55,12 +55,15 @@ protected:
 
     JSC::Weak<JSC::JSCell> m_guarded;
     JSC::Weak<JSDOMGlobalObject> m_globalObject;
+
+private:
+    void removeFromGlobalObject();
 };
 
 template <typename T> class DOMGuarded : public DOMGuardedObject {
 protected:
     DOMGuarded(JSDOMGlobalObject& globalObject, T& guarded) : DOMGuardedObject(globalObject, guarded) { }
-    T* guarded() const { return JSC::jsDynamicCast<T*>(globalObject()->vm(), guardedObject()); }
+    T* guarded() const { return JSC::jsDynamicCast<T*>(guardedObject()); }
 };
 
 } // namespace WebCore

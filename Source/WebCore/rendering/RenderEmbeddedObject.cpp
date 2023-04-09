@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Simon Hausmann <hausmann@kde.org>
  *           (C) 2000 Stefan Schimanski (1Stein@gmx.de)
- * Copyright (C) 2004, 2005, 2006, 2008, 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -35,7 +35,6 @@
 #include "Frame.h"
 #include "FrameLoaderClient.h"
 #include "GraphicsContext.h"
-#include "HTMLAppletElement.h"
 #include "HTMLEmbedElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
@@ -53,6 +52,7 @@
 #include "RenderTheme.h"
 #include "RenderView.h"
 #include "Settings.h"
+#include "SystemFontDatabase.h"
 #include "Text.h"
 #include "TextRun.h"
 #include <wtf/IsoMallocInlines.h>
@@ -96,13 +96,6 @@ void RenderEmbeddedObject::willBeDestroyed()
 {
     view().frameView().removeEmbeddedObjectToUpdate(*this);
     RenderWidget::willBeDestroyed();
-}
-
-RenderPtr<RenderEmbeddedObject> RenderEmbeddedObject::createForApplet(HTMLAppletElement& applet, RenderStyle&& style)
-{
-    auto renderer = createRenderer<RenderEmbeddedObject>(applet, WTFMove(style));
-    renderer->setInline(true);
-    return renderer;
 }
 
 bool RenderEmbeddedObject::requiresLayer() const
@@ -185,47 +178,6 @@ void RenderEmbeddedObject::setUnavailablePluginIndicatorIsPressed(bool pressed)
     repaint();
 }
 
-void RenderEmbeddedObject::paintSnapshotImage(PaintInfo& paintInfo, const LayoutPoint& paintOffset, Image& image)
-{
-    LayoutUnit cWidth = contentWidth();
-    LayoutUnit cHeight = contentHeight();
-    if (!cWidth || !cHeight)
-        return;
-
-    GraphicsContext& context = paintInfo.context();
-    LayoutSize contentSize(cWidth, cHeight);
-    LayoutPoint contentLocation = location() + paintOffset;
-    contentLocation.move(borderLeft() + paddingLeft(), borderTop() + paddingTop());
-
-    LayoutRect rect(contentLocation, contentSize);
-    IntRect alignedRect = snappedIntRect(rect);
-    if (alignedRect.width() <= 0 || alignedRect.height() <= 0)
-        return;
-
-    InterpolationQuality interpolation = chooseInterpolationQuality(context, image, &image, alignedRect.size());
-    context.drawImage(image, alignedRect, { imageOrientation(), interpolation });
-}
-
-void RenderEmbeddedObject::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
-{
-    if (!is<HTMLPlugInElement>(frameOwnerElement()))
-        return;
-
-    HTMLPlugInElement& plugInElement = downcast<HTMLPlugInElement>(frameOwnerElement());
-
-    if (plugInElement.displayState() > HTMLPlugInElement::DisplayingSnapshot) {
-        RenderWidget::paintContents(paintInfo, paintOffset);
-        if (!plugInElement.isRestartedPlugin())
-            return;
-    }
-
-    if (!is<HTMLPlugInImageElement>(plugInElement))
-        return;
-
-    if (Image* snapshot = downcast<HTMLPlugInImageElement>(plugInElement).snapshotImage())
-        paintSnapshotImage(paintInfo, paintOffset, *snapshot);
-}
-
 void RenderEmbeddedObject::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
     // The relevant repainted object heuristic is not tuned for plugin documents.
@@ -255,8 +207,8 @@ static void drawReplacementArrow(GraphicsContext& context, const FloatRect& insi
     FloatPoint arrowTip(rect.maxX(), center.y());
 
     context.setStrokeThickness(2);
-    context.setLineCap(RoundCap);
-    context.setLineJoin(RoundJoin);
+    context.setLineCap(LineCap::Round);
+    context.setLineJoin(LineJoin::Round);
 
     Path path;
     path.moveTo(FloatPoint(rect.x(), center.y()));
@@ -305,7 +257,7 @@ void RenderEmbeddedObject::paintReplaced(PaintInfo& paintInfo, const LayoutPoint
     context.setStrokeThickness(2);
     context.strokePath(strokePath);
 
-    const FontMetrics& fontMetrics = font.fontMetrics();
+    const FontMetrics& fontMetrics = font.metricsOfPrimaryFont();
     float labelX = roundf(replacementTextRect.location().x() + replacementTextRoundedRectLeftTextMargin);
     float labelY = roundf(replacementTextRect.location().y() + (replacementTextRect.size().height() - fontMetrics.height()) / 2 + fontMetrics.ascent() + replacementTextRoundedRectTopTextMargin);
     context.setFillColor(replacementTextColor);
@@ -354,12 +306,12 @@ void RenderEmbeddedObject::getReplacementTextGeometry(const LayoutPoint& accumul
     contentRect.moveBy(roundedIntPoint(accumulatedOffset));
 
     FontCascadeDescription fontDescription;
-    RenderTheme::singleton().systemFont(CSSValueWebkitSmallControl, fontDescription);
+    fontDescription.setOneFamily(SystemFontDatabase::singleton().systemFontShorthandFamily(SystemFontDatabase::FontShorthand::WebkitSmallControl));
     fontDescription.setWeight(boldWeightValue());
     fontDescription.setRenderingMode(settings().fontRenderingMode());
     fontDescription.setComputedSize(12);
     font = FontCascade(WTFMove(fontDescription), 0, 0);
-    font.update(0);
+    font.update(nullptr);
 
     run = TextRun(m_unavailablePluginReplacementText);
     textWidth = font.width(run);
@@ -388,8 +340,6 @@ void RenderEmbeddedObject::layout()
     StackStats::LayoutCheckPoint layoutCheckPoint;
     ASSERT(needsLayout());
 
-    LayoutSize oldSize = contentBoxRect().size();
-
     updateLogicalWidth();
     updateLogicalHeight();
 
@@ -400,52 +350,10 @@ void RenderEmbeddedObject::layout()
 
     updateLayerTransform();
 
-    bool wasMissingWidget = false;
-    if (!widget() && canHaveWidget()) {
-        wasMissingWidget = true;
+    if (!widget())
         view().frameView().addEmbeddedObjectToUpdate(*this);
-    }
 
     clearNeedsLayout();
-
-    LayoutSize newSize = contentBoxRect().size();
-
-    if (!wasMissingWidget && newSize.width() >= oldSize.width() && newSize.height() >= oldSize.height()) {
-        HTMLFrameOwnerElement& element = frameOwnerElement();
-        if (is<HTMLPlugInImageElement>(element)) {
-            HTMLPlugInImageElement& plugInImageElement = downcast<HTMLPlugInImageElement>(element);
-            if (plugInImageElement.displayState() > HTMLPlugInElement::DisplayingSnapshot && plugInImageElement.snapshotDecision() == HTMLPlugInImageElement::MaySnapshotWhenResized) {
-                plugInImageElement.setNeedsCheckForSizeChange();
-                view().frameView().addEmbeddedObjectToUpdate(*this);
-            }
-        }
-    }
-
-    if (!canHaveChildren())
-        return;
-
-    // This code copied from RenderMedia::layout().
-    RenderObject* child = firstChild();
-
-    if (!child)
-        return;
-
-    auto& childBox = downcast<RenderBox>(*child);
-
-    if (newSize == oldSize && !childBox.needsLayout())
-        return;
-    
-    // When calling layout() on a child node, a parent must either push a LayoutStateMaintainter, or
-    // instantiate LayoutStateDisabler. Since using a LayoutStateMaintainer is slightly more efficient,
-    // and this method will be called many times per second during playback, use a LayoutStateMaintainer:
-    LayoutStateMaintainer statePusher(*this, locationOffset(), hasTransform() || hasReflection() || style().isFlippedBlocksWritingMode());
-    
-    childBox.setLocation(LayoutPoint(borderLeft(), borderTop()) + LayoutSize(paddingLeft(), paddingTop()));
-    childBox.mutableStyle().setHeight(Length(newSize.height(), Fixed));
-    childBox.mutableStyle().setWidth(Length(newSize.width(), Fixed));
-    childBox.setNeedsLayout(MarkOnlyThis);
-    childBox.layout();
-    clearChildNeedsLayout();
 }
 
 bool RenderEmbeddedObject::nodeAtPoint(const HitTestRequest& request, HitTestResult& result, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction hitTestAction)
@@ -476,7 +384,7 @@ bool RenderEmbeddedObject::nodeAtPoint(const HitTestRequest& request, HitTestRes
     return true;
 }
 
-bool RenderEmbeddedObject::scroll(ScrollDirection direction, ScrollGranularity granularity, float, Element**, RenderBox*, const IntPoint&)
+bool RenderEmbeddedObject::scroll(ScrollDirection direction, ScrollGranularity granularity, unsigned, Element**, RenderBox*, const IntPoint&)
 {
     if (!is<PluginViewBase>(widget()))
         return false;
@@ -484,12 +392,11 @@ bool RenderEmbeddedObject::scroll(ScrollDirection direction, ScrollGranularity g
     return downcast<PluginViewBase>(*widget()).scroll(direction, granularity);
 }
 
-bool RenderEmbeddedObject::logicalScroll(ScrollLogicalDirection direction, ScrollGranularity granularity, float multiplier, Element** stopElement)
+bool RenderEmbeddedObject::logicalScroll(ScrollLogicalDirection direction, ScrollGranularity granularity, unsigned stepCount, Element** stopElement)
 {
     // Plugins don't expose a writing direction, so assuming horizontal LTR.
-    return scroll(logicalToPhysical(direction, true, false), granularity, multiplier, stopElement);
+    return scroll(logicalToPhysical(direction, true, false), granularity, stepCount, stopElement);
 }
-
 
 bool RenderEmbeddedObject::isInUnavailablePluginIndicator(const FloatPoint& point) const
 {
@@ -549,14 +456,6 @@ CursorDirective RenderEmbeddedObject::getCursor(const LayoutPoint& point, Cursor
         return DoNotSetCursor;
     }
     return RenderWidget::getCursor(point, cursor);
-}
-
-bool RenderEmbeddedObject::canHaveChildren() const
-{
-    if (isSnapshottedPlugIn())
-        return true;
-
-    return false;
 }
 
 }

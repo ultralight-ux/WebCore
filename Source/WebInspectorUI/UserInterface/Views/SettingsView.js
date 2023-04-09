@@ -52,6 +52,12 @@ WI.SettingsView = class SettingsView extends WI.View
         return settingsGroup.addCustomSetting(editorType, options);
     }
 
+    addGroupWithCustomEditor(title, element)
+    {
+        let settingsGroup = this.addGroup(title);
+        return settingsGroup.addCustomEditor();
+    }
+
     addGroup(title)
     {
         let settingsGroup = new WI.SettingsGroup(title);
@@ -73,7 +79,7 @@ WI.SettingsView = class SettingsView extends WI.View
     {
         let containerElement = document.createElement("div");
         containerElement.append(...nodes);
-        containerElement.classList.add("container", "container-centered");
+        containerElement.classList.add("container", "centered");
         this.element.append(containerElement);
 
         return containerElement;

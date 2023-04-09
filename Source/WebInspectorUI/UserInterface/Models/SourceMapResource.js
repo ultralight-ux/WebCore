@@ -36,8 +36,10 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
 
         var inheritedMIMEType = this._sourceMap.originalSourceCode instanceof WI.Resource ? this._sourceMap.originalSourceCode.syntheticMIMEType : null;
 
-        var fileExtension = WI.fileExtensionForURL(url) || "";
-        var fileExtensionMIMEType = WI.mimeTypeForFileExtension(fileExtension, true);
+        let fileExtension = WI.fileExtensionForURL(url) || "";
+
+        // React serves JSX resources with "js" extension.
+        let fileExtensionMIMEType = fileExtension === "js" ? "text/jsx" : WI.mimeTypeForFileExtension(fileExtension, true);
 
         // FIXME: This is a layering violation. It should use a helper function on the
         // Resource base-class to set _mimeType and _type.
@@ -63,8 +65,19 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
             resourceURLComponents.path = this.url;
 
         // Different schemes / hosts. Return the host + path of this resource.
-        if (resourceURLComponents.scheme !== sourceMappingBasePathURLComponents.scheme || resourceURLComponents.host !== sourceMappingBasePathURLComponents.host)
-            return resourceURLComponents.host + (resourceURLComponents.port ? (":" + resourceURLComponents.port) : "") + resourceURLComponents.path;
+        if (resourceURLComponents.scheme !== sourceMappingBasePathURLComponents.scheme || resourceURLComponents.host !== sourceMappingBasePathURLComponents.host) {
+            let subpath = "";
+            if (resourceURLComponents.host) {
+                subpath += resourceURLComponents.host;
+                if (resourceURLComponents.port)
+                    subpath += ":" + resourceURLComponents.port;
+                subpath += resourceURLComponents.path;
+            } else {
+                // Remove the leading "/" so there isn't an empty folder.
+                subpath += resourceURLComponents.path.substring(1);
+            }
+            return subpath;
+        }
 
         // Same host, but not a subpath of the base. This implies a ".." in the relative path.
         if (!resourceURLComponents.path.startsWith(sourceMappingBasePathURLComponents.path))
@@ -72,6 +85,11 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
 
         // Same host. Just a subpath of the base.
         return resourceURLComponents.path.substring(sourceMappingBasePathURLComponents.path.length, resourceURLComponents.length);
+    }
+
+    get supportsScriptBlackboxing()
+    {
+        return false;
     }
 
     requestContentFromBackend()
@@ -84,7 +102,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
             // Force inline content to be asynchronous to match the expected load pattern.
             // FIXME: We don't know the MIME-type for inline content. Guess by analyzing the content?
             // Returns a promise.
-            return sourceMapResourceLoaded.call(this, {content: inlineContent, mimeType: this.mimeType, statusCode: 200});
+            return Promise.resolve().then(sourceMapResourceLoaded.bind(this, {content: inlineContent, mimeType: this.mimeType, statusCode: 200}));
         }
 
         function sourceMapResourceNotAvailable(error, content, mimeType, statusCode)
@@ -100,8 +118,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
 
         function sourceMapResourceLoadError(error)
         {
-            // There was an error calling NetworkAgent.loadResource.
-            console.error(error || "There was an unknown error calling NetworkAgent.loadResource.");
+            console.error(error || "There was an unknown error calling Network.loadResource.");
             this.markAsFailed();
             return Promise.resolve({error: WI.UIString("An error occurred trying to load the resource.")});
         }
@@ -128,7 +145,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
             });
         }
 
-        if (!window.NetworkAgent)
+        if (!this._target.hasCommand("Network.loadResource"))
             return sourceMapResourceLoadError.call(this);
 
         var frameIdentifier = null;
@@ -138,7 +155,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
         if (!frameIdentifier)
             frameIdentifier = WI.networkManager.mainFrame ? WI.networkManager.mainFrame.id : "";
 
-        return NetworkAgent.loadResource(frameIdentifier, this.url).then(sourceMapResourceLoaded.bind(this)).catch(sourceMapResourceLoadError.bind(this));
+        return this._target.NetworkAgent.loadResource(frameIdentifier, this.url).then(sourceMapResourceLoaded.bind(this)).catch(sourceMapResourceLoadError.bind(this));
     }
 
     createSourceCodeLocation(lineNumber, columnNumber)

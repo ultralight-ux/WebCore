@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
- * Copyright (C) 2021 Ultralight, Inc.
+ * Copyright (C) 2023 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions

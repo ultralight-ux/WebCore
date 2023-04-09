@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,14 +24,13 @@
  */
 
 .item.recording-action > .icon {
-    content: url("../Images/Source.svg");
+    content: url("../Images/TypeIcons.svg#Source-light");
 }
 
 .item.recording-action:not(.initial-state)::before {
     position: relative;
     top: 3px;
-    -webkit-margin-end: var(--tree-outline-icon-margin-end);
-    -webkit-margin-start: 0;
+    margin-inline: 0 var(--tree-outline-icon-margin-end);
     content: attr(data-index);
     font-family: -webkit-system-font, sans-serif;
     font-size: 9px;
@@ -50,9 +49,13 @@ body[dir=rtl] .item.recording-action::before {
     float: right;
 }
 
-.tree-outline:focus .item.recording-action.selected:not(.invalid, .initial-state, .has-context-replacer, .name-unknown) > .icon {
+body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus-within .item.recording-action.selected:not(.invalid, .initial-state, .has-context-replacer, .name-unknown) > .icon {
     filter: invert();
     opacity: 1;
+}
+
+.item.recording-action > .titles .parameter.object-handle {
+    color: var(--text-color-gray-medium);
 }
 
 .item.recording-action > .titles .parameter.swizzled {
@@ -65,8 +68,8 @@ body[dir=rtl] .item.recording-action::before {
     font-style: italic;
 }
 
-body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus .item.recording-action.selected > .titles .parameter.swizzled,
-body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus .item.recording-action.selected::before {
+body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus-within .item.recording-action.selected > .titles .parameter.swizzled,
+body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus-within .item.recording-action.selected::before {
     color: var(--selected-secondary-text-color);
 }
 
@@ -96,7 +99,7 @@ body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus .item.re
 }
 
 .tree-outline:not(.hide-disclosure-buttons) .item.recording-action:not(.initial-state, .parent) > .icon {
-    -webkit-margin-start: 0;
+    margin-inline-start: 0;
 }
 
 .item.recording-action.visual:not(.selected, .invalid) {
@@ -233,4 +236,8 @@ body:not(.window-inactive, .window-docked-inactive) .tree-outline:focus .item.re
         filter: invert();
         opacity: 0.8;
     }
+
+    .item.recording-action > .icon {
+        content: url("../Images/TypeIcons.svg#Source-dark");
+    }    
 }

@@ -25,12 +25,22 @@
 
 #pragma once
 
+#include <optional>
+
 namespace WebCore {
     
 struct MediaCapabilitiesInfo {
     bool supported { false };
     bool smooth { false };
     bool powerEfficient { false };
+
+    MediaCapabilitiesInfo isolatedCopy() const;
 };
-    
+
+inline MediaCapabilitiesInfo MediaCapabilitiesInfo::isolatedCopy() const
+{
+    return *this;
 }
+
+} // namespace WebCore
+

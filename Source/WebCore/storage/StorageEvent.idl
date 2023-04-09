@@ -23,8 +23,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-interface StorageEvent : Event {
-    constructor(DOMString type, optional StorageEventInit eventInitDict);
+[
+    Exposed=Window
+] interface StorageEvent : Event {
+    constructor([AtomString] DOMString type, optional StorageEventInit eventInitDict);
 
     readonly attribute DOMString? key;
     readonly attribute DOMString? oldValue;
@@ -32,18 +34,17 @@ interface StorageEvent : Event {
     readonly attribute USVString url;
     readonly attribute Storage? storageArea;
 
-    // FIXME: Using "undefined" as default parameter value is wrong.
-    void initStorageEvent(optional DOMString typeArg = "undefined",
-                          optional boolean canBubbleArg = false,
-                          optional boolean cancelableArg = false,
-                          optional DOMString keyArg = "undefined",
-                          optional DOMString? oldValueArg = null,
-                          optional DOMString? newValueArg = null,
-                          optional USVString urlArg = "undefined",
-                          optional Storage? storageAreaArg = null);
+    undefined initStorageEvent([AtomString] DOMString type,
+                               optional boolean bubbles = false,
+                               optional boolean cancelable = false,
+                               optional DOMString? key = null,
+                               optional DOMString? oldValue = null,
+                               optional DOMString? newValue = null,
+                               optional USVString url = "",
+                               optional Storage? storageArea = null);
 
     // Needed once we support init<blank>EventNS
-    // void initStorageEventNS(DOMString namespaceURI, DOMString typeArg, boolean canBubbleArg, boolean cancelableArg, DOMString keyArg, DOMString oldValueArg, DOMString newValueArg, USVString urlArg, Storage? storageAreaArg);
+    // undefined initStorageEventNS(DOMString namespaceURI, DOMString typeArg, boolean canBubbleArg, boolean cancelableArg, DOMString keyArg, DOMString oldValueArg, DOMString newValueArg, USVString urlArg, Storage? storageAreaArg);
 };
 
 dictionary StorageEventInit : EventInit {

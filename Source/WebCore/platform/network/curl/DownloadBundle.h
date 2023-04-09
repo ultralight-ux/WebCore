@@ -30,9 +30,9 @@
 namespace WebCore {
 namespace DownloadBundle {
 
-bool appendResumeData(const char*, uint32_t, const String& bundlePath);
-bool extractResumeData(const String& bundlePath, Vector<char>& resumeData);
-const String& fileExtension();
+bool appendResumeData(const uint8_t*, uint32_t, const String& bundlePath);
+bool extractResumeData(const String& bundlePath, Vector<uint8_t>& resumeData);
+WEBCORE_EXPORT const String& fileExtension();
 
 } // namespace DownloadBundle
 } // namespace WebCore

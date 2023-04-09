@@ -30,12 +30,13 @@
 
 #include "config.h"
 #include "CSSGridLineNamesValue.h"
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 String CSSGridLineNamesValue::customCSSText() const
 {
-    return "[" + CSSValueList::customCSSText() + "]";
+    return makeString('[', CSSValueList::customCSSText(), ']');
 }
 
 CSSGridLineNamesValue::CSSGridLineNamesValue()

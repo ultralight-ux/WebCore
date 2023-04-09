@@ -28,20 +28,21 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "RealtimeMediaSourceCapabilities.h"
-#include <pal/cf/CoreMediaSoftLink.h>
 #include <wtf/Function.h>
 #include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 #include <wtf/MediaTime.h>
-#include <wtf/RecursiveLockAdapter.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class AudioStreamDescription;
+class CaptureDevice;
 class CoreAudioCaptureSource;
 class PlatformAudioData;
 
-class BaseAudioSharedUnit {
+class BaseAudioSharedUnit : public CanMakeWeakPtr<BaseAudioSharedUnit, WeakPtrFactoryInitialization::Eager> {
 public:
     BaseAudioSharedUnit();
     virtual ~BaseAudioSharedUnit() = default;
@@ -73,24 +74,47 @@ public:
     void clearClients();
 
     virtual bool hasAudioUnit() const = 0;
-    virtual void setCaptureDevice(String&&, uint32_t) = 0;
+    void setCaptureDevice(String&&, uint32_t);
 
     virtual CapabilityValueOrRange sampleRateCapacities() const = 0;
+    virtual int actualSampleRate() const { return sampleRate(); }
+
+    void devicesChanged(const Vector<CaptureDevice>&);
+    void whenAudioCaptureUnitIsNotRunning(Function<void()>&&);
+    bool isRenderingAudio() const { return m_isRenderingAudio; }
+    bool hasClients() const { return !m_clients.isEmpty(); }
+
+    const String& persistentIDForTesting() const { return m_capturingDevice ? m_capturingDevice->first : emptyString(); }
+
+    void handleNewCurrentMicrophoneDevice(CaptureDevice&&);
 
 protected:
     void forEachClient(const Function<void(CoreAudioCaptureSource&)>&) const;
-    bool hasClients() const { return !m_clients.isEmpty(); }
     void captureFailed();
 
     virtual void cleanupAudioUnit() = 0;
     virtual OSStatus startInternal() = 0;
     virtual void stopInternal() = 0;
     virtual OSStatus reconfigureAudioUnit() = 0;
-    virtual void resetSampleRate();
+    virtual void resetSampleRate() = 0;
+    virtual void captureDeviceChanged() = 0;
 
     void setSuspended(bool value) { m_suspended = value; }
 
     void audioSamplesAvailable(const MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t /*numberOfFrames*/);
+
+    const String& persistentID() const { return m_capturingDevice ? m_capturingDevice->first : emptyString(); }
+    uint32_t captureDeviceID() const { return m_capturingDevice ? m_capturingDevice->second : 0; }
+
+    void setIsRenderingAudio(bool);
+
+protected:
+    void setIsProducingMicrophoneSamples(bool);
+    bool isProducingMicrophoneSamples() const { return m_isProducingMicrophoneSamples; }
+    void setOutputDeviceID(uint32_t deviceID) { m_outputDeviceID = deviceID; }
+
+    virtual void isProducingMicrophoneSamplesChanged() { }
+    virtual void validateOutputDevice(uint32_t /* currentOutputDeviceID */) { }
 
 private:
     OSStatus startUnit();
@@ -100,11 +124,19 @@ private:
     int m_sampleRate;
     bool m_suspended { false };
     bool m_needsReconfiguration { false };
+    bool m_isRenderingAudio { false };
 
     int32_t m_producingCount { 0 };
 
+    uint32_t m_outputDeviceID { 0 };
+    std::optional<std::pair<String, uint32_t>> m_capturingDevice;
+
     HashSet<CoreAudioCaptureSource*> m_clients;
-    mutable RecursiveLock m_clientsLock;
+    Vector<CoreAudioCaptureSource*> m_audioThreadClients WTF_GUARDED_BY_LOCK(m_audioThreadClientsLock);
+    Lock m_audioThreadClientsLock;
+
+    bool m_isProducingMicrophoneSamples { true };
+    Vector<Function<void()>> m_whenNotRunningCallbacks;
 };
 
 } // namespace WebCore

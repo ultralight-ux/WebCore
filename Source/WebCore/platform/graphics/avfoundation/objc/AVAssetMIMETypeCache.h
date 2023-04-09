@@ -37,20 +37,19 @@ class WEBCORE_EXPORT AVAssetMIMETypeCache final : public MIMETypeCache {
 public:
     static AVAssetMIMETypeCache& singleton();
 
-    bool isAvailable() const final;
-
     using CacheMIMETypesCallback = std::function<void(const Vector<String>&)>;
     void setCacheMIMETypesCallback(CacheMIMETypesCallback&& callback) { m_cacheTypeCallback = WTFMove(callback); }
 
-    const HashSet<String, ASCIICaseInsensitiveHash>& staticContainerTypeList() final;
-    bool isUnsupportedContainerType(const String&) final;
+    bool isAvailable() const final;
 
-    void addSupportedTypes(const Vector<String>&) final;
+    void addSupportedTypes(const Vector<String>&);
 
 private:
     friend NeverDestroyed<AVAssetMIMETypeCache>;
     AVAssetMIMETypeCache() = default;
 
+    bool isStaticContainerType(StringView) final;
+    bool isUnsupportedContainerType(const String&) final;
     bool canDecodeExtendedType(const ContentType&) final;
     void initializeCache(HashSet<String, ASCIICaseInsensitiveHash>&) final;
 

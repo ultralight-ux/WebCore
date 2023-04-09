@@ -34,12 +34,13 @@
 #if USE(LIBWEBRTC)
 
 #include "LibWebRTCAudioFormat.h"
+#include "LibWebRTCAudioModule.h"
 #include "Logging.h"
 
 namespace WebCore {
 
 RealtimeIncomingAudioSource::RealtimeIncomingAudioSource(rtc::scoped_refptr<webrtc::AudioTrackInterface>&& audioTrack, String&& audioTrackId)
-    : RealtimeMediaSource(RealtimeMediaSource::Type::Audio, "remote audio"_s, WTFMove(audioTrackId))
+    : RealtimeMediaSource(CaptureDevice { WTFMove(audioTrackId), CaptureDevice::DeviceType::Microphone, "remote audio"_s })
     , m_audioTrack(WTFMove(audioTrack))
 {
     ASSERT(m_audioTrack);
@@ -64,12 +65,9 @@ void RealtimeIncomingAudioSource::stopProducingData()
 
 void RealtimeIncomingAudioSource::OnChanged()
 {
-    callOnMainThread([this, weakThis = makeWeakPtr(this)] {
-        if (!weakThis)
-            return;
-
-        if (m_audioTrack->state() == webrtc::MediaStreamTrackInterface::kEnded)
-            end();
+    callOnMainThread([protectedThis = Ref { *this }] {
+        if (protectedThis->m_audioTrack->state() == webrtc::MediaStreamTrackInterface::kEnded)
+            protectedThis->end();
     });
 }
 
@@ -81,6 +79,12 @@ const RealtimeMediaSourceCapabilities& RealtimeIncomingAudioSource::capabilities
 const RealtimeMediaSourceSettings& RealtimeIncomingAudioSource::settings()
 {
     return m_currentSettings;
+}
+
+void RealtimeIncomingAudioSource::setAudioModule(RefPtr<LibWebRTCAudioModule>&& audioModule)
+{
+    ASSERT(!m_audioModule);
+    m_audioModule = WTFMove(audioModule);
 }
 
 }

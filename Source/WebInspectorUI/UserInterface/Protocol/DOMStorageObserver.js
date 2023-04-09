@@ -24,7 +24,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.DOMStorageObserver = class DOMStorageObserver
+WI.DOMStorageObserver = class DOMStorageObserver extends InspectorBackend.Dispatcher
 {
     // Events defined by the "DOMStorage" domain.
 
@@ -43,8 +43,8 @@ WI.DOMStorageObserver = class DOMStorageObserver
         WI.domStorageManager.itemAdded(storageId, key, value);
     }
 
-    domStorageItemUpdated(storageId, key, oldValue, value)
+    domStorageItemUpdated(storageId, key, oldValue, newValue)
     {
-        WI.domStorageManager.itemUpdated(storageId, key, oldValue, value);
+        WI.domStorageManager.itemUpdated(storageId, key, oldValue, newValue);
     }
 };

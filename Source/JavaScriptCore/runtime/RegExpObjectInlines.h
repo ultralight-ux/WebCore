@@ -45,7 +45,7 @@ ALWAYS_INLINE unsigned getRegExpObjectLastIndexAsUnsigned(
         if (lastIndex > input.length())
             return UINT_MAX;
     } else {
-        double doubleLastIndex = jsLastIndex.toInteger(globalObject);
+        double doubleLastIndex = jsLastIndex.toIntegerOrInfinity(globalObject);
         RETURN_IF_EXCEPTION(scope, UINT_MAX);
         if (doubleLastIndex > input.length())
             return UINT_MAX;
@@ -104,13 +104,13 @@ inline MatchResult RegExpObject::matchInline(
     String input = string->value(globalObject);
     RETURN_IF_EXCEPTION(scope, { });
 
+    unsigned lastIndex = getRegExpObjectLastIndexAsUnsigned(globalObject, this, input);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!regExp->global() && !regExp->sticky()) {
         scope.release();
         return globalObject->regExpGlobalData().performMatch(globalObject, regExp, string, input, 0);
     }
 
-    unsigned lastIndex = getRegExpObjectLastIndexAsUnsigned(globalObject, this, input);
-    RETURN_IF_EXCEPTION(scope, { });
     if (lastIndex == UINT_MAX) {
         scope.release();
         setLastIndex(globalObject, 0);

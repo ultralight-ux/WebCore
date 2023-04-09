@@ -34,6 +34,7 @@
 #include <limits>
 #include <math.h>
 #include <stdlib.h>
+#include <wtf/HashTraits.h>
 #include <wtf/MathExtras.h>
 #include <wtf/SaturatedArithmetic.h>
 
@@ -64,6 +65,7 @@ const int intMinForLayoutUnit = INT_MIN / kFixedPointDenominator;
 class LayoutUnit {
 public:
     LayoutUnit() : m_value(0) { }
+    LayoutUnit(const LayoutUnit&) = default;
     LayoutUnit(int value) { setValue(value); }
     LayoutUnit(unsigned short value) { setValue(value); }
     LayoutUnit(unsigned value) { setValue(value); }
@@ -84,7 +86,7 @@ public:
         m_value = clampToInteger(value * kFixedPointDenominator);
     }
 
-    LayoutUnit& operator=(const LayoutUnit& other) = default;
+    LayoutUnit& operator=(const LayoutUnit&) = default;
     LayoutUnit& operator=(const float& other) { return *this = LayoutUnit(other); }
 
     static LayoutUnit fromFloatCeil(float value)
@@ -106,6 +108,13 @@ public:
         if (value >= 0)
             return clamp(value + epsilon() / 2.0f);
         return clamp(value - epsilon() / 2.0f);
+    }
+
+    static LayoutUnit fromRawValue(int value)
+    {
+        LayoutUnit v;
+        v.m_value = value;
+        return v;
     }
 
     int toInt() const { return m_value / kFixedPointDenominator; }
@@ -150,8 +159,8 @@ public:
     int round() const
     {
         if (m_value > 0)
-            return saturatedAddition(rawValue(), kFixedPointDenominator / 2) / kFixedPointDenominator;
-        return saturatedSubtraction(rawValue(), (kFixedPointDenominator / 2) - 1) / kFixedPointDenominator;
+            return saturatedSum<int>(rawValue(), kFixedPointDenominator / 2) / kFixedPointDenominator;
+        return saturatedDifference<int>(rawValue(), (kFixedPointDenominator / 2) - 1) / kFixedPointDenominator;
     }
 
     int floor() const
@@ -376,6 +385,11 @@ inline bool operator!=(const LayoutUnit& a, const LayoutUnit& b)
     return a.rawValue() != b.rawValue();
 }
 
+inline bool operator!=(const float a, const LayoutUnit& b)
+{
+    return LayoutUnit(a) != b;
+}
+
 inline bool operator!=(const LayoutUnit& a, float b)
 {
     return a != LayoutUnit(b);
@@ -588,7 +602,7 @@ inline LayoutUnit operator/(unsigned long long a, const LayoutUnit& b)
 inline LayoutUnit operator+(const LayoutUnit& a, const LayoutUnit& b)
 {
     LayoutUnit returnVal;
-    returnVal.setRawValue(saturatedAddition(a.rawValue(), b.rawValue()));
+    returnVal.setRawValue(saturatedSum<int>(a.rawValue(), b.rawValue()));
     return returnVal;
 }
 
@@ -625,7 +639,7 @@ inline double operator+(const double a, const LayoutUnit& b)
 inline LayoutUnit operator-(const LayoutUnit& a, const LayoutUnit& b)
 {
     LayoutUnit returnVal;
-    returnVal.setRawValue(saturatedSubtraction(a.rawValue(), b.rawValue()));
+    returnVal.setRawValue(saturatedDifference<int>(a.rawValue(), b.rawValue()));
     return returnVal;
 }
 
@@ -691,7 +705,7 @@ inline LayoutUnit operator%(int a, const LayoutUnit& b)
 
 inline LayoutUnit& operator+=(LayoutUnit& a, const LayoutUnit& b)
 {
-    a.setRawValue(saturatedAddition(a.rawValue(), b.rawValue()));
+    a.setRawValue(saturatedSum<int>(a.rawValue(), b.rawValue()));
     return a;
 }
 
@@ -721,7 +735,7 @@ inline LayoutUnit& operator-=(LayoutUnit& a, int b)
 
 inline LayoutUnit& operator-=(LayoutUnit& a, const LayoutUnit& b)
 {
-    a.setRawValue(saturatedSubtraction(a.rawValue(), b.rawValue()));
+    a.setRawValue(saturatedDifference<int>(a.rawValue(), b.rawValue()));
     return a;
 }
 
@@ -838,3 +852,28 @@ inline LayoutUnit operator"" _lu(unsigned long long value)
 }
 
 } // namespace WebCore
+
+namespace WTF {
+
+template<> struct DefaultHash<WebCore::LayoutUnit> {
+    static unsigned hash(const WebCore::LayoutUnit& p) { return DefaultHash<int>::hash(p.rawValue()); }
+    static bool equal(const WebCore::LayoutUnit& a, const WebCore::LayoutUnit& b) { return a == b; }
+    static const bool safeToCompareToEmptyOrDeleted = true;
+};
+
+// The empty value is INT_MIN, the deleted value is INT_MAX. During the course of layout
+// these values are typically only used to represent uninitialized values, so they are
+// good candidates to represent the deleted and empty values in HashMaps as well.
+template<> struct HashTraits<WebCore::LayoutUnit> : GenericHashTraits<WebCore::LayoutUnit> {
+    static constexpr bool emptyValueIsZero = false;
+    static WebCore::LayoutUnit emptyValue()
+    {
+        WebCore::LayoutUnit value;
+        value.setRawValue(std::numeric_limits<int>::min());
+        return value;
+    }
+    static void constructDeletedValue(WebCore::LayoutUnit& slot) { slot.setRawValue(std::numeric_limits<int>::max()); }
+    static bool isDeletedValue(WebCore::LayoutUnit value) { return value.rawValue() == std::numeric_limits<int>::max(); }
+};
+
+} // namespace WTF

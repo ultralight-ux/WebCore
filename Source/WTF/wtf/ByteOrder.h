@@ -40,6 +40,7 @@ namespace WTF {
 inline uint32_t wswap32(uint32_t x) { return ((x & 0xffff0000) >> 16) | ((x & 0x0000ffff) << 16); }
 inline uint32_t bswap32(uint32_t x) { return ((x & 0xff000000) >> 24) | ((x & 0x00ff0000) >> 8) | ((x & 0x0000ff00) << 8) | ((x & 0x000000ff) << 24); }
 inline uint16_t bswap16(uint16_t x) { return ((x & 0xff00) >> 8) | ((x & 0x00ff) << 8); }
+} // namespace WTF
 
 #if CPU(BIG_ENDIAN)
 inline uint16_t ntohs(uint16_t x) { return x; }
@@ -57,7 +58,5 @@ inline uint16_t htons(uint16_t x) { return WTF::bswap16(x); }
 inline uint32_t ntohl(uint32_t x) { return WTF::bswap32(x); }
 inline uint32_t htonl(uint32_t x) { return WTF::bswap32(x); }
 #endif
-
-} // namespace WTF
 
 #endif // OS(WINDOWS)

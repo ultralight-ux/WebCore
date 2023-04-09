@@ -195,7 +195,7 @@ WI.GradientSlider = class GradientSlider extends WI.Object
             this.element.appendChild(this._shadowKnob.element);
         }
 
-        this._shadowKnob.x = window.webkitConvertPointFromPageToNode(this.element, new WebKitPoint(event.pageX, event.pageY)).x;
+        this._shadowKnob.x = event.pageX - this.element.getBoundingClientRect().x;
 
         var colorData = this._canvas.getContext("2d").getImageData(this._shadowKnob.x - 1, 0, 1, 1).data;
         this._shadowKnob.wellColor = new WI.Color(WI.Color.Format.RGB, [colorData[0], colorData[1], colorData[2], colorData[3] / 255]);
@@ -442,7 +442,7 @@ WI.GradientSliderKnob = class GradientSliderKnob extends WI.Object
 
     _updateTransform()
     {
-        this.element.style.webkitTransform = "translate3d(" + this._x + "px, " + this._y + "px, 0)";
+        this.element.style.transform = "translate3d(" + this._x + "px, " + this._y + "px, 0)";
     }
 };
 

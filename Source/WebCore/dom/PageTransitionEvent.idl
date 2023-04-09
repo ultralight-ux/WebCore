@@ -23,8 +23,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-interface PageTransitionEvent : Event {
-    constructor(DOMString type, optional PageTransitionEventInit eventInitDict);
+[
+    Exposed=Window
+] interface PageTransitionEvent : Event {
+    constructor([AtomString] DOMString type, optional PageTransitionEventInit eventInitDict);
 
     readonly attribute boolean persisted;
 };

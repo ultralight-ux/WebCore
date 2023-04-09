@@ -59,13 +59,15 @@ protected:
     virtual CSSParserContext cssParserContext() const;
 
     MutableStyleProperties* m_propertySet;
-    std::unique_ptr<HashMap<CSSValue*, WeakPtr<DeprecatedCSSOMValue>>> m_cssomValueWrappers;
+    HashMap<CSSValue*, WeakPtr<DeprecatedCSSOMValue>> m_cssomValueWrappers;
 
 private:
     void ref() override;
     void deref() override;
 
     CSSRule* parentRule() const override { return nullptr; }
+    // FIXME: To implement.
+    CSSRule* cssRules() const override { return nullptr; }
     unsigned length() const final;
     String item(unsigned index) const final;
     RefPtr<DeprecatedCSSOMValue> getPropertyCSSValue(const String& propertyName) final;
@@ -77,11 +79,11 @@ private:
     ExceptionOr<String> removeProperty(const String& propertyName) final;
     String cssText() const final;
     ExceptionOr<void> setCssText(const String&) final;
-    RefPtr<CSSValue> getPropertyCSSValueInternal(CSSPropertyID) final;
     String getPropertyValueInternal(CSSPropertyID) final;
-    ExceptionOr<bool> setPropertyInternal(CSSPropertyID, const String& value, bool important) final;
+    ExceptionOr<void> setPropertyInternal(CSSPropertyID, const String& value, bool important) final;
     
     Ref<MutableStyleProperties> copyProperties() const final;
+    bool isExposed(CSSPropertyID) const;
 
     RefPtr<DeprecatedCSSOMValue> wrapForDeprecatedCSSOM(CSSValue*);
     
@@ -110,13 +112,14 @@ private:
 
     CSSStyleSheet* parentStyleSheet() const final;
 
-    CSSRule* parentRule() const final { return m_parentRule;  }
+    CSSRule* parentRule() const final { return m_parentRule; }
 
     bool willMutate() final WARN_UNUSED_RETURN;
     void didMutate(MutationType) final;
     CSSParserContext cssParserContext() const final;
 
     unsigned m_refCount;
+    StyleRuleType m_parentRuleType;
     CSSRule* m_parentRule;
 };
 

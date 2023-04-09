@@ -16,19 +16,20 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef AudioSourceProviderGStreamer_h
-#define AudioSourceProviderGStreamer_h
+#pragma once
 
 #if ENABLE(WEB_AUDIO) && ENABLE(VIDEO) && USE(GSTREAMER)
 
 #include "AudioSourceProvider.h"
+#include "AudioSourceProviderClient.h"
 #include "GRefPtrGStreamer.h"
 #include "MainThreadNotifier.h"
 #include <gst/gst.h>
 #include <wtf/Forward.h>
+#include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC)
+#if ENABLE(MEDIA_STREAM)
 #include "GStreamerAudioStreamDescription.h"
 #include "MediaStreamTrackPrivate.h"
 #include "WebAudioSourceProvider.h"
@@ -39,7 +40,7 @@ typedef struct _GstAppSink GstAppSink;
 
 namespace WebCore {
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC)
+#if ENABLE(MEDIA_STREAM)
 class AudioSourceProviderGStreamer final : public WebAudioSourceProvider {
 public:
     static Ref<AudioSourceProviderGStreamer> create(MediaStreamTrackPrivate& source)
@@ -57,38 +58,36 @@ public:
     AudioSourceProviderGStreamer();
     ~AudioSourceProviderGStreamer();
 
-    void configureAudioBin(GstElement* audioBin, GstElement* teePredecessor);
+    void configureAudioBin(GstElement* audioBin, GstElement* audioSink);
 
     void provideInput(AudioBus*, size_t framesToProcess) override;
-    void setClient(AudioSourceProviderClient*) override;
-    const AudioSourceProviderClient* client() const { return m_client; }
+    void setClient(WeakPtr<AudioSourceProviderClient>&&) override;
+    const AudioSourceProviderClient* client() const { return m_client.get(); }
 
     void handleNewDeinterleavePad(GstPad*);
     void deinterleavePadsConfigured();
     void handleRemovedDeinterleavePad(GstPad*);
 
-    GstFlowReturn handleAudioBuffer(GstAppSink*);
-    GstElement* getAudioBin() const { return m_audioSinkBin.get(); }
+    GstFlowReturn handleSample(GstAppSink*, bool isPreroll);
     void clearAdapters();
 
 private:
+#if ENABLE(MEDIA_STREAM)
     GRefPtr<GstElement> m_pipeline;
+#endif
     enum MainThreadNotification {
         DeinterleavePadsConfigured = 1 << 0,
     };
     Ref<MainThreadNotifier<MainThreadNotification>> m_notifier;
     GRefPtr<GstElement> m_audioSinkBin;
-    AudioSourceProviderClient* m_client;
-    int m_deinterleaveSourcePads;
-    GstAdapter* m_frontLeftAdapter;
-    GstAdapter* m_frontRightAdapter;
-    unsigned long m_deinterleavePadAddedHandlerId;
-    unsigned long m_deinterleaveNoMorePadsHandlerId;
-    unsigned long m_deinterleavePadRemovedHandlerId;
-    Lock m_adapterMutex;
+    WeakPtr<AudioSourceProviderClient> m_client;
+    int m_deinterleaveSourcePads { 0 };
+    HashMap<int, GRefPtr<GstAdapter>> m_adapters WTF_GUARDED_BY_LOCK(m_adapterLock);
+    unsigned long m_deinterleavePadAddedHandlerId { 0 };
+    unsigned long m_deinterleaveNoMorePadsHandlerId { 0 };
+    unsigned long m_deinterleavePadRemovedHandlerId { 0 };
+    Lock m_adapterLock;
 };
 
 }
 #endif // ENABLE(WEB_AUDIO) && ENABLE(VIDEO) && USE(GSTREAMER)
-
-#endif // AudioSourceProviderGStreamer_h

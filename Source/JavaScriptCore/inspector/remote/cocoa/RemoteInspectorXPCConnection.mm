@@ -28,12 +28,14 @@
 
 #if ENABLE(REMOTE_INSPECTOR)
 
+#import "JSCInlines.h"
 #import <Foundation/Foundation.h>
 #import <mutex>
 #import <wtf/Assertions.h>
 #import <wtf/Lock.h>
 #import <wtf/Ref.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/cf/TypeCastsCF.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/spi/cocoa/CFXPCBridgeSPI.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
@@ -51,18 +53,15 @@ RemoteInspectorXPCConnection::RemoteInspectorXPCConnection(xpc_connection_t conn
     , m_queue(queue)
     , m_client(client)
 {
-    dispatch_retain(m_queue);
-
-    xpc_retain(m_connection);
-    xpc_connection_set_target_queue(m_connection, m_queue);
-    xpc_connection_set_event_handler(m_connection, ^(xpc_object_t object) {
+    xpc_connection_set_target_queue(m_connection.get(), m_queue.get());
+    xpc_connection_set_event_handler(m_connection.get(), ^(xpc_object_t object) {
         handleEvent(object);
     });
 
     // Balanced by deref when the xpc_connection receives XPC_ERROR_CONNECTION_INVALID.
     ref();
 
-    xpc_connection_resume(m_connection);
+    xpc_connection_resume(m_connection.get());
 }
 
 RemoteInspectorXPCConnection::~RemoteInspectorXPCConnection()
@@ -74,7 +73,7 @@ RemoteInspectorXPCConnection::~RemoteInspectorXPCConnection()
 
 void RemoteInspectorXPCConnection::close()
 {
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
     closeFromMessage();
 }
 
@@ -83,8 +82,8 @@ void RemoteInspectorXPCConnection::closeFromMessage()
     m_closed = true;
     m_client = nullptr;
 
-    dispatch_async(m_queue, ^{
-        LockHolder lock(m_mutex);
+    dispatch_async(m_queue.get(), ^{
+        Locker locker { m_mutex };
         // This will trigger one last XPC_ERROR_CONNECTION_INVALID event on the queue and deref us.
         closeOnQueue();
     });
@@ -93,15 +92,11 @@ void RemoteInspectorXPCConnection::closeFromMessage()
 void RemoteInspectorXPCConnection::closeOnQueue()
 {
     if (m_connection) {
-        xpc_connection_cancel(m_connection);
-        xpc_release(m_connection);
+        xpc_connection_cancel(m_connection.get());
         m_connection = nullptr;
     }
 
-    if (m_queue) {
-        dispatch_release(m_queue);
-        m_queue = nullptr;
-    }
+    m_queue = nullptr;
 }
 
 NSDictionary *RemoteInspectorXPCConnection::deserializeMessage(xpc_object_t object)
@@ -111,23 +106,22 @@ NSDictionary *RemoteInspectorXPCConnection::deserializeMessage(xpc_object_t obje
 
     xpc_object_t xpcDictionary = xpc_dictionary_get_value(object, RemoteInspectorXPCConnectionSerializedMessageKey);
     if (!xpcDictionary || xpc_get_type(xpcDictionary) != XPC_TYPE_DICTIONARY) {
-        LockHolder lock(m_mutex);
+        Locker locker { m_mutex };
         if (m_client)
             m_client->xpcConnectionUnhandledMessage(this, object);
         return nil;
     }
 
-    auto dictionary = _CFXPCCreateCFObjectFromXPCMessage(xpcDictionary);
+    auto dictionary = dynamic_cf_cast<CFDictionaryRef>(adoptCF(_CFXPCCreateCFObjectFromXPCMessage(xpcDictionary)));
     ASSERT_WITH_MESSAGE(dictionary, "Unable to deserialize xpc message");
-    ASSERT(CFGetTypeID(dictionary) == CFDictionaryGetTypeID());
-    return CFBridgingRelease(dictionary);
+    return dictionary.bridgingAutorelease();
 }
 
 void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
 {
     if (xpc_get_type(object) == XPC_TYPE_ERROR) {
         {
-            LockHolder lock(m_mutex);
+            Locker locker { m_mutex };
             if (m_client)
                 m_client->xpcConnectionFailed(this);
 
@@ -147,9 +141,9 @@ void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
 #if PLATFORM(MAC)
     if (!m_validated) {
         audit_token_t token;
-        xpc_connection_get_audit_token(m_connection, &token);
-        if (!WTF::hasEntitlement(token, "com.apple.private.webinspector.webinspectord")) {
-            LockHolder lock(m_mutex);
+        xpc_connection_get_audit_token(m_connection.get(), &token);
+        if (!WTF::hasEntitlement(token, "com.apple.private.webinspector.webinspectord"_s)) {
+            Locker locker { m_mutex };
             // This will trigger one last XPC_ERROR_CONNECTION_INVALID event on the queue and deref us.
             closeOnQueue();
             return;
@@ -170,7 +164,7 @@ void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
     if (userInfo && ![userInfo isKindOfClass:[NSDictionary class]])
         return;
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_mutex };
     if (m_client)
         m_client->xpcConnectionReceivedMessage(this, message, userInfo);
 }
@@ -181,23 +175,19 @@ void RemoteInspectorXPCConnection::sendMessage(NSString *messageName, NSDictiona
     if (m_closed)
         return;
 
-    RetainPtr<NSMutableDictionary> dictionary = adoptNS([[NSMutableDictionary alloc] init]);
+    auto dictionary = adoptNS([[NSMutableDictionary alloc] init]);
     [dictionary setObject:messageName forKey:RemoteInspectorXPCConnectionMessageNameKey];
     if (userInfo)
         [dictionary setObject:userInfo forKey:RemoteInspectorXPCConnectionUserInfoKey];
 
-    xpc_object_t xpcDictionary = _CFXPCCreateXPCMessageWithCFObject((__bridge CFDictionaryRef)dictionary.get());
-    ASSERT_WITH_MESSAGE(xpcDictionary && xpc_get_type(xpcDictionary) == XPC_TYPE_DICTIONARY, "Unable to serialize xpc message");
+    auto xpcDictionary = adoptOSObject(_CFXPCCreateXPCMessageWithCFObject((__bridge CFDictionaryRef)dictionary.get()));
+    ASSERT_WITH_MESSAGE(xpcDictionary && xpc_get_type(xpcDictionary.get()) == XPC_TYPE_DICTIONARY, "Unable to serialize xpc message");
     if (!xpcDictionary)
         return;
 
-    xpc_object_t msg = xpc_dictionary_create(nullptr, nullptr, 0);
-    xpc_dictionary_set_value(msg, RemoteInspectorXPCConnectionSerializedMessageKey, xpcDictionary);
-    xpc_release(xpcDictionary);
-
-    xpc_connection_send_message(m_connection, msg);
-
-    xpc_release(msg);
+    auto msg = adoptOSObject(xpc_dictionary_create(nullptr, nullptr, 0));
+    xpc_dictionary_set_value(msg.get(), RemoteInspectorXPCConnectionSerializedMessageKey, xpcDictionary.get());
+    xpc_connection_send_message(m_connection.get(), msg.get());
 }
 
 } // namespace Inspector

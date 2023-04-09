@@ -45,12 +45,12 @@ FrameDestructionObserver::~FrameDestructionObserver()
 void FrameDestructionObserver::observeFrame(Frame* frame)
 {
     if (m_frame)
-        m_frame->removeDestructionObserver(this);
+        m_frame->removeDestructionObserver(*this);
 
     m_frame = frame;
 
     if (m_frame)
-        m_frame->addDestructionObserver(this);
+        m_frame->addDestructionObserver(*this);
 }
 
 void FrameDestructionObserver::frameDestroyed()

@@ -23,20 +23,25 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.fileExtensionForURL = function(url)
+WI.fileExtensionForFilename = function(filename)
 {
-    let lastPathComponent = parseURL(url).lastPathComponent;
-    if (!lastPathComponent)
+    if (!filename)
         return null;
 
-    let index = lastPathComponent.lastIndexOf(".");
+    let index = filename.lastIndexOf(".");
     if (index === -1)
         return null;
 
-    if (index === lastPathComponent.length - 1)
+    if (index === filename.length - 1)
         return null;
 
-    return lastPathComponent.substr(index + 1);
+    return filename.substr(index + 1);
+};
+
+WI.fileExtensionForURL = function(url)
+{
+    let lastPathComponent = parseURL(url).lastPathComponent;
+    return WI.fileExtensionForFilename(lastPathComponent);
 };
 
 WI.mimeTypeForFileExtension = function(extension)
@@ -65,17 +70,20 @@ WI.mimeTypeForFileExtension = function(extension)
         "scss": "text/x-scss",
 
         // Image types.
+        "avif": "image/avif",
         "bmp": "image/bmp",
         "gif": "image/gif",
+        "ico": "image/x-icon",
+        "jp2": "image/jp2",
         "jpeg": "image/jpeg",
         "jpg": "image/jpeg",
+        "jxl": "image/jxl",
         "pdf": "application/pdf",
         "png": "image/png",
         "tif": "image/tiff",
         "tiff": "image/tiff",
-        "xbm": "image/x-xbitmap",
         "webp": "image/webp",
-        "ico": "image/x-icon",
+        "xbm": "image/x-xbitmap",
 
         "ogx": "application/ogg",
         "ogg": "audio/ogg",
@@ -170,6 +178,7 @@ WI.fileExtensionForMIMEType = function(mimeType)
         // Document types.
         "text/html": "html",
         "application/xhtml+xml": "xhtml",
+        "application/xml": "xml",
         "text/xml": "xml",
 
         // Script types.
@@ -204,18 +213,20 @@ WI.fileExtensionForMIMEType = function(mimeType)
         "text/x-scss": "scss",
 
         // Image types.
+        "image/avif": "avif",
         "image/bmp": "bmp",
         "image/gif": "gif",
+        "image/vnd.microsoft.icon": "ico",
+        "image/x-icon": "ico",
         "image/jp2": "jp2",
         "image/jpeg": "jpg",
+        "image/jxl": "jxl",
         "application/pdf": "pdf",
         "text/pdf": "pdf",
         "image/png": "png",
         "image/tiff": "tiff",
-        "image/x-xbitmap": "xbm",
         "image/webp": "webp",
-        "image/vnd.microsoft.icon": "ico",
-        "image/x-icon": "ico",
+        "image/x-xbitmap": "xbm",
 
         // Ogg
         "application/ogg": "ogx",
@@ -315,16 +326,20 @@ WI.shouldTreatMIMETypeAsText = function(mimeType)
     if (mimeType.endsWith("+json") || mimeType.endsWith("+xml"))
         return true;
 
-    // Various media text mime types.
     let extension = WI.fileExtensionForMIMEType(mimeType);
-    if (extension === "m3u8" || extension === "m3u")
+    if (extension === "xml")
         return true;
 
     // Various script and JSON mime types.
     if (extension === "js" || extension === "json")
         return true;
+
+    // Various media text mime types.
+    if (extension === "m3u8" || extension === "m3u")
+        return true;
+
     if (mimeType.startsWith("application/"))
-        return mimeType.endsWith("script") || mimeType.endsWith("json");
+        return mimeType.endsWith("script") || mimeType.endsWith("json") || mimeType.endsWith("xml");
 
     return false;
 };

@@ -29,9 +29,9 @@
 #include "ChannelInterpretation.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
+#include <variant>
 #include <wtf/Forward.h>
 #include <wtf/LoggerHelper.h>
-#include <wtf/Variant.h>
 
 #define DEBUG_AUDIONODE_REFERENCES 0
 
@@ -42,7 +42,6 @@ struct AudioNodeOptions;
 class AudioNodeOutput;
 class AudioParam;
 class BaseAudioContext;
-class WebKitAudioContext;
 
 // An AudioNode is the basic building block for handling audio within an AudioContext.
 // It may be an audio source, an intermediate processing module, or an audio destination.
@@ -51,7 +50,7 @@ class WebKitAudioContext;
 // Most processing nodes such as filters will have one input and one output, although multiple inputs and outputs are possible.
 
 class AudioNode
-    : public EventTargetWithInlineData
+    : public EventTarget
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -59,18 +58,7 @@ class AudioNode
     WTF_MAKE_NONCOPYABLE(AudioNode);
     WTF_MAKE_ISO_ALLOCATED(AudioNode);
 public:
-    enum { ProcessingSizeInFrames = 128 };
-
-    explicit AudioNode(BaseAudioContext&);
-    virtual ~AudioNode();
-
-    BaseAudioContext& context() { return m_context.get(); }
-    const BaseAudioContext& context() const { return m_context.get(); }
-
-    Variant<RefPtr<BaseAudioContext>, RefPtr<WebKitAudioContext>> contextForBindings() const;
-
     enum NodeType {
-        NodeTypeUnknown,
         NodeTypeDestination,
         NodeTypeOscillator,
         NodeTypeAudioBufferSource,
@@ -88,36 +76,39 @@ public:
         NodeTypeAnalyser,
         NodeTypeDynamicsCompressor,
         NodeTypeWaveShaper,
-        NodeTypeBasicInspector,
         NodeTypeConstant,
-        NodeTypeStereo,
-        NodeTypeEnd
+        NodeTypeStereoPanner,
+        NodeTypeIIRFilter,
+        NodeTypeWorklet,
+        NodeTypeLast = NodeTypeWorklet
     };
 
-    NodeType nodeType() const { return m_nodeType; }
-    void setNodeType(NodeType);
+    AudioNode(BaseAudioContext&, NodeType);
+    virtual ~AudioNode();
 
-    // We handle our own ref-counting because of the threading issues and subtle nature of
-    // how AudioNodes can continue processing (playing one-shot sound) after there are no more
-    // JavaScript references to the object.
-    enum RefType { RefTypeNormal, RefTypeConnection };
+    BaseAudioContext& context();
+    const BaseAudioContext& context() const;
+
+    NodeType nodeType() const { return m_nodeType; }
 
     // Can be called from main thread or context's audio thread.
-    void ref(RefType refType = RefTypeNormal);
-    void deref(RefType refType = RefTypeNormal);
+    virtual void ref();
+    virtual void deref();
+    void incrementConnectionCount();
+    void decrementConnectionCount();
 
     // Can be called from main thread or context's audio thread.  It must be called while the context's graph lock is held.
-    void finishDeref(RefType refType);
-    virtual void didBecomeMarkedForDeletion() { }
+    void decrementConnectionCountWithLock();
 
     // The AudioNodeInput(s) (if any) will already have their input data available when process() is called.
     // Subclasses will take this input data and put the results in the AudioBus(s) of its AudioNodeOutput(s) (if any).
     // Called from context's audio thread.
     virtual void process(size_t framesToProcess) = 0;
 
-    // Resets DSP processing state (clears delay lines, filter memory, etc.)
-    // Called from context's audio thread.
-    virtual void reset() = 0;
+    // Like process(), but only causes the automations to process; the
+    // normal processing of the node is bypassed. By default, we assume
+    // no AudioParams need to be updated.
+    virtual void processOnlyAudioParams(size_t) { }
 
     // No significant resources should be allocated until initialize() is called.
     // Processing may not occur until a node is initialized.
@@ -125,7 +116,6 @@ public:
     virtual void uninitialize();
 
     bool isInitialized() const { return m_isInitialized; }
-    void lazyInitialize();
 
     unsigned numberOfInputs() const { return m_inputs.size(); }
     unsigned numberOfOutputs() const { return m_outputs.size(); }
@@ -171,6 +161,13 @@ public:
     // example, a "delay" effect is expected to delay the signal, and thus would not be considered latency.
     virtual double latencyTime() const = 0;
 
+    // True if the node has a tail time or latency time that requires
+    // special tail processing to behave properly. Ideally, this can be
+    // checked using tailTime and latencyTime, but these aren't
+    // available on the main thread, and the tail processing check can
+    // happen on the main thread.
+    virtual bool requiresTailProcessing() const = 0;
+
     // propagatesSilence() should return true if the node will generate silent output when given silent input. By default, AudioNode
     // will take tailTime() and latencyTime() into account when determining whether the node will propagate silence.
     virtual bool propagatesSilence() const;
@@ -179,6 +176,7 @@ public:
 
     void enableOutputsIfNecessary();
     void disableOutputsIfNecessary();
+    void disableOutputs();
 
     unsigned channelCount() const { return m_channelCount; }
     virtual ExceptionOr<void> setChannelCount(unsigned);
@@ -189,10 +187,21 @@ public:
     ChannelInterpretation channelInterpretation() const { return m_channelInterpretation; }
     virtual ExceptionOr<void> setChannelInterpretation(ChannelInterpretation);
 
+    bool isFinishedSourceNode() const { return m_isFinishedSourceNode; }
+    void setIsFinishedSourceNode() { m_isFinishedSourceNode = true; }
+
+    // Flag indicating the node is in the context's m_tailProcessingNodes or m_finishTailProcessingNodes.
+    // We rely on this flag to avoid unnecessary linear searches in those vectors.
+    bool isTailProcessing() const { return m_isTailProcessing; }
+    void setIsTailProcessing(bool isTailProcessing) { m_isTailProcessing = isTailProcessing; }
+
 protected:
     // Inputs and outputs must be created before the AudioNode is initialized.
-    void addInput(std::unique_ptr<AudioNodeInput>);
-    void addOutput(std::unique_ptr<AudioNodeOutput>);
+    void addInput();
+    void addOutput(unsigned numberOfChannels);
+
+    void markNodeForDeletionIfNecessary();
+    void derefWithLock();
 
     struct DefaultAudioNodeOptions {
         unsigned channelCount;
@@ -222,13 +231,17 @@ protected:
     virtual void updatePullStatus() { }
 
 private:
+    using WeakOrStrongContext = std::variant<Ref<BaseAudioContext>, WeakPtr<BaseAudioContext, WeakPtrImplWithEventTargetData>>;
+    static WeakOrStrongContext toWeakOrStrongContext(BaseAudioContext&, NodeType);
+
     // EventTarget
     EventTargetInterface eventTargetInterface() const override;
     ScriptExecutionContext* scriptExecutionContext() const final;
 
     volatile bool m_isInitialized { false };
-    NodeType m_nodeType { NodeTypeUnknown };
-    Ref<BaseAudioContext> m_context;
+    NodeType m_nodeType;
+
+    WeakOrStrongContext m_context;
 
     Vector<std::unique_ptr<AudioNodeInput>> m_inputs;
     Vector<std::unique_ptr<AudioNodeOutput>> m_outputs;
@@ -243,10 +256,12 @@ private:
     
     bool m_isMarkedForDeletion { false };
     bool m_isDisabled { false };
+    bool m_isFinishedSourceNode { false };
+    bool m_isTailProcessing { false };
 
 #if DEBUG_AUDIONODE_REFERENCES
     static bool s_isNodeCountInitialized;
-    static int s_nodeCount[NodeTypeEnd];
+    static int s_nodeCount[NodeTypeLast + 1];
 #endif
 
     void refEventTarget() override { ref(); }
@@ -261,6 +276,23 @@ private:
     ChannelCountMode m_channelCountMode { ChannelCountMode::Max };
     ChannelInterpretation m_channelInterpretation { ChannelInterpretation::Speakers };
 };
+
+template<typename T> struct AudioNodeConnectionRefDerefTraits {
+    static ALWAYS_INLINE void refIfNotNull(T* ptr)
+    {
+        if (LIKELY(ptr != nullptr))
+            ptr->incrementConnectionCount();
+    }
+
+    static ALWAYS_INLINE void derefIfNotNull(T* ptr)
+    {
+        if (LIKELY(ptr != nullptr))
+            ptr->decrementConnectionCount();
+    }
+};
+
+template<typename T>
+using AudioConnectionRefPtr = RefPtr<T, RawPtrTraits<T>, AudioNodeConnectionRefDerefTraits<T>>;
 
 String convertEnumerationToString(AudioNode::NodeType);
 

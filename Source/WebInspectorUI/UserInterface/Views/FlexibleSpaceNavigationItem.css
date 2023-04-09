@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,14 +23,14 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-:matches(.navigation-bar, .toolbar) .item.flexible-space {
+.navigation-bar .item.flexible-space {
     flex: 1;
 }
 
-:matches(.navigation-bar, .toolbar) .item.flexible-space.align-start > .item {
-    -webkit-margin-end: auto;
+.navigation-bar .item.flexible-space.align-start > .item {
+    margin-inline-end: auto;
 }
 
-:matches(.navigation-bar, .toolbar) .item.flexible-space.align-end > .item {
-    -webkit-margin-start: auto;
+.navigation-bar .item.flexible-space.align-end > .item {
+    margin-inline-start: auto;
 }

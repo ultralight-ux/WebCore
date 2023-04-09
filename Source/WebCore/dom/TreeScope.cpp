@@ -28,6 +28,8 @@
 #include "TreeScope.h"
 
 #include "Attr.h"
+#include "CSSStyleSheet.h"
+#include "CSSStyleSheetObservableArray.h"
 #include "DOMWindow.h"
 #include "ElementIterator.h"
 #include "FocusController.h"
@@ -40,6 +42,7 @@
 #include "HTMLMapElement.h"
 #include "HitTestResult.h"
 #include "IdTargetObserverRegistry.h"
+#include "JSObservableArray.h"
 #include "NodeRareData.h"
 #include "Page.h"
 #include "PointerLockController.h"
@@ -53,10 +56,10 @@
 namespace WebCore {
 
 struct SameSizeAsTreeScope {
-    void* pointers[10];
+    void* pointers[11];
 };
 
-COMPILE_ASSERT(sizeof(TreeScope) == sizeof(SameSizeAsTreeScope), treescope_should_stay_small);
+static_assert(sizeof(TreeScope) == sizeof(SameSizeAsTreeScope), "treescope should stay small");
 
 using namespace HTMLNames;
 
@@ -65,6 +68,7 @@ TreeScope::TreeScope(ShadowRoot& shadowRoot, Document& document)
     , m_documentScope(document)
     , m_parentTreeScope(&document)
     , m_idTargetObserverRegistry(makeUnique<IdTargetObserverRegistry>())
+    , m_adoptedStyleSheets(CSSStyleSheetObservableArray::create(shadowRoot))
 {
     shadowRoot.setTreeScope(*this);
 }
@@ -74,11 +78,15 @@ TreeScope::TreeScope(Document& document)
     , m_documentScope(document)
     , m_parentTreeScope(nullptr)
     , m_idTargetObserverRegistry(makeUnique<IdTargetObserverRegistry>())
+    , m_adoptedStyleSheets(CSSStyleSheetObservableArray::create(document))
 {
     document.setTreeScope(*this);
 }
 
-TreeScope::~TreeScope() = default;
+TreeScope::~TreeScope()
+{
+    m_adoptedStyleSheets->willDestroyTreeScope();
+}
 
 void TreeScope::destroyTreeScopeData()
 {
@@ -123,8 +131,8 @@ Element* TreeScope::getElementById(StringView elementId) const
     if (!m_elementsById)
         return nullptr;
 
-    if (auto atomElementId = elementId.toExistingAtomString())
-        return m_elementsById->getElementById(*atomElementId, *this);
+    if (auto atomElementId = elementId.toExistingAtomString(); !atomElementId.isNull())
+        return m_elementsById->getElementById(*atomElementId.impl(), *this);
 
     return nullptr;
 }
@@ -312,21 +320,21 @@ HTMLLabelElement* TreeScope::labelElementForId(const AtomString& forAttributeVal
     return m_labelsByForAttribute->getElementByLabelForAttribute(*forAttributeValue.impl(), *this);
 }
 
-static Optional<LayoutPoint> absolutePointIfNotClipped(Document& document, const LayoutPoint& clientPoint)
+static std::optional<LayoutPoint> absolutePointIfNotClipped(Document& document, const LayoutPoint& clientPoint)
 {
     if (!document.frame() || !document.view())
-        return WTF::nullopt;
+        return std::nullopt;
 
     const auto& settings = document.frame()->settings();
     if (settings.visualViewportEnabled() && settings.clientCoordinatesRelativeToLayoutViewport()) {
         document.updateLayout();
         if (!document.view() || !document.hasLivingRenderTree())
-            return WTF::nullopt;
+            return std::nullopt;
         auto* view = document.view();
         FloatPoint layoutViewportPoint = view->clientToLayoutViewportPoint(clientPoint);
         FloatRect layoutViewportBounds({ }, view->layoutViewportRect().size());
         if (!layoutViewportBounds.contains(layoutViewportPoint))
-            return WTF::nullopt;
+            return std::nullopt;
         return LayoutPoint(view->layoutViewportToAbsolutePoint(layoutViewportPoint));
     }
 
@@ -346,7 +354,7 @@ static Optional<LayoutPoint> absolutePointIfNotClipped(Document& document, const
 #endif
     if (visibleRect.contains(absolutePoint))
         return absolutePoint;
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 RefPtr<Node> TreeScope::nodeFromPoint(const LayoutPoint& clientPoint, LayoutPoint* localPoint)
@@ -380,7 +388,7 @@ RefPtr<Element> TreeScope::elementFromPoint(double clientX, double clientY)
         node = retargetToScope(*node);
     }
 
-    return static_pointer_cast<Element>(node);
+    return static_pointer_cast<Element>(WTFMove(node));
 }
 
 Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clientY)
@@ -395,7 +403,7 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clie
     if (!absolutePoint)
         return elements;
 
-    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::CollectMultipleElements, HitTestRequest::IncludeAllElementsUnderPoint };
+    constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::CollectMultipleElements, HitTestRequest::Type::IncludeAllElementsUnderPoint };
     HitTestResult result { absolutePoint.value() };
     documentScope().hitTest(hitType, result);
 
@@ -414,8 +422,8 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clie
         if (!node)
             continue;
 
-        if (is<PseudoElement>(node))
-            node = downcast<PseudoElement>(*node).hostElement();
+        if (auto pseudoElement = dynamicDowncast<PseudoElement>(*node))
+            node = pseudoElement->hostElement();
 
         // Prune duplicate entries. A pseudo ::before content above its parent
         // node should only result in one entry.
@@ -443,7 +451,7 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(const FloatPoint& p)
 
 // FIXME: Would be nice to change this to take a StringView, since that's what callers have
 // and there is no particular advantage to already having a String.
-Element* TreeScope::findAnchor(const String& name)
+Element* TreeScope::findAnchor(StringView name)
 {
     if (name.isEmpty())
         return nullptr;
@@ -465,11 +473,11 @@ Element* TreeScope::findAnchor(const String& name)
     return nullptr;
 }
 
-static Element* focusedFrameOwnerElement(Frame* focusedFrame, Frame* currentFrame)
+static Element* focusedFrameOwnerElement(AbstractFrame* focusedFrame, Frame* currentFrame)
 {
     for (; focusedFrame; focusedFrame = focusedFrame->tree().parent()) {
         if (focusedFrame->tree().parent() == currentFrame)
-            return focusedFrame->ownerElement();
+            return is<LocalFrame>(focusedFrame) ? downcast<LocalFrame>(focusedFrame)->ownerElement() : nullptr;
     }
     return nullptr;
 }
@@ -543,6 +551,21 @@ RadioButtonGroups& TreeScope::radioButtonGroups()
     if (!m_radioButtonGroups)
         m_radioButtonGroups = makeUnique<RadioButtonGroups>();
     return *m_radioButtonGroups;
+}
+
+const Vector<RefPtr<CSSStyleSheet>>& TreeScope::adoptedStyleSheets() const
+{
+    return m_adoptedStyleSheets->sheets();
+}
+
+JSC::JSValue TreeScope::adoptedStyleSheetWrapper(JSDOMGlobalObject& lexicalGlobalObject)
+{
+    return JSC::JSObservableArray::create(&lexicalGlobalObject, m_adoptedStyleSheets.copyRef());
+}
+
+ExceptionOr<void> TreeScope::setAdoptedStyleSheets(Vector<RefPtr<CSSStyleSheet>>&& sheets)
+{
+    return m_adoptedStyleSheets->setSheets(WTFMove(sheets));
 }
 
 } // namespace WebCore

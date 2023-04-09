@@ -32,6 +32,7 @@
 #include "CrossOriginAccessControl.h"
 #include "Document.h"
 #include "Settings.h"
+#include "WorkerOrWorkletGlobalScope.h"
 
 namespace WebCore {
 
@@ -45,7 +46,7 @@ CachedResourceHandle<CachedScript> CachedScriptFetcher::requestModuleScript(Docu
     return requestScriptWithCache(document, sourceURL, String { }, WTFMove(integrity), { });
 }
 
-CachedResourceHandle<CachedScript> CachedScriptFetcher::requestScriptWithCache(Document& document, const URL& sourceURL, const String& crossOriginMode, String&& integrity, Optional<ResourceLoadPriority> resourceLoadPriority) const
+CachedResourceHandle<CachedScript> CachedScriptFetcher::requestScriptWithCache(Document& document, const URL& sourceURL, const String& crossOriginMode, String&& integrity, std::optional<ResourceLoadPriority> resourceLoadPriority) const
 {
     if (!document.settings().isScriptEnabled())
         return nullptr;
@@ -57,13 +58,14 @@ CachedResourceHandle<CachedScript> CachedScriptFetcher::requestScriptWithCache(D
     options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
     options.integrity = WTFMove(integrity);
     options.referrerPolicy = m_referrerPolicy;
+    options.nonce = m_nonce;
 
     auto request = createPotentialAccessControlRequest(sourceURL, WTFMove(options), document, crossOriginMode);
     request.upgradeInsecureRequestIfNeeded(document);
     request.setCharset(m_charset);
     request.setPriority(WTFMove(resourceLoadPriority));
-    if (!m_initiatorName.isNull())
-        request.setInitiator(m_initiatorName);
+    if (!m_initiatorType.isNull())
+        request.setInitiatorType(m_initiatorType);
 
     return document.cachedResourceLoader().requestScript(WTFMove(request)).value_or(nullptr);
 }

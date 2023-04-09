@@ -27,12 +27,21 @@
 
 #if ENABLE(WEB_AUTHN)
 
-#include <wtf/Forward.h>
+#include "CBORReader.h"
+#include "CBORWriter.h"
+#include <optional>
 
 namespace WebCore {
 
 struct AuthenticationExtensionsClientOutputs {
-    Optional<bool> appid;
+    struct CredentialPropertiesOutput {
+        bool rk;
+    };
+    std::optional<bool> appid;
+    std::optional<CredentialPropertiesOutput> credProps;
+
+    WEBCORE_EXPORT Vector<uint8_t> toCBOR() const;
+    WEBCORE_EXPORT static std::optional<AuthenticationExtensionsClientOutputs> fromCBOR(const Vector<uint8_t>&);
 };
 
 } // namespace WebCore

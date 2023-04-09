@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,7 +51,7 @@ public:
         m_lastInput.setWithoutWriteBarrier(input);
         m_result = result;
         m_reified = false;
-        vm.heap.writeBarrier(owner);
+        vm.writeBarrier(owner);
     }
 
     JSArray* lastResult(JSGlobalObject*, JSObject* owner);
@@ -65,7 +65,7 @@ public:
         return m_reified ? m_reifiedInput.get() : m_lastInput.get();
     }
 
-    void visitAggregate(SlotVisitor&);
+    DECLARE_VISIT_AGGREGATE;
 
     // m_lastRegExp would be nullptr when RegExpCachedResult is not reified.
     // If we find m_lastRegExp is nullptr, it means this should hold the empty RegExp.

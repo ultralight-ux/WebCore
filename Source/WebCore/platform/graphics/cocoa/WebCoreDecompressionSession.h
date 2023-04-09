@@ -23,6 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #include <CoreMedia/CMTime.h>
 #include <functional>
 #include <wtf/Lock.h>
@@ -31,6 +33,7 @@
 #include <wtf/Ref.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/WorkQueue.h>
 
 typedef CFTypeRef CMBufferRef;
 typedef const struct __CFArray * CFArrayRef;
@@ -40,7 +43,6 @@ typedef struct OpaqueCMTimebase* CMTimebaseRef;
 typedef signed long CMItemCount;
 typedef struct __CVBuffer *CVPixelBufferRef;
 typedef struct __CVBuffer *CVImageBufferRef;
-typedef UInt32 VTDecodeInfoFlags;
 typedef UInt32 VTDecodeInfoFlags;
 typedef struct OpaqueVTDecompressionSession*  VTDecompressionSessionRef;
 
@@ -114,8 +116,8 @@ private:
     RetainPtr<CMBufferQueueRef> m_producerQueue;
     RetainPtr<CMBufferQueueRef> m_consumerQueue;
     RetainPtr<CMTimebaseRef> m_timebase;
-    OSObjectPtr<dispatch_queue_t> m_decompressionQueue;
-    OSObjectPtr<dispatch_queue_t> m_enqueingQueue;
+    Ref<WorkQueue> m_decompressionQueue;
+    Ref<WorkQueue> m_enqueingQueue;
     OSObjectPtr<dispatch_source_t> m_timerSource;
     std::function<void()> m_notificationCallback;
     std::function<void()> m_hasAvailableFrameCallback;

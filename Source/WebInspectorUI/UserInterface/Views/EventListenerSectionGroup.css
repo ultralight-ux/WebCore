@@ -23,6 +23,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+.event-listener-section > .header > .event-listener-options {
+    display: none;
+    width: 15px;
+    height: 15px;
+}
+
+.event-listener-section:hover > .header > .event-listener-options {
+    display: block;
+}
+
 .event-listener-section > .content > .group > .row.simple > .value {
     white-space: nowrap;
     overflow: hidden;
@@ -33,4 +43,12 @@
     width: 12px;
     height: 12px;
     margin: 0;
+}
+
+.event-listener-section > .content input[type="checkbox"] + .go-to-arrow {
+    vertical-align: -2px;
+}
+
+.event-listener-section > .content input[type="checkbox"]:not(:checked) + .go-to-arrow {
+    display: none;
 }

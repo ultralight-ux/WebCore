@@ -92,11 +92,14 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
             return;
 
         if (this._canvas) {
-            this._canvas.removeEventListener(null, null, this);
-            this._canvas.recordingCollection.removeEventListener(null, null, this);
+            this._canvas.removeEventListener(WI.Canvas.Event.RecordingStarted, this._updateRecordNavigationItem, this);
+            this._canvas.removeEventListener(WI.Canvas.Event.RecordingStopped, this._updateRecordNavigationItem, this);
+            this._canvas.recordingCollection.removeEventListener(WI.Collection.Event.ItemAdded, this._recordingAdded, this);
+            this._canvas.recordingCollection.removeEventListener(WI.Collection.Event.ItemRemoved, this._recordingRemoved, this);
         }
 
         this._canvas = canvas;
+
         if (this._canvas) {
             this._canvas.addEventListener(WI.Canvas.Event.RecordingStarted, this._updateRecordNavigationItem, this);
             this._canvas.addEventListener(WI.Canvas.Event.RecordingStopped, this._updateRecordNavigationItem, this);
@@ -114,8 +117,10 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
         if (recording === this._recording)
             return;
 
-        if (this._recording)
-            this._recording.removeEventListener(null, null, this);
+        if (this._recording && !this._recording.ready) {
+            this._recording.removeEventListener(WI.Recording.Event.ProcessedAction, this._handleRecordingProcessedAction, this);
+            this._recording.removeEventListener(WI.Recording.Event.StartProcessingFrame, this._handleRecordingStartProcessingFrame, this);
+        }
 
         if (recording)
             this.canvas = recording.source;
@@ -174,6 +179,10 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
         let canvas = objects.find((object) => object instanceof WI.Canvas);
         if (canvas) {
             this.canvas = canvas;
+            let treeElement = this._canvasTreeOutline.findTreeElement(canvas);
+            const omitFocus = false;
+            const selectedByUser = false;
+            treeElement.revealAndSelect(omitFocus, selectedByUser);
             return;
         }
 
@@ -204,9 +213,9 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
         this.recording = null;
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
         this.contentBrowser.addEventListener(WI.ContentBrowser.Event.CurrentRepresentedObjectsDidChange, this.updateRepresentedObjects, this);
         this.updateRepresentedObjects();
@@ -224,19 +233,18 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
         }
     }
 
-    hidden()
+    detached()
     {
-        this.contentBrowser.removeEventListener(null, null, this);
+        this.contentBrowser.removeEventListener(WI.ContentBrowser.Event.CurrentRepresentedObjectsDidChange, this.updateRepresentedObjects, this);
 
-        super.hidden();
+        super.detached();
     }
 
     canShowRepresentedObject(representedObject)
     {
-        if (representedObject instanceof WI.CanvasCollection)
-            return false;
-
-        return super.canShowRepresentedObject(representedObject);
+        return representedObject instanceof WI.Canvas
+            || representedObject instanceof WI.ShaderProgram
+            || representedObject instanceof WI.Recording;
     }
 
     // Protected
@@ -318,7 +326,7 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
 
     _handleImportButtonNavigationItemClicked(event)
     {
-        WI.FileUtilities.importJSON((result) => WI.canvasManager.processJSON(result));
+        WI.FileUtilities.importJSON((result) => WI.canvasManager.processJSON(result), {multiple: true});
     }
 
     _treeSelectionDidChange(event)
@@ -494,6 +502,7 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
 
         let hasRecordings = this._recording || (this._canvas && this._canvas.recordingCollection.size);
         this.element.classList.toggle("has-recordings", hasRecordings);
+        this.element.classList.toggle("showing-recording", !!this._recording);
         if (!hasRecordings)
             return;
 
@@ -595,7 +604,8 @@ WI.CanvasSidebarPanel = class CanvasSidebarPanel extends WI.NavigationSidebarPan
         }
 
         if (this._recording.ready) {
-            this._recording.removeEventListener(null, null, this);
+            this._recording.removeEventListener(WI.Recording.Event.ProcessedAction, this._handleRecordingProcessedAction, this);
+            this._recording.removeEventListener(WI.Recording.Event.StartProcessingFrame, this._handleRecordingStartProcessingFrame, this);
 
             if (this._recordingProcessingOptionsContainer) {
                 this._recordingProcessingOptionsContainer.remove();

@@ -28,19 +28,30 @@ typedef RTCIceGatheringState IceGatheringState;
 
 [
     Conditional=WEB_RTC,
-    EnabledAtRuntime=PeerConnection
-] interface RTCIceTransport {
+    EnabledBySetting=PeerConnectionEnabled,
+    JSGenerateToJSObject
+] dictionary RTCIceCandidatePair {
+    RTCIceCandidate local;
+    RTCIceCandidate remote;
+};
+
+[
+    ActiveDOMObject,
+    Conditional=WEB_RTC,
+    EnabledBySetting=PeerConnectionEnabled,
+    Exposed=Window,
+    SkipVTableValidation
+] interface RTCIceTransport : EventTarget {
     // FIXME 169662: missing readonly attribute RTCIceRole role;
     // FIXME 169662: missing readonly attribute RTCIceComponent component;
     readonly attribute IceTransportState state;
-    // FIXME 169662: IceGathererState instead of IceGatheringState?
     readonly attribute IceGatheringState gatheringState;
     // FIXME 169662: missing sequence<RTCIceCandidate> getLocalCandidates();
     // FIXME 169662: missing sequence<RTCIceCandidate> getRemoteCandidates();
-    // FIXME 169662: missing RTCIceCandidatePair? getSelectedCandidatePair();
+    RTCIceCandidatePair? getSelectedCandidatePair();
     // FIXME 169662: missing RTCIceParameters? getLocalParameters();
     // FIXME 169662: missing RTCIceParameters? getRemoteParameters();
-    // FIXME 169662: missing attribute EventHandler onstatechange;
-    // FIXME 169662: missing attribute EventHandler ongatheringstatechange;
-    // FIXME 169662: missing attribute EventHandler onselectedcandidatepairchange;
+    attribute EventHandler onstatechange;
+    attribute EventHandler ongatheringstatechange;
+    attribute EventHandler onselectedcandidatepairchange;
 };

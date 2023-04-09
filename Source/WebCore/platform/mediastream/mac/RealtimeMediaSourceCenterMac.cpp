@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple, Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,20 +36,19 @@
 #include "AVVideoCaptureSource.h"
 #include "CoreAudioCaptureSource.h"
 #include "DisplayCaptureManagerCocoa.h"
+#include "DisplayCaptureSourceCocoa.h"
 #include "Logging.h"
 #include "MediaStreamPrivate.h"
-#include "ScreenDisplayCapturerMac.h"
-#include "WindowDisplayCapturerMac.h"
 #include <wtf/MainThread.h>
 
 namespace WebCore {
 
 class VideoCaptureSourceFactoryMac final : public VideoCaptureFactory {
 public:
-    CaptureSourceOrError createVideoCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
+    CaptureSourceOrError createVideoCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier pageIdentifier) final
     {
         ASSERT(device.type() == CaptureDevice::DeviceType::Camera);
-        return AVVideoCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalt), constraints);
+        return AVVideoCaptureSource::create(device, WTFMove(hashSalts), constraints, pageIdentifier);
     }
 
 private:
@@ -58,20 +57,12 @@ private:
 
 class DisplayCaptureSourceFactoryMac final : public DisplayCaptureFactory {
 public:
-    CaptureSourceOrError createDisplayCaptureSource(const CaptureDevice& device, const MediaConstraints* constraints) final
+    CaptureSourceOrError createDisplayCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier pageIdentifier) final
     {
-#if PLATFORM(IOS_FAMILY)
-        UNUSED_PARAM(device);
-        UNUSED_PARAM(constraints);
-#endif
-#if PLATFORM(MAC)
-        return DisplayCaptureSourceCocoa::create(device, constraints);
-#else
-        return { };
-#endif
+        return DisplayCaptureSourceCocoa::create(device, WTFMove(hashSalts), constraints, pageIdentifier);
     }
 private:
-    CaptureDeviceManager& displayCaptureDeviceManager() { return DisplayCaptureManagerCocoa::singleton(); }
+    DisplayCaptureManager& displayCaptureDeviceManager() { return DisplayCaptureManagerCocoa::singleton(); }
 };
 
 AudioCaptureFactory& RealtimeMediaSourceCenter::defaultAudioCaptureFactory()

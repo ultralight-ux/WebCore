@@ -30,7 +30,7 @@ WI.SettingsGroup = class SettingsGroup extends WI.Object
         super();
 
         this._element = document.createElement("div");
-        this._element.classList.add("container");
+        this._element.classList.add("settings-group");
 
         let titleElement = this._element.appendChild(document.createElement("div"));
         titleElement.classList.add("title");
@@ -63,5 +63,12 @@ WI.SettingsGroup = class SettingsGroup extends WI.Object
 
         this._editorGroupElement.append(editor.element);
         return editor;
+    }
+
+    addCustomEditor()
+    {
+        let element = this._editorGroupElement.appendChild(document.createElement("div"));
+        element.classList.add("editor");
+        return element;
     }
 };

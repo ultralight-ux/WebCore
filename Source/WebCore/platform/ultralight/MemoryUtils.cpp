@@ -17,7 +17,7 @@ static ResourceUsageData gData;
 #endif
 
 static std::string fmtBytes(uint64_t bytes) {
-  char* suffix[] = { "B", "KB", "MB", "GB", "TB" };
+  const char* suffix[] = { "B", "KB", "MB", "GB", "TB" };
   char length = sizeof(suffix) / sizeof(suffix[0]);
 
   int i = 0;

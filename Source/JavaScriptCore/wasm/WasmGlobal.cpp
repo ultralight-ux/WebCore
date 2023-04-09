@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,24 +29,36 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "JSCJSValueInlines.h"
+#include "JSWebAssemblyGlobal.h"
 #include "JSWebAssemblyHelpers.h"
 #include "JSWebAssemblyRuntimeError.h"
+#include "WasmTypeDefinitionInlines.h"
 #include <wtf/StdLibExtras.h>
 
 namespace JSC { namespace Wasm {
 
-JSValue Global::get() const
+JSValue Global::get(JSGlobalObject* globalObject) const
 {
-    switch (m_type) {
-    case Wasm::Type::I32:
+    VM& vm = globalObject->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    switch (m_type.kind) {
+    case TypeKind::I32:
         return jsNumber(bitwise_cast<int32_t>(static_cast<uint32_t>(m_value.m_primitive)));
-    case Wasm::Type::F32:
+    case TypeKind::I64:
+        RELEASE_AND_RETURN(throwScope, JSBigInt::makeHeapBigIntOrBigInt32(globalObject, static_cast<int64_t>(m_value.m_primitive)));
+    case TypeKind::F32:
         return jsNumber(purifyNaN(static_cast<double>(bitwise_cast<float>(static_cast<uint32_t>(m_value.m_primitive)))));
-    case Wasm::Type::F64:
+    case TypeKind::F64:
         return jsNumber(purifyNaN(bitwise_cast<double>(m_value.m_primitive)));
-    case Wasm::Anyref:
-    case Wasm::Funcref:
-        return m_value.m_anyref.get();
+    case TypeKind::V128:
+        throwException(globalObject, throwScope, createJSWebAssemblyRuntimeError(globalObject, vm, "Cannot get value of v128 global"_s));
+        return { };
+    case TypeKind::Externref:
+    case TypeKind::Funcref:
+    case TypeKind::Ref:
+    case TypeKind::RefNull:
+        return m_value.m_externref.get();
     default:
         return jsUndefined();
     }
@@ -56,58 +68,83 @@ void Global::set(JSGlobalObject* globalObject, JSValue argument)
 {
     VM& vm = globalObject->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    ASSERT(m_mutability != Wasm::GlobalInformation::Immutable);
-    switch (m_type) {
-    case Wasm::Type::I32: {
+    ASSERT(m_mutability != Wasm::Immutable);
+    switch (m_type.kind) {
+    case TypeKind::I32: {
         int32_t value = argument.toInt32(globalObject);
         RETURN_IF_EXCEPTION(throwScope, void());
         m_value.m_primitive = static_cast<uint64_t>(static_cast<uint32_t>(value));
         break;
     }
-    case Wasm::Type::F32: {
+    case TypeKind::I64: {
+        int64_t value = argument.toBigInt64(globalObject);
+        RETURN_IF_EXCEPTION(throwScope, void());
+        m_value.m_primitive = static_cast<uint64_t>(value);
+        break;
+    }
+    case TypeKind::F32: {
         float value = argument.toFloat(globalObject);
         RETURN_IF_EXCEPTION(throwScope, void());
         m_value.m_primitive = static_cast<uint64_t>(bitwise_cast<uint32_t>(value));
         break;
     }
-    case Wasm::Type::F64: {
+    case TypeKind::F64: {
         double value = argument.toNumber(globalObject);
         RETURN_IF_EXCEPTION(throwScope, void());
         m_value.m_primitive = bitwise_cast<uint64_t>(value);
         break;
     }
-    case Wasm::Anyref: {
-        RELEASE_ASSERT(m_owner);
-        m_value.m_anyref.set(m_owner->vm(), m_owner, argument);
-        break;
+    case TypeKind::V128: {
+        throwTypeError(globalObject, throwScope, "Cannot set value of v128 global"_s);
+        return;
     }
-    case Wasm::Funcref: {
-        RELEASE_ASSERT(m_owner);
-        if (!isWebAssemblyHostFunction(vm, argument) && !argument.isNull()) {
-            throwException(globalObject, throwScope, createJSWebAssemblyRuntimeError(globalObject, vm, "Funcref must be an exported wasm function"));
+    default: {
+        if (isExternref(m_type)) {
+            RELEASE_ASSERT(m_owner);
+            if (!m_type.isNullable() && argument.isNull()) {
+                throwTypeError(globalObject, throwScope, "Non-null Externref cannot be null"_s);
+                return;
+            }
+            m_value.m_externref.set(m_owner->vm(), m_owner, argument);
+        } else if (isFuncref(m_type) || (isRefWithTypeIndex(m_type) && TypeInformation::get(m_type.index).is<FunctionSignature>())) {
+            RELEASE_ASSERT(m_owner);
+            WebAssemblyFunction* wasmFunction = nullptr;
+            WebAssemblyWrapperFunction* wasmWrapperFunction = nullptr;
+            if (!isWebAssemblyHostFunction(argument, wasmFunction, wasmWrapperFunction) && (!m_type.isNullable() || !argument.isNull())) {
+                throwTypeError(globalObject, throwScope, "Funcref must be an exported wasm function"_s);
+                return;
+            }
+
+            if (isRefWithTypeIndex(m_type) && !argument.isNull()) {
+                Wasm::TypeIndex paramIndex = m_type.index;
+                Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
+                if (paramIndex != argIndex) {
+                    throwTypeError(globalObject, throwScope, "Argument function did not match the reference type"_s);
+                    return;
+                }
+            }
+            m_value.m_externref.set(m_owner->vm(), m_owner, argument);
+        } else if (isRefWithTypeIndex(m_type)) {
+            throwTypeError(globalObject, throwScope, "Unsupported use of struct or array type"_s);
+            return;
+        } else if (Wasm::isI31ref(m_type)) {
+            throwTypeError(globalObject, throwScope, "I31ref import from JS currently unsupported"_s);
             return;
         }
-        m_value.m_anyref.set(m_owner->vm(), m_owner, argument);
-        break;
     }
-    default:
-        break;
     }
 }
 
-void Global::visitAggregate(SlotVisitor& visitor)
+template<typename Visitor>
+void Global::visitAggregateImpl(Visitor& visitor)
 {
-    switch (m_type) {
-    case Wasm::Type::Anyref:
-    case Wasm::Type::Funcref: {
+    if (isFuncref(m_type) || isExternref(m_type)) {
         RELEASE_ASSERT(m_owner);
-        visitor.append(m_value.m_anyref);
-        break;
-    }
-    default:
-        break;
+        visitor.append(m_value.m_externref);
     }
 }
+
+DEFINE_VISIT_AGGREGATE(Global);
 
 } } // namespace JSC::Global
 

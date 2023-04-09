@@ -101,13 +101,12 @@ input::-webkit-outer-spin-button {
     margin: 0;
 }
 
-input[type="button"], input[type="submit"], input[type="reset"], input[type="file"]::-webkit-file-upload-button, button {
-    padding: 1px 6px
+input[type="button"], input[type="submit"], input[type="reset"], input[type="file"]::file-selector-button, button {
+    padding: 1px 6px;
 }
 
 /* Windows selects are not rounded. Custom borders for them shouldn't be either. */
-keygen, 
-select, 
+select,
 select[size="0"],
 select[size="1"] {
     border-radius: 0;

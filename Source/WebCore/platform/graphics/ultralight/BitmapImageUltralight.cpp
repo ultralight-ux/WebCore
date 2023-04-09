@@ -2,7 +2,6 @@
 #include "BitmapImage.h"
 #include "NotImplemented.h"
 #include "platform/graphics/GraphicsContext.h"
-#include "platform/graphics/ultralight/PlatformContextUltralight.h"
 #include "ImageObserver.h"
 
 namespace WebCore {

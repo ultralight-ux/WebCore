@@ -36,13 +36,14 @@ namespace WebCore {
 
 class AVAudioSessionCaptureDevice : public CaptureDevice {
 public:
-    static AVAudioSessionCaptureDevice create(AVAudioSessionPortDescription*);
+    static AVAudioSessionCaptureDevice create(AVAudioSessionPortDescription *deviceInput, AVAudioSessionPortDescription *defaultInput);
     virtual ~AVAudioSessionCaptureDevice() = default;
 
-private:
-    AVAudioSessionCaptureDevice(AVAudioSessionPortDescription*, const String& persistentID, const String& label);
+    AVAudioSessionCaptureDevice isolatedCopy() &&;
 
-    RetainPtr<AVAudioSessionPortDescription> m_portDescription;
+private:
+    AVAudioSessionCaptureDevice(AVAudioSessionPortDescription *deviceInput, AVAudioSessionPortDescription *defaultInput);
+    AVAudioSessionCaptureDevice(const String& persistentId, DeviceType, const String& label, const String& groupId, bool isEnabled, bool isDefault, bool isMock);
 };
 
 } // namespace WebCore

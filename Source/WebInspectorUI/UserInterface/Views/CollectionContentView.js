@@ -28,6 +28,7 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
     constructor(collection, contentViewConstructor, contentPlaceholder)
     {
         console.assert(collection instanceof WI.Collection);
+        console.assert(!contentViewConstructor || contentViewConstructor.prototype instanceof WI.ContentView);
 
         super(collection);
 
@@ -37,7 +38,6 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this._contentPlaceholderElement = null;
         this._contentViewConstructor = contentViewConstructor;
         this._contentViewMap = new Map;
-        this._handleClickMap = new WeakMap;
         this._selectedItem = null;
         this._selectionEnabled = false;
     }
@@ -49,22 +49,6 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         if (this._selectedItem)
             return [this._selectedItem];
         return [];
-    }
-
-    shown()
-    {
-        super.shown();
-
-        for (let contentView of this._contentViewMap.values())
-            contentView.shown();
-    }
-
-    hidden()
-    {
-        for (let contentView of this._contentViewMap.values())
-            contentView.hidden();
-
-        super.hidden();
     }
 
     get selectionEnabled()
@@ -82,22 +66,34 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
             this._selectItem(null);
     }
 
-    setSelectedItem(item)
+    get selectedItem()
+    {
+        return this._selectedItem;
+    }
+
+    set selectedItem(item)
     {
         console.assert(this._selectionEnabled, "Attempted to set selected item when selection is disabled.");
         if (!this._selectionEnabled)
             return;
 
-        let contentView = this._contentViewMap.get(item);
-        console.assert(contentView, "Missing contet view for item.", item);
-        if (!contentView)
-            return;
-
         this._selectItem(item);
-        contentView.element.scrollIntoViewIfNeeded();
+
+        if (item) {
+            let contentView = this._contentViewMap.get(item);
+            console.assert(contentView, "Missing content view for item.", item);
+            if (contentView)
+                contentView.element.scrollIntoViewIfNeeded();
+        }
     }
 
     // Protected
+
+    get contentViewConstructorOptions()
+    {
+        // Implemented by subclasses.
+        return {};
+    }
 
     addContentViewForItem(item)
     {
@@ -111,31 +107,14 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
         this.hideContentPlaceholder();
 
-        let contentView = new this._contentViewConstructor(item);
+        let contentView = new this._contentViewConstructor(item, this.contentViewConstructorOptions);
         console.assert(contentView instanceof WI.ContentView);
-
-        let handleClick = (event) => {
-            if (event.button !== 0 || event.ctrlKey)
-                return;
-
-            if (this._selectionEnabled)
-                this._selectItem(item);
-            else
-                WI.showRepresentedObject(item);
-        };
+        console.assert(contentView.representedObject === item);
 
         this._contentViewMap.set(item, contentView);
-        this._handleClickMap.set(item, handleClick);
-        contentView.element.addEventListener("click", handleClick);
 
         this.addSubview(contentView);
         this.contentViewAdded(contentView);
-
-        if (!this.visible)
-            return;
-
-        contentView.visible = true;
-        contentView.shown();
     }
 
     removeContentViewForItem(item)
@@ -154,21 +133,6 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this.removeSubview(contentView);
         this._contentViewMap.delete(item);
         this.contentViewRemoved(contentView);
-
-        if (this.visible) {
-            contentView.visible = false;
-            contentView.hidden();
-        }
-
-        contentView.removeEventListener(null, null, this);
-
-        let handleClick = this._handleClickMap.get(item);
-        console.assert(handleClick);
-
-        if (handleClick) {
-            contentView.element.removeEventListener("click", handleClick);
-            this._handleClickMap.delete(item);
-        }
 
         if (!this.subviews.length)
             this.showContentPlaceholder();
@@ -193,6 +157,8 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
                 this._contentPlaceholderElement = this._contentPlaceholder;
         }
 
+        this._contentPlaceholderElement.classList.add("placeholder");
+
         if (!this._contentPlaceholderElement.parentNode)
             this.element.appendChild(this._contentPlaceholderElement);
     }
@@ -205,10 +171,11 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
     initialLayout()
     {
-        if (!this.representedObject.size || !this._contentViewConstructor) {
+        if (this._contentViewConstructor)
+            this.element.addEventListener("click", this._handleClick.bind(this));
+
+        if (!this.representedObject.size || !this._contentViewConstructor)
             this.showContentPlaceholder();
-            return;
-        }
     }
 
     attached()
@@ -235,7 +202,8 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
     detached()
     {
-        this.representedObject.removeEventListener(null, null, this);
+        this.representedObject.removeEventListener(WI.Collection.Event.ItemAdded, this._handleItemAdded, this);
+        this.representedObject.removeEventListener(WI.Collection.Event.ItemRemoved, this._handleItemRemoved, this);
 
         super.detached();
     }
@@ -285,6 +253,30 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
             selectedContentView.element.classList.add("selected");
         }
 
+        this.dispatchEventToListeners(WI.CollectionContentView.Event.SelectedItemChanged);
         this.dispatchEventToListeners(WI.ContentView.Event.SupplementalRepresentedObjectsDidChange);
     }
+
+    _handleClick(event)
+    {
+        if (event.button !== 0 || event.ctrlKey)
+            return;
+
+        for (let [item, contentView] of this._contentViewMap) {
+            if (contentView.element.contains(event.target)) {
+                if (this._selectionEnabled)
+                    this._selectItem(item);
+                else
+                    WI.showRepresentedObject(item);
+                return;
+            }
+        }
+
+        if (this._selectionEnabled)
+            this._selectItem(null);
+    }
+};
+
+WI.CollectionContentView.Event = {
+    SelectedItemChanged: "collection-content-view-selected-item-changed",
 };

@@ -49,7 +49,7 @@ namespace WebCore {
 
 class Blob;
 
-class FileReader final : public RefCounted<FileReader>, public ActiveDOMObject, public EventTargetWithInlineData, private FileReaderLoaderClient {
+class FileReader final : public RefCounted<FileReader>, public ActiveDOMObject, public EventTarget, private FileReaderLoaderClient {
     WTF_MAKE_ISO_ALLOCATED(FileReader);
 public:
     static Ref<FileReader> create(ScriptExecutionContext&);
@@ -62,10 +62,10 @@ public:
         DONE = 2
     };
 
-    ExceptionOr<void> readAsArrayBuffer(Blob*);
-    ExceptionOr<void> readAsBinaryString(Blob*);
-    ExceptionOr<void> readAsText(Blob*, const String& encoding);
-    ExceptionOr<void> readAsDataURL(Blob*);
+    ExceptionOr<void> readAsArrayBuffer(Blob&);
+    ExceptionOr<void> readAsBinaryString(Blob&);
+    ExceptionOr<void> readAsText(Blob&, const String& encoding);
+    ExceptionOr<void> readAsDataURL(Blob&);
     void abort();
 
     void doAbort();
@@ -73,7 +73,7 @@ public:
     ReadyState readyState() const { return m_state; }
     DOMException* error() { return m_error.get(); }
     FileReaderLoader::ReadType readType() const { return m_readType; }
-    Optional<Variant<String, RefPtr<JSC::ArrayBuffer>>> result() const;
+    std::optional<std::variant<String, RefPtr<JSC::ArrayBuffer>>> result() const;
 
     using RefCounted::ref;
     using RefCounted::deref;
@@ -103,7 +103,7 @@ private:
     void fireEvent(const AtomString& type);
 
     ReadyState m_state { EMPTY };
-    bool m_aborting { false };
+    bool m_finishedLoading { false };
     RefPtr<Blob> m_blob;
     FileReaderLoader::ReadType m_readType { FileReaderLoader::ReadAsBinaryString };
     String m_encoding;

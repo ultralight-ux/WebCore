@@ -53,7 +53,7 @@ namespace JSC {
         ALWAYS_INLINE Register& operator=(CallFrame*);
         ALWAYS_INLINE Register& operator=(CodeBlock*);
         ALWAYS_INLINE Register& operator=(JSScope*);
-        ALWAYS_INLINE Register& operator=(JSObject*);
+        ALWAYS_INLINE Register& operator=(JSCell*);
         ALWAYS_INLINE Register& operator=(EncodedJSValue);
 
         int32_t i() const;
@@ -63,12 +63,19 @@ namespace JSC {
         ALWAYS_INLINE JSObject* object() const;
         ALWAYS_INLINE JSScope* scope() const;
         int32_t unboxedInt32() const;
+        uint32_t unboxedUInt32() const;
         int32_t asanUnsafeUnboxedInt32() const;
         int64_t unboxedInt52() const;
         int64_t asanUnsafeUnboxedInt52() const;
         int64_t unboxedStrictInt52() const;
         int64_t asanUnsafeUnboxedStrictInt52() const;
+        int64_t unboxedInt64() const;
+        int64_t asanUnsafeUnboxedInt64() const;
         bool unboxedBoolean() const;
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+        float unboxedFloat() const;
+        float asanUnsafeUnboxedFloat() const;
+#endif
         double unboxedDouble() const;
         double asanUnsafeUnboxedDouble() const;
         JSCell* unboxedCell() const;
@@ -140,6 +147,11 @@ namespace JSC {
         return payload();
     }
 
+    ALWAYS_INLINE uint32_t Register::unboxedUInt32() const
+    {
+        return static_cast<uint32_t>(unboxedInt32());
+    }
+
     SUPPRESS_ASAN ALWAYS_INLINE int32_t Register::asanUnsafeUnboxedInt32() const
     {
         return unsafePayload();
@@ -165,10 +177,32 @@ namespace JSC {
         return u.integer;
     }
 
+    ALWAYS_INLINE int64_t Register::unboxedInt64() const
+    {
+        return u.integer;
+    }
+
+    SUPPRESS_ASAN ALWAYS_INLINE int64_t Register::asanUnsafeUnboxedInt64() const
+    {
+        return u.integer;
+    }
+
     ALWAYS_INLINE bool Register::unboxedBoolean() const
     {
         return !!payload();
     }
+
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+    ALWAYS_INLINE float Register::unboxedFloat() const
+    {
+        return bitwise_cast<float>(payload());
+    }
+
+    SUPPRESS_ASAN ALWAYS_INLINE float Register::asanUnsafeUnboxedFloat() const
+    {
+        return bitwise_cast<float>(payload());
+    }
+#endif
 
     ALWAYS_INLINE double Register::unboxedDouble() const
     {

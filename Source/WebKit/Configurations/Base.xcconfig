@@ -1,4 +1,4 @@
-// Copyright (C) 2010-2019 Apple Inc. All rights reserved.
+// Copyright (C) 2010-2023 Apple Inc. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -21,17 +21,14 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include? "../../../../Internal/Configurations/HaveInternalSDK.xcconfig"
-#include "SDKVariant.xcconfig"
+#include "../../../Configurations/CommonBase.xcconfig"
 
-USE_INTERNAL_SDK = $(USE_INTERNAL_SDK_$(CONFIGURATION));
-USE_INTERNAL_SDK_Production = YES;
-USE_INTERNAL_SDK_Debug = $(HAVE_INTERNAL_SDK);
-USE_INTERNAL_SDK_Release = $(HAVE_INTERNAL_SDK);
+ENABLE_DAEMON_SYMLINKS = $(WK_NOT_$(USE_STAGING_INSTALL_PATH))
+ENABLE_DAEMON_SYMLINKS[sdk=embedded*] = NO
 
 ALWAYS_SEARCH_USER_PATHS = NO;
 
-CLANG_CXX_LANGUAGE_STANDARD = gnu++1z;
+CLANG_CXX_LANGUAGE_STANDARD = c++2a;
 CLANG_CXX_LIBRARY = libc++;
 CLANG_ENABLE_OBJC_WEAK = YES;
 CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
@@ -52,6 +49,7 @@ CLANG_WARN_UNREACHABLE_CODE = YES;
 CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 COMBINE_HIDPI_IMAGES = NO;
 DEBUG_INFORMATION_FORMAT = dwarf-with-dsym;
+ENABLE_BITCODE = NO;
 ENABLE_STRICT_OBJC_MSGSEND = YES;
 GCC_C_LANGUAGE_STANDARD = gnu99;
 GCC_DEBUGGING_SYMBOLS = default;
@@ -86,43 +84,32 @@ GCC_WARN_UNUSED_FUNCTION = YES;
 GCC_WARN_UNUSED_VARIABLE = YES;
 OTHER_MIGFLAGS = -F$(BUILT_PRODUCTS_DIR);
 PREBINDING = NO;
-WARNING_CFLAGS = -Wall -Wextra -Wcast-qual -Wchar-subscripts -Wconditional-uninitialized -Wextra-tokens -Wformat-security -Winit-self -Wmissing-format-attribute -Wmissing-noreturn -Wno-unused-parameter -Wpacked -Wpointer-arith -Wredundant-decls -Wundef -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough -Wvla -Wliteral-conversion;
+WARNING_CFLAGS = $(WK_COMMON_WARNING_CFLAGS) $(WK_FIXME_WARNING_CFLAGS) -Wcast-qual -Wchar-subscripts -Wextra-tokens -Winit-self -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough -Wvla -Wliteral-conversion -Wthread-safety -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled;
 
-TARGET_MACOS_LEGACY_VERSION_IDENTIFIER = $(TARGET_MACOS_LEGACY_VERSION_IDENTIFIER_$(MACOSX_DEPLOYMENT_TARGET:base))
-TARGET_MACOS_LEGACY_VERSION_IDENTIFIER_10 = 10$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier)
+// Remove WK_FIXME_WARNING_CFLAGS once all warnings are fixed.
+WK_FIXME_WARNING_CFLAGS = -Wno-unused-parameter;
 
-TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR_$(TARGET_MACOS_LEGACY_VERSION_IDENTIFIER))
-TARGET_MAC_OS_X_VERSION_MAJOR_ = $(MACOSX_DEPLOYMENT_TARGET:base:base)0000
-TARGET_MAC_OS_X_VERSION_MAJOR_10_13 = 101300
-TARGET_MAC_OS_X_VERSION_MAJOR_10_14 = 101400
-TARGET_MAC_OS_X_VERSION_MAJOR_10_15 = 101500
-
-WK_TARGET_IOS_VERSION_MAJOR = $(IPHONEOS_DEPLOYMENT_TARGET:base); // e.g. iOS 9.3 => 9
-WK_TARGET_TVOS_VERSION_MAJOR = $(TVOS_DEPLOYMENT_TARGET:base);
-WK_TARGET_WATCHOS_VERSION_MAJOR = $(WATCHOS_DEPLOYMENT_TARGET:base);
-
-// DEBUG_DEFINES, GCC_OPTIMIZATION_LEVEL, STRIP_INSTALLED_PRODUCT and DEAD_CODE_STRIPPING vary between the debug and normal variants.
-// We set up the values for each variant here, and have the Debug configuration in the Xcode project use the _debug variant.
-DEBUG_DEFINES_debug = ;
-DEBUG_DEFINES_normal = NDEBUG;
-DEBUG_DEFINES = $(DEBUG_DEFINES_$(CURRENT_VARIANT));
-
-GCC_OPTIMIZATION_LEVEL = $(GCC_OPTIMIZATION_LEVEL_$(CURRENT_VARIANT));
-GCC_OPTIMIZATION_LEVEL_normal = s;
-GCC_OPTIMIZATION_LEVEL_debug = 0;
-
-STRIP_INSTALLED_PRODUCT = $(STRIP_INSTALLED_PRODUCT_$(CURRENT_VARIANT));
-STRIP_INSTALLED_PRODUCT_normal = YES;
-STRIP_INSTALLED_PRODUCT_debug = NO;
+SWIFT_VERSION = 5.0;
 
 COPY_PHASE_STRIP = NO;
 // Dead code stripping needs to be on in the debug variant to avoid link errors.  This is due to unconditionally
 // building the MiG bindings for WebKitPluginClient even when the functions that the bindings wrap are not built.
+// FIXME: This explanation isn't correct any more, because plug-ins are gone. But is there any reason to change this setting?
 DEAD_CODE_STRIPPING = YES;
+
+DEBUG_DEFINES = NDEBUG;
+DEBUG_DEFINES[config=Debug] = ;
+
+GCC_OPTIMIZATION_LEVEL = s;
+GCC_OPTIMIZATION_LEVEL[config=Debug] = 0;
+
+STRIP_INSTALLED_PRODUCT = YES;
+STRIP_INSTALLED_PRODUCT[config=Debug] = NO;
 
 SDKROOT = macosx.internal;
 
 CODE_SIGN_IDENTITY = -;
+AD_HOC_CODE_SIGNING_ALLOWED = YES;
 
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx appletvos appletvsimulator watchos watchsimulator;
 SUPPORTS_MACCATALYST = YES;
@@ -134,21 +121,11 @@ SUPPORTS_TEXT_BASED_API[sdk=appletv*] = NO;
 SUPPORTS_TEXT_BASED_API[sdk=watch*] = NO;
 
 OTHER_TAPI_FLAGS = $(OTHER_TAPI_FLAGS_$(WK_COCOA_TOUCH));
-OTHER_TAPI_FLAGS_cocoatouch = -x objective-c++ -std=gnu++1z -fno-rtti -DRELEASE_WITHOUT_OPTIMIZATIONS;
+OTHER_TAPI_FLAGS_cocoatouch = -x objective-c++ -std=c++2a -fno-rtti -DRELEASE_WITHOUT_OPTIMIZATIONS;
 TAPI_VERIFY_MODE[sdk=iphone*] = Pedantic;
 
 // This is required to make LLVM_TARGET_TRIPLE_SUFFIX propagate into scripts.
 LLVM_TARGET_TRIPLE_SUFFIX = $(inherited);
-
-WK_COCOA_TOUCH = $(WK_COCOA_TOUCH_$(WK_PLATFORM_NAME));
-WK_COCOA_TOUCH_iphoneos = cocoatouch;
-WK_COCOA_TOUCH_iphonesimulator = cocoatouch;
-WK_COCOA_TOUCH_maccatalyst = cocoatouch;
-WK_COCOA_TOUCH_watchos = cocoatouch;
-WK_COCOA_TOUCH_watchsimulator = cocoatouch;
-WK_COCOA_TOUCH_appletvos = cocoatouch;
-WK_COCOA_TOUCH_appletvsimulator = cocoatouch;
-WK_IS_COCOA_TOUCH = $(WK_NOT_$(WK_EMPTY_$(WK_COCOA_TOUCH)));
 
 WK_MACOS_WEAK_FRAMEWORK = $(WK_MACOS_WEAK_FRAMEWORK_$(WK_COCOA_TOUCH));
 WK_MACOS_WEAK_FRAMEWORK_cocoatouch = -framework
@@ -156,8 +133,8 @@ WK_MACOS_WEAK_FRAMEWORK_ = -weak_framework
 
 WK_USE_RESTRICTED_ENTITLEMENTS = $(USE_INTERNAL_SDK);
 
-WK_WEBKITADDITIONS_INSTALL_PATH = /usr/local/include/WebKitAdditions
-WK_WEBKITADDITIONS_HEADERS_FOLDER_PATH = $(SDKROOT)/$(WK_WEBKITADDITIONS_INSTALL_PATH)
+EXCLUDED_SOURCE_FILE_NAMES = libWebKitAdditions.a JavaScriptCore.framework 
+
 WK_WEBKIT_DERIVEDSOURCES_INPUT_XCFILELIST_ADDITIONS = $(WK_WEBKITADDITIONS_HEADERS_FOLDER_PATH)/WebKit/DerivedSources-input.xcfilelist
 WK_WEBKIT_DERIVEDSOURCES_OUTPUT_XCFILELIST_ADDITIONS = $(WK_WEBKITADDITIONS_HEADERS_FOLDER_PATH)/WebKit/DerivedSources-output.xcfilelist
 

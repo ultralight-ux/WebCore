@@ -33,21 +33,16 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
-#if USE(DIRECT2D)
-#include <dwrite_3.h>
-#endif
-
 using std::min;
 
 namespace WebCore {
 
-FontPlatformData::FontPlatformData(GDIObject<HFONT> font, float size, bool bold, bool oblique, bool useGDI)
-    : m_font(SharedGDIObject<HFONT>::create(WTFMove(font)))
-    , m_size(size)
-    , m_syntheticBold(bold)
-    , m_syntheticOblique(oblique)
-    , m_useGDI(useGDI)
+FontPlatformData::FontPlatformData(GDIObject<HFONT> font, float size, bool bold, bool oblique, bool useGDI, const CreationData* creationData)
+    : FontPlatformData(size, bold, oblique, FontOrientation::Horizontal, FontWidthVariant::RegularWidth, TextRenderingMode::AutoTextRendering, creationData)
 {
+    m_font = SharedGDIObject<HFONT>::create(WTFMove(font));
+    m_useGDI = useGDI;
+
     HWndDC hdc(0);
     SaveDC(hdc);
     
@@ -60,7 +55,7 @@ FontPlatformData::FontPlatformData(GDIObject<HFONT> font, float size, bool bold,
     RestoreDC(hdc, -1);
 }
 
-RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
+RefPtr<SharedBuffer> FontPlatformData::platformOpenTypeTable(uint32_t table) const
 {
     HWndDC hdc(0);
     HGDIOBJ oldFont = SelectObject(hdc, hfont());
@@ -68,7 +63,7 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
     DWORD size = GetFontData(hdc, table, 0, 0, 0);
     RefPtr<SharedBuffer> buffer;
     if (size != GDI_ERROR) {
-        Vector<char> data(size);
+        Vector<uint8_t> data(size);
         DWORD result = GetFontData(hdc, table, 0, (PVOID)data.data(), size);
         ASSERT_UNUSED(result, result == size);
         buffer = SharedBuffer::create(WTFMove(data));
@@ -77,12 +72,5 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
     SelectObject(hdc, oldFont);
     return buffer;
 }
-
-#if !LOG_DISABLED
-String FontPlatformData::description() const
-{
-    return String();
-}
-#endif
 
 }

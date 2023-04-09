@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,7 +31,7 @@
     background: var(--background-color);
 
     --table-column-border-start: 1px solid transparent;
-    --table-column-border-end: 0.5px solid var(--border-color);
+    --table-column-border-end: 1px solid var(--border-color);
 }
 
 .table > .header {
@@ -41,24 +41,25 @@
     line-height: calc(var(--navigation-bar-height) - 1px);
     border-bottom: 1px solid var(--border-color);
     background: var(--background-color);
-    overflow-x: hidden;
+    overflow: hidden;
     vertical-align: middle;
     white-space: nowrap;
 }
 
 .table > .header > .sortable:active {
-    background-color: hsl(0, 0%, 70%);
+    background-color: var(--background-color-pressed);
 }
 
 .table > .header > :matches(.sort-ascending, .sort-descending) {
-    background-color: hsl(0, 0%, 90%);
-    -webkit-padding-end: 18px;
+    font-weight: var(--sorted-header-font-weight);
+    padding-inline-end: 18px;
 }
 
 .table > .header > :matches(.sort-ascending, .sort-descending)::after {
     position: absolute;
     top: 1px;
     bottom: 0;
+    inset-inline-end: 6px;
     width: 9px;
     height: 8px;
     margin-bottom: auto;
@@ -66,14 +67,6 @@
     content: "";
     background-size: 9px 8px;
     background-repeat: no-repeat;
-}
-
-body[dir=ltr] .table > .header > :matches(.sort-ascending, .sort-descending)::after {
-    right: 6px;
-}
-
-body[dir=rtl] .table > .header > :matches(.sort-ascending, .sort-descending)::after {
-    left: 6px;
 }
 
 .table > .header > .sort-ascending::after {
@@ -113,12 +106,12 @@ body[dir=rtl] .table > .header > :matches(.sort-ascending, .sort-descending)::af
     margin: 0;
     min-height: 100%;
 
-    background-image: linear-gradient(to bottom, var(--even-zebra-stripe-row-background-color), var(--even-zebra-stripe-row-background-color) 50%, var(--odd-zebra-stripe-row-background-color) 50%, var(--odd-zebra-stripe-row-background-color));
+    background-image: linear-gradient(to bottom, var(--odd-zebra-stripe-row-background-color), var(--odd-zebra-stripe-row-background-color) 50%, var(--even-zebra-stripe-row-background-color) 50%, var(--even-zebra-stripe-row-background-color));
     background-size: 100% 40px;
 }
 
-.table > .data-container > .data-list.odd-first-zebra-stripe {
-    background-image: linear-gradient(to bottom, var(--odd-zebra-stripe-row-background-color), var(--odd-zebra-stripe-row-background-color) 50%, var(--even-zebra-stripe-row-background-color) 50%, var(--even-zebra-stripe-row-background-color));
+.table > .data-container > .data-list.even-first-zebra-stripe {
+    background-image: linear-gradient(to bottom, var(--even-zebra-stripe-row-background-color), var(--even-zebra-stripe-row-background-color) 50%, var(--odd-zebra-stripe-row-background-color) 50%, var(--odd-zebra-stripe-row-background-color));
 }
 
 .table > .data-container > .data-list > li {
@@ -149,20 +142,28 @@ body[dir=rtl] .table > .header > :matches(.sort-ascending, .sort-descending)::af
     overflow: hidden;
 }
 
-body[dir=ltr] .table .cell:not(:last-child) {
-    border-right: var(--table-column-border-end);
+.table > .header .cell {
+    padding-top: var(--table-header-cell-vertical-padding);
+    padding-bottom: var(--table-header-cell-vertical-padding);
+    line-height: calc(var(--navigation-bar-height) - 1px - 2 * var(--table-header-cell-vertical-padding));
+
+    --table-header-cell-vertical-padding: 4px;
 }
 
-body[dir=rtl] .table .cell:not(:last-child) {
-    border-left: var(--table-column-border-end);
+.table > .header .cell:not(:first-child)::before {
+    content: "";
+    position: absolute;
+    top: var(--table-header-cell-vertical-padding);
+    bottom: var(--table-header-cell-vertical-padding);
+    inset-inline-start: 0;
+    width: 1px;
+    background-color: var(--separator-color);
 }
 
-body[dir=ltr] .table .cell:first-child {
-    border-left: var(--table-column-border-start);
-}
-
-body[dir=rtl] .table .cell:first-child {
-    border-right: var(--table-column-border-start);
+.table > .header .cell:not(:first-child):active::before,
+.table > .header .cell:active + .cell::before {
+    top: 0;
+    bottom: 0;
 }
 
 .table .cell.align-right {
@@ -178,14 +179,6 @@ body[dir=rtl] .table .cell:first-child {
 }
 
 @media (prefers-color-scheme: dark) {
-    .table > .header > .sortable:active {
-        background-color: hsla(0, 0%, var(--foreground-lightness), 0.2);
-    }
-
-    .table > .header > :matches(.sort-ascending, .sort-descending) {
-        background: var(--background-color-selected);
-    }
-
     .table > .header > :matches(.sort-ascending, .sort-descending)::after {
         filter: invert();
     }

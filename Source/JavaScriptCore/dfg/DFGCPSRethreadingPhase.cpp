@@ -35,6 +35,7 @@
 namespace JSC { namespace DFG {
 
 class CPSRethreadingPhase : public Phase {
+    static constexpr bool verbose = false;
 public:
     CPSRethreadingPhase(Graph& graph)
         : Phase(graph, "CPS rethreading")
@@ -272,8 +273,9 @@ private:
         }
         
         variable->setIsLoadedFrom(true);
-        node->children.setChild1(Edge(addPhi<operandKind>(node->origin, variable, idx)));
-        m_block->variablesAtHead.atFor<operandKind>(idx) = node;
+        Node* phi = addPhi<operandKind>(node->origin, variable, idx);
+        node->children.setChild1(Edge(phi));
+        m_block->variablesAtHead.atFor<operandKind>(idx) = phi;
         m_block->variablesAtTail.atFor<operandKind>(idx) = node;
     }
 
@@ -324,7 +326,7 @@ private:
             // The rules for threaded CPS form:
             // 
             // Head variable: describes what is live at the head of the basic block.
-            // Head variable links may refer to Flush, PhantomLocal, Phi, or SetArgumentDefinitely/SetArgumentMaybe.
+            // Head variable links may refer to Phi or SetArgumentDefinitely/SetArgumentMaybe.
             // SetArgumentDefinitely/SetArgumentMaybe may only appear in the root block.
             //
             // Tail variable: the last thing that happened to the variable in the block.
@@ -425,6 +427,11 @@ private:
             VariableAccessData* variable = currentPhi->variableAccessData();
             size_t index = entry.m_index;
             
+            if (verbose) {
+                dataLog(" Iterating on phi from block ", block, " ");
+                m_graph.dump(WTF::dataFile(), "", currentPhi);
+            }
+
             for (size_t i = predecessors.size(); i--;) {
                 BasicBlock* predecessorBlock = predecessors[i];
                 
@@ -433,11 +440,13 @@ private:
                     variableInPrevious = addPhi<operandKind>(predecessorBlock, currentPhi->origin, variable, index);
                     predecessorBlock->variablesAtTail.atFor<operandKind>(index) = variableInPrevious;
                     predecessorBlock->variablesAtHead.atFor<operandKind>(index) = variableInPrevious;
+                    dataLogLnIf(verbose, "    No variable in predecessor ", predecessorBlock, " creating a new phi: ", variableInPrevious);
                 } else {
                     switch (variableInPrevious->op()) {
                     case GetLocal:
                     case PhantomLocal:
                     case Flush:
+                        dataLogLnIf(verbose, "    Variable in predecessor ", predecessorBlock, " ", variableInPrevious, " needs to be forwarded to first child ", variableInPrevious->child1().node());
                         ASSERT(variableInPrevious->variableAccessData() == variableInPrevious->child1()->variableAccessData());
                         variableInPrevious = variableInPrevious->child1().node();
                         break;
@@ -452,6 +461,9 @@ private:
                     || variableInPrevious->op() == SetArgumentDefinitely
                     || variableInPrevious->op() == SetArgumentMaybe);
           
+                if (verbose)
+                    m_graph.dump(WTF::dataFile(), "    Adding new variable from predecessor ", variableInPrevious);
+
                 if (!currentPhi->child1()) {
                     currentPhi->children.setChild1(Edge(variableInPrevious));
                     continue;

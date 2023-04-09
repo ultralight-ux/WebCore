@@ -26,8 +26,8 @@
 
 namespace JSC {
 
-static EncodedJSValue JSC_HOST_CALL booleanProtoFuncToString(JSGlobalObject*, CallFrame*);
-static EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_HOST_FUNCTION(booleanProtoFuncToString);
+static JSC_DECLARE_HOST_FUNCTION(booleanProtoFuncValueOf);
 
 }
 
@@ -35,7 +35,7 @@ static EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(JSGlobalObject*, Cal
 
 namespace JSC {
 
-const ClassInfo BooleanPrototype::s_info = { "Boolean", &BooleanObject::s_info, &booleanPrototypeTable, nullptr, CREATE_METHOD_TABLE(BooleanPrototype) };
+const ClassInfo BooleanPrototype::s_info = { "Boolean"_s, &BooleanObject::s_info, &booleanPrototypeTable, nullptr, CREATE_METHOD_TABLE(BooleanPrototype) };
 
 /* Source for BooleanPrototype.lut.h
 @begin booleanPrototypeTable
@@ -56,12 +56,12 @@ void BooleanPrototype::finishCreation(VM& vm, JSGlobalObject*)
     Base::finishCreation(vm);
     setInternalValue(vm, jsBoolean(false));
 
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
 // ------------------------------ Functions ---------------------------
 
-EncodedJSValue JSC_HOST_CALL booleanProtoFuncToString(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(booleanProtoFuncToString, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -72,11 +72,11 @@ EncodedJSValue JSC_HOST_CALL booleanProtoFuncToString(JSGlobalObject* globalObje
     if (thisValue == jsBoolean(true))
         return JSValue::encode(vm.smallStrings.trueString());
 
-    auto* thisObject = jsDynamicCast<BooleanObject*>(vm, thisValue);
+    auto* thisObject = jsDynamicCast<BooleanObject*>(thisValue);
     if (UNLIKELY(!thisObject))
         return throwVMTypeError(globalObject, scope);
 
-    Integrity::auditStructureID(vm, thisObject->structureID());
+    Integrity::auditStructureID(thisObject->structureID());
     if (thisObject->internalValue() == jsBoolean(false))
         return JSValue::encode(vm.smallStrings.falseString());
 
@@ -84,7 +84,7 @@ EncodedJSValue JSC_HOST_CALL booleanProtoFuncToString(JSGlobalObject* globalObje
     return JSValue::encode(vm.smallStrings.trueString());
 }
 
-EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(booleanProtoFuncValueOf, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -92,11 +92,11 @@ EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(JSGlobalObject* globalObjec
     if (thisValue.isBoolean())
         return JSValue::encode(thisValue);
 
-    auto* thisObject = jsDynamicCast<BooleanObject*>(vm, thisValue);
+    auto* thisObject = jsDynamicCast<BooleanObject*>(thisValue);
     if (UNLIKELY(!thisObject))
         return throwVMTypeError(globalObject, scope);
 
-    Integrity::auditStructureID(vm, thisObject->structureID());
+    Integrity::auditStructureID(thisObject->structureID());
     return JSValue::encode(thisObject->internalValue());
 }
 

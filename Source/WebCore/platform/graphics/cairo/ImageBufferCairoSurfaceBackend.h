@@ -31,8 +31,8 @@
 
 #if USE(CAIRO)
 
+#include "GraphicsContextCairo.h"
 #include "ImageBufferCairoBackend.h"
-#include "PlatformContextCairo.h"
 
 namespace WebCore {
 
@@ -40,21 +40,23 @@ class ImageBufferCairoSurfaceBackend : public ImageBufferCairoBackend {
 public:
     GraphicsContext& context() const override;
 
-    NativeImagePtr copyNativeImage(BackingStoreCopy) const override;
+    IntSize backendSize() const override;
 
-    Vector<uint8_t> toBGRAData() const override;
-    RefPtr<ImageData> getImageData(AlphaPremultiplication outputFormat, const IntRect&) const override;
-    void putImageData(AlphaPremultiplication inputFormat, const ImageData&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
+    RefPtr<NativeImage> copyNativeImage(BackingStoreCopy) const override;
+
+    RefPtr<cairo_surface_t> createCairoSurface() override;
+
+    RefPtr<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&, const ImageBufferAllocator&) const override;
+    void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
 
 protected:
-    ImageBufferCairoSurfaceBackend(const FloatSize& logicalSize, const IntSize& backendSize, float resolutionScale, ColorSpace, RefPtr<cairo_surface_t>&&);
+    ImageBufferCairoSurfaceBackend(const Parameters&, RefPtr<cairo_surface_t>&&);
 
-    NativeImagePtr cairoSurfaceCoerceToImage() const;
+    RefPtr<NativeImage> cairoSurfaceCoerceToImage() const;
     unsigned bytesPerRow() const override;
 
-    mutable RefPtr<cairo_surface_t> m_surface;
-    PlatformContextCairo m_platformContext { nullptr };
-    std::unique_ptr<GraphicsContext> m_context;
+    RefPtr<cairo_surface_t> m_surface;
+    mutable GraphicsContextCairo m_context;
 };
 
 } // namespace WebCore

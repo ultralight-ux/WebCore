@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.InspectorObserver = class InspectorObserver
+WI.InspectorObserver = class InspectorObserver extends InspectorBackend.Dispatcher
 {
     // Events defined by the "Inspector" domain.
 
@@ -68,6 +68,8 @@ WI.InspectorObserver = class InspectorObserver
 
     activateExtraDomains(domains)
     {
+        // COMPATIBILITY (iOS 14.0): Inspector.activateExtraDomains was removed in favor of a declared debuggable type
+
         WI.sharedApp.activateExtraDomains(domains);
     }
 };

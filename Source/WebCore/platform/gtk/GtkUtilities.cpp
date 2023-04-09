@@ -24,6 +24,10 @@
 #include <gtk/gtk.h>
 #include <wtf/glib/GUniquePtr.h>
 
+#if USE(GTK4) && PLATFORM(X11)
+#include <gdk/x11/gdkx.h>
+#endif
+
 namespace WebCore {
 
 static IntPoint gtkWindowGetOrigin(GtkWidget* window)
@@ -122,7 +126,7 @@ WallTime wallTimeForEvent(const GdkEvent* event)
     // This works if and only if the X server or Wayland compositor happens to
     // be using CLOCK_MONOTONIC for its monotonic time, and so long as
     // g_get_monotonic_time() continues to do so as well, and so long as
-    // WTF::MonotonicTime continues to use g_get_monotonic_time().
+    // MonotonicTime continues to use g_get_monotonic_time().
 #if USE(GTK4)
     auto time = gdk_event_get_time(const_cast<GdkEvent*>(event));
 #else
@@ -185,6 +189,36 @@ GdkDragAction dragOperationToSingleGdkDragAction(OptionSet<DragOperation> coreAc
     if (coreAction.contains(DragOperation::Link))
         return GDK_ACTION_LINK;
     return static_cast<GdkDragAction>(0);
+}
+
+void monitorWorkArea(GdkMonitor* monitor, GdkRectangle* area)
+{
+#if USE(GTK4)
+#if PLATFORM(X11)
+    if (GDK_IS_X11_MONITOR(monitor)) {
+        gdk_x11_monitor_get_workarea(monitor, area);
+        return;
+    }
+#endif
+
+    gdk_monitor_get_geometry(monitor, area);
+#else
+    gdk_monitor_get_workarea(monitor, area);
+#endif
+}
+
+bool shouldUseOverlayScrollbars()
+{
+#if !USE(GTK4)
+    if (!g_strcmp0 (g_getenv ("GTK_OVERLAY_SCROLLING"), "0"))
+        return false;
+#endif
+
+    gboolean overlayScrolling;
+    g_object_get(gtk_settings_get_default(),
+        "gtk-overlay-scrolling",
+        &overlayScrolling, nullptr);
+    return !!overlayScrolling;
 }
 
 } // namespace WebCore

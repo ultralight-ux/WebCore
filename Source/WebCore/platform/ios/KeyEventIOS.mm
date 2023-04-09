@@ -194,7 +194,7 @@ int windowsKeyCodeForKeyCode(uint16_t keyCode)
         return VK_APPS;
     }
     // Otherwise check all other known keys.
-    if (keyCode < WTF_ARRAY_LENGTH(windowsKeyCode))
+    if (keyCode < std::size(windowsKeyCode))
         return windowsKeyCode[keyCode];
     return 0; // Unknown key
 }
@@ -274,14 +274,6 @@ int windowsKeyCodeForCharCode(unichar charCode)
 static bool isFunctionKey(UChar charCode)
 {
     switch (charCode) {
-#if !USE(UIKIT_KEYBOARD_ADDITIONS)
-    case 1: // Home
-    case 4: // End
-    case 5: // FIXME: For some reason WebKitTestRunner generates this code for F14 (why?).
-    case 0x7F: // Forward Delete
-    case 0x10: // Function key (e.g. F1, F2, ...)
-#endif
-
     // WebKit uses Unicode PUA codes in the OpenStep reserve range for some special keys.
     case NSUpArrowFunctionKey:
     case NSDownArrowFunctionKey:
@@ -290,31 +282,27 @@ static bool isFunctionKey(UChar charCode)
     case NSPageUpFunctionKey:
     case NSPageDownFunctionKey:
     case NSClearLineFunctionKey: // Num Lock / Clear
-#if USE(UIKIT_KEYBOARD_ADDITIONS)
     case NSDeleteFunctionKey: // Forward delete
     case NSEndFunctionKey:
     case NSInsertFunctionKey:
     case NSHomeFunctionKey:
-#endif
         return true;
     }
-#if USE(UIKIT_KEYBOARD_ADDITIONS)
     if (charCode >= NSF1FunctionKey && charCode <= NSF24FunctionKey)
         return true;
-#endif
     return false;
 }
 
 void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCompatibilityMode)
 {
     // Can only change type from KeyDown to RawKeyDown or Char, as we lack information for other conversions.
-    ASSERT(m_type == KeyDown);
-    ASSERT(type == RawKeyDown || type == Char);
+    ASSERT(m_type == Type::KeyDown);
+    ASSERT(type == Type::RawKeyDown || type == Type::Char);
     m_type = type;
     if (backwardCompatibilityMode)
         return;
 
-    if (type == PlatformEvent::RawKeyDown) {
+    if (type == PlatformEvent::Type::RawKeyDown) {
         m_text = String();
         m_unmodifiedText = String();
     } else {

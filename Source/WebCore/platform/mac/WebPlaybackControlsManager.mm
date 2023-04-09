@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,11 +45,10 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 @implementation WebPlaybackControlsManager
 
-@synthesize seekToTime=_seekToTime;
-@synthesize hasEnabledAudio=_hasEnabledAudio;
-@synthesize hasEnabledVideo=_hasEnabledVideo;
-@synthesize rate=_rate;
-@synthesize canTogglePlayback=_canTogglePlayback;
+@synthesize seekToTime = _seekToTime;
+@synthesize hasEnabledAudio = _hasEnabledAudio;
+@synthesize hasEnabledVideo = _hasEnabledVideo;
+@synthesize canTogglePlayback = _canTogglePlayback;
 @synthesize allowsPictureInPicturePlayback;
 @synthesize pictureInPictureActive;
 @synthesize canTogglePictureInPicture;
@@ -61,6 +60,21 @@ using WebCore::PlaybackSessionInterfaceMac;
     [super dealloc];
 }
 
+- (BOOL)canSeek
+{
+    return _canSeek;
+}
+
+- (void)setCanSeek:(BOOL)canSeek
+{
+    _canSeek = canSeek;
+}
+
++ (NSSet<NSString *> *)keyPathsForValuesAffectingContentDuration
+{
+    return [NSSet setWithObject:@"seekableTimeRanges"];
+}
+
 - (NSTimeInterval)contentDuration
 {
     return [_seekableTimeRanges count] ? _contentDuration : std::numeric_limits<double>::infinity();
@@ -68,7 +82,15 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 - (void)setContentDuration:(NSTimeInterval)duration
 {
+    bool needCanSeekUpdate = std::isfinite(_contentDuration) != std::isfinite(duration);
     _contentDuration = duration;
+    // Workaround rdar://82275552. We do so by toggling the canSeek property to force
+    // a content refresh that will make the scrubber appear/disappear accordingly.
+    if (needCanSeekUpdate) {
+        bool canSeek = _canSeek;
+        self.canSeek = !canSeek;
+        self.canSeek = canSeek;
+    }
 }
 
 - (AVValueTiming *)timing
@@ -89,6 +111,7 @@ using WebCore::PlaybackSessionInterfaceMac;
 - (void)setSeekableTimeRanges:(NSArray *)timeRanges
 {
     _seekableTimeRanges = timeRanges;
+    self.canSeek = timeRanges.count;
 }
 
 - (BOOL)isSeeking
@@ -98,10 +121,11 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 - (void)seekToTime:(NSTimeInterval)time toleranceBefore:(NSTimeInterval)toleranceBefore toleranceAfter:(NSTimeInterval)toleranceAfter
 {
-    UNUSED_PARAM(toleranceBefore);
-    UNUSED_PARAM(toleranceAfter);
+    if (!_playbackSessionInterfaceMac)
+        return;
+
     if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
-        model->seekToTime(time);
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::SeekToPlaybackPositionCommand, { time, toleranceBefore || toleranceAfter });
 }
 
 - (void)cancelThumbnailAndAudioAmplitudeSampleGeneration
@@ -122,23 +146,40 @@ using WebCore::PlaybackSessionInterfaceMac;
     completionHandler(@[ ]);
 }
 
++ (NSSet<NSString *> *)keyPathsForValuesAffectingCanBeginTouchBarScrubbing
+{
+    return [NSSet setWithObjects:@"canSeek", @"contentDuration", nil];
+}
+
 - (BOOL)canBeginTouchBarScrubbing
 {
     // At this time, we return YES for all media that is not a live stream and media that is not Netflix. (A Netflix
     // quirk means we pretend Netflix is a live stream for Touch Bar.) It's not ideal to return YES all the time for
     // other media. The intent of the API is that we return NO when the media is being scrubbed via the on-screen scrubber.
     // But we can only possibly get the right answer for media that uses the default controls.
-    return std::isfinite(_contentDuration) && [_seekableTimeRanges count];
+    return _canSeek && std::isfinite(_contentDuration);
 }
 
 - (void)beginTouchBarScrubbing
 {
-    _playbackSessionInterfaceMac->beginScrubbing();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    auto* model = _playbackSessionInterfaceMac->playbackSessionModel();
+    if (!model)
+        return;
+        
+    _playbackSessionInterfaceMac->willBeginScrubbing();
+    model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::BeginScrubbingCommand, { });
 }
 
 - (void)endTouchBarScrubbing
 {
-    _playbackSessionInterfaceMac->endScrubbing();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::EndScrubbingCommand, { });
 }
 
 - (NSArray<AVTouchBarMediaSelectionOption *> *)audioTouchBarMediaSelectionOptions
@@ -203,14 +244,14 @@ using WebCore::PlaybackSessionInterfaceMac;
         model->selectLegibleMediaOption(index != NSNotFound ? index : UINT64_MAX);
 }
 
-static AVTouchBarMediaSelectionOptionType toAVTouchBarMediaSelectionOptionType(MediaSelectionOption::Type type)
+static AVTouchBarMediaSelectionOptionType toAVTouchBarMediaSelectionOptionType(MediaSelectionOption::LegibleType type)
 {
     switch (type) {
-    case MediaSelectionOption::Type::Regular:
+    case MediaSelectionOption::LegibleType::Regular:
         return AVTouchBarMediaSelectionOptionTypeRegular;
-    case MediaSelectionOption::Type::LegibleOff:
+    case MediaSelectionOption::LegibleType::LegibleOff:
         return AVTouchBarMediaSelectionOptionTypeLegibleOff;
-    case MediaSelectionOption::Type::LegibleAuto:
+    case MediaSelectionOption::LegibleType::LegibleAuto:
         return AVTouchBarMediaSelectionOptionTypeLegibleAuto;
     }
 
@@ -221,7 +262,7 @@ static AVTouchBarMediaSelectionOptionType toAVTouchBarMediaSelectionOptionType(M
 static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOption>& options)
 {
     return createNSArray(options, [] (auto& option) {
-        return adoptNS([allocAVTouchBarMediaSelectionOptionInstance() initWithTitle:option.displayName type:toAVTouchBarMediaSelectionOptionType(option.type)]);
+        return adoptNS([allocAVTouchBarMediaSelectionOptionInstance() initWithTitle:option.displayName type:toAVTouchBarMediaSelectionOptionType(option.legibleType)]);
     });
 }
 
@@ -282,8 +323,11 @@ static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOptio
 
 - (void)togglePlayback
 {
-    if (_playbackSessionInterfaceMac && _playbackSessionInterfaceMac->playbackSessionModel())
-        _playbackSessionInterfaceMac->playbackSessionModel()->togglePlayState();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::TogglePlayPauseCommand, { });
 }
 
 - (void)setPlaying:(BOOL)playing
@@ -297,13 +341,8 @@ static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOptio
     if (!_playbackSessionInterfaceMac)
         return;
 
-    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel()) {
-        BOOL isCurrentlyPlaying = model->isPlaying();
-        if (!isCurrentlyPlaying && _playing)
-            model->play();
-        else if (isCurrentlyPlaying && !_playing)
-            model->pause();
-    }
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->sendRemoteCommand(_playing ? WebCore::PlatformMediaSession::RemoteControlCommandType::PlayCommand : WebCore::PlatformMediaSession::RemoteControlCommandType::PauseCommand, { });
 }
 
 - (BOOL)isPlaying
@@ -311,10 +350,73 @@ static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOptio
     return _playing;
 }
 
+- (double)defaultPlaybackRate
+{
+    return _defaultPlaybackRate;
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate
+{
+    [self setDefaultPlaybackRate:defaultPlaybackRate fromJavaScript:NO];
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (defaultPlaybackRate == _defaultPlaybackRate)
+        return;
+
+    _defaultPlaybackRate = defaultPlaybackRate;
+
+    if (!fromJavaScript && _playbackSessionInterfaceMac) {
+        if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel(); model && model->defaultPlaybackRate() != _defaultPlaybackRate)
+            model->setDefaultPlaybackRate(_defaultPlaybackRate);
+    }
+
+    if ([self isPlaying])
+        [self setRate:_defaultPlaybackRate fromJavaScript:fromJavaScript];
+}
+
+- (float)rate
+{
+    return _rate;
+}
+
+- (void)setRate:(float)rate
+{
+    [self setRate:rate fromJavaScript:NO];
+}
+
+- (void)setRate:(double)rate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (rate == _rate)
+        return;
+
+    _rate = rate;
+
+    // AVKit doesn't have a separate variable for "paused", instead representing it by a `rate` of
+    // `0`. Unfortunately, `HTMLMediaElement::play` doesn't call `HTMLMediaElement::setPlaybackRate`
+    // so if we propagate a `rate` of `0` along to the `HTMLMediaElement` then any attempt to
+    // `HTMLMediaElement::play` will effectively be a no-op since the `playbackRate` will be `0`.
+    if (!_rate)
+        return;
+
+    // In AVKit, the `defaultPlaybackRate` is used when playback starts, such as resuming after
+    // pausing. In WebKit, however, `defaultPlaybackRate` is only used when first loading and after
+    // ending scanning, with the `playbackRate` being used in all other cases, including when
+    // resuming after pausing. As such, WebKit should return the `playbackRate` instead of the
+    // `defaultPlaybackRate` in these cases when communicating with AVKit.
+    [self setDefaultPlaybackRate:_rate fromJavaScript:fromJavaScript];
+
+    if (!fromJavaScript && _playbackSessionInterfaceMac) {
+        if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel(); model && model->playbackRate() != _rate)
+            model->setPlaybackRate(_rate);
+    }
+}
+
 - (void)togglePictureInPicture
 {
-    if (_playbackSessionInterfaceMac && _playbackSessionInterfaceMac->playbackSessionModel())
-        _playbackSessionInterfaceMac->playbackSessionModel()->togglePictureInPicture();
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->togglePictureInPicture();
 }
 
 IGNORE_WARNINGS_END

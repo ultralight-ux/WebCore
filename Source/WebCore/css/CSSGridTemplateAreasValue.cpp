@@ -34,6 +34,7 @@
 
 #include "GridArea.h"
 #include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringHash.h>
 
 namespace WebCore {
 
@@ -63,7 +64,35 @@ static String stringForPosition(const NamedGridAreaMap& gridAreaMap, size_t row,
             return it.key;
     }
 
-    return ".";
+    return "."_s;
+}
+
+String CSSGridTemplateAreasValue::stringForRow(size_t row)
+{
+    Vector<String> columns;
+    columns.grow(m_columnCount);
+
+    for (const auto& it : m_gridAreaMap) {
+        const GridArea& area = it.value;
+        if (row >= area.rows.startLine() && row < area.rows.endLine()) {
+            for (unsigned i = area.columns.startLine(); i < area.columns.endLine(); i++)
+                columns[i] = it.key;
+        }
+    }
+
+    StringBuilder builder;
+    bool first = true;
+    for (const auto& name : columns) {
+        if (!first)
+            builder.append(" ");
+        first = false;
+
+        if (name.isNull())
+            builder.append(".");
+        else
+            builder.append(name);
+    }
+    return builder.toString();
 }
 
 String CSSGridTemplateAreasValue::customCSSText() const

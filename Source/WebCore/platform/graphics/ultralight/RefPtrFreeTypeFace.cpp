@@ -7,13 +7,13 @@
 
 namespace WTF {
 
-template<> void refIfNotNull(FT_Face face)
+void DefaultRefDerefTraits<FT_FaceRec_>::refIfNotNull(FT_Face face)
 {
     if (LIKELY(face))
         FT_Reference_Face(face);
 }
 
-template<> void derefIfNotNull(FT_Face face)
+void DefaultRefDerefTraits<FT_FaceRec_>::derefIfNotNull(FT_Face face)
 {
     if (LIKELY(face))
         FT_Done_Face(face);

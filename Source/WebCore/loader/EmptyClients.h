@@ -83,6 +83,7 @@ class EmptyChromeClient : public ChromeClient {
     void setResizable(bool) final { }
 
     void addMessageToConsole(MessageSource, MessageLevel, const String&, unsigned, unsigned, const String&) final { }
+    void addMessageWithArgumentsToConsole(MessageSource, MessageLevel, const String&, Span<const String>, unsigned, unsigned, const String&) final { }
 
 #if PLATFORM(ULTRALIGHT)
     void addMessageToConsoleDirect(Inspector::ConsoleMessage&) final { }
@@ -91,7 +92,7 @@ class EmptyChromeClient : public ChromeClient {
     bool canRunBeforeUnloadConfirmPanel() final { return false; }
     bool runBeforeUnloadConfirmPanel(const String&, Frame&) final { return true; }
 
-    void closeWindowSoon() final { }
+    void closeWindow() final { }
 
     void runJavaScriptAlert(Frame&, const String&) final { }
     bool runJavaScriptConfirm(Frame&, const String&) final { return false; }
@@ -105,6 +106,11 @@ class EmptyChromeClient : public ChromeClient {
     void setStatusbarText(const String&) final { }
 
     KeyboardUIMode keyboardUIMode() final { return KeyboardAccessDefault; }
+
+    bool hoverSupportedByPrimaryPointingDevice() const final { return false; };
+    bool hoverSupportedByAnyAvailablePointingDevice() const final { return false; }
+    std::optional<PointerCharacteristics> pointerCharacteristicsOfPrimaryPointingDevice() const final { return std::nullopt; };
+    OptionSet<PointerCharacteristics> pointerCharacteristicsOfAllAvailablePointingDevices() const final { return { }; }
 
     void invalidateRootView(const IntRect&) final { }
     void invalidateContentsAndRootView(const IntRect&) override { }
@@ -124,7 +130,7 @@ class EmptyChromeClient : public ChromeClient {
 
     void mouseDidMoveOverElement(const HitTestResult&, unsigned, const String&, TextDirection) final { }
 
-    void print(Frame&) final { }
+    void print(Frame&, const StringWithDirection&) final { }
 
     void exceededDatabaseQuota(Frame&, const String&, DatabaseDetails) final { }
 
@@ -140,22 +146,35 @@ class EmptyChromeClient : public ChromeClient {
     bool canShowDataListSuggestionLabels() const final { return false; }
 #endif
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+    std::unique_ptr<DateTimeChooser> createDateTimeChooser(DateTimeChooserClient&) final;
+#endif
+
+#if ENABLE(APP_HIGHLIGHTS)
+    void storeAppHighlight(AppHighlight&&) const final;
+#endif
+
+    void setTextIndicator(const TextIndicatorData&) const final;
+
+    DisplayRefreshMonitorFactory* displayRefreshMonitorFactory() const final;
+
     void runOpenPanel(Frame&, FileChooser&) final;
     void showShareSheet(ShareDataWithParsedURL&, CompletionHandler<void(bool)>&&) final;
     void loadIconForFiles(const Vector<String>&, FileIconLoader&) final { }
 
-    void elementDidFocus(Element&) final { }
+    void elementDidFocus(Element&, const FocusOptions&) final { }
     void elementDidBlur(Element&) final { }
 
     void setCursor(const Cursor&) final { }
     void setCursorHiddenUntilMouseMoves(bool) final { }
 
-    void scrollRectIntoView(const IntRect&) const final { }
+    void scrollContainingScrollViewsToRevealRect(const IntRect&) const final { }
+    void scrollMainFrameToRevealRect(const IntRect&) const final { }
 
     void attachRootGraphicsLayer(Frame&, GraphicsLayer*) final { }
     void attachViewOverlayGraphicsLayer(GraphicsLayer*) final { }
     void setNeedsOneShotDrawingSynchronization() final { }
-    void scheduleRenderingUpdate() final { }
+    void triggerRenderingUpdate() final { }
 
 #if PLATFORM(WIN)
     void setLastSetCursorToCurrentCursor() final { }
@@ -204,6 +223,10 @@ class EmptyChromeClient : public ChromeClient {
     bool shouldNotifyOnFormChanges() final { return false; }
 
     RefPtr<Icon> createIconForFiles(const Vector<String>& /* filenames */) final { return nullptr; }
+
+    void requestCookieConsent(CompletionHandler<void(CookieConsentDecisionResult)>&&) final;
+    void classifyModalContainerControls(Vector<String>&&, CompletionHandler<void(Vector<ModalContainerControlType>&&)>&&) final;
+    void decidePolicyForModalContainer(OptionSet<ModalContainerControlType>, CompletionHandler<void(ModalContainerDecision)>&&) final;
 };
 
 DiagnosticLoggingClient& emptyDiagnosticLoggingClient();

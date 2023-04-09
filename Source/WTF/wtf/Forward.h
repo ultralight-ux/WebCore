@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2006-2020 Apple Inc. All rights reserved.
+ *  Copyright (C) 2006-2021 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -25,13 +25,18 @@
 
 namespace WTF {
 
+class ASCIILiteral;
+class AbstractLocker;
 class AtomString;
 class AtomStringImpl;
 class BinarySemaphore;
 class CString;
 class CrashOnOverflow;
+class DefaultWeakPtrImpl;
 class FunctionDispatcher;
 class Hasher;
+class Lock;
+class Logger;
 class MonotonicTime;
 class OrdinalNumber;
 class PrintStream;
@@ -41,14 +46,14 @@ class String;
 class StringBuilder;
 class StringImpl;
 class StringView;
+class SuspendableWorkQueue;
 class TextPosition;
 class TextStream;
-class UniquedStringImpl;
 class URL;
+class UniquedStringImpl;
 class WallTime;
 
 struct AnyThreadsAccessTraits;
-struct EmptyCounter;
 struct FastMalloc;
 struct MainThreadAccessTraits;
 
@@ -58,25 +63,32 @@ struct VectorMalloc;
 using VectorMalloc = FastMalloc;
 #endif
 
-template<typename> struct DumbPtrTraits;
+template<typename> struct DefaultRefDerefTraits;
 
+template<typename> class CompactPtr;
 template<typename> class CompletionHandler;
+template<typename Key, typename, Key> class EnumeratedArray;
+template<typename> class FixedVector;
 template<typename> class Function;
 template<typename, typename = AnyThreadsAccessTraits> class LazyNeverDestroyed;
 template<typename, typename = AnyThreadsAccessTraits> class NeverDestroyed;
+template<typename> class ObjectIdentifier;
 template<typename> class OptionSet;
-template<typename> class Optional;
 template<typename> class Packed;
 template<typename T, size_t = alignof(T)> class PackedAlignedPtr;
-template<typename T, typename = DumbPtrTraits<T>> class Ref;
-template<typename T, typename = DumbPtrTraits<T>> class RefPtr;
+template<typename> struct RawPtrTraits;
+template<typename T, typename = RawPtrTraits<T>> class CheckedRef;
+template<typename T, typename = RawPtrTraits<T>> class CheckedPtr;
+template<typename T, typename = RawPtrTraits<T>> class Ref;
+template<typename T, typename = RawPtrTraits<T>, typename = DefaultRefDerefTraits<T>> class RefPtr;
+template<typename> class RetainPtr;
+template<typename> class ScopedLambda;
 template<typename> class StringBuffer;
 template<typename> class StringParsingBuffer;
 template<typename, typename = void> class StringTypeAdapter;
 template<typename> class UniqueRef;
-template<typename...> class Variant;
 template<typename, size_t = 0, typename = CrashOnOverflow, size_t = 16, typename Malloc = VectorMalloc> class Vector;
-template<typename, typename = EmptyCounter> class WeakPtr;
+template<typename, typename = DefaultWeakPtrImpl> class WeakPtr;
 
 template<typename> struct DefaultHash;
 template<> struct DefaultHash<AtomString>;
@@ -86,14 +98,21 @@ template<> struct DefaultHash<StringImpl*>;
 template<> struct DefaultHash<URL>;
 template<typename T, size_t inlineCapacity> struct DefaultHash<Vector<T, inlineCapacity>>;
 
-template<typename> struct DumbValueTraits;
+template<typename> struct RawValueTraits;
 template<typename> struct EnumTraits;
+template<typename> struct EnumTraitsForPersistence;
 template<typename E, E...> struct EnumValues;
 template<typename> struct HashTraits;
 
+struct HashTableTraits;
+struct IdentityExtractor;
+template<typename T> struct KeyValuePairKeyExtractor;
+template<typename KeyTraits, typename MappedTraits> struct KeyValuePairTraits;
+template<typename KeyTypeArg, typename ValueTypeArg> struct KeyValuePair;
+template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits> class HashTable;
 template<typename Value, typename = DefaultHash<Value>, typename = HashTraits<Value>> class HashCountedSet;
-template<typename KeyArg, typename MappedArg, typename = DefaultHash<KeyArg>, typename = HashTraits<KeyArg>, typename = HashTraits<MappedArg>> class HashMap;
-template<typename ValueArg, typename = DefaultHash<ValueArg>, typename = HashTraits<ValueArg>> class HashSet;
+template<typename KeyArg, typename MappedArg, typename = DefaultHash<KeyArg>, typename = HashTraits<KeyArg>, typename = HashTraits<MappedArg>, typename = HashTableTraits> class HashMap;
+template<typename ValueArg, typename = DefaultHash<ValueArg>, typename = HashTraits<ValueArg>, typename = HashTableTraits> class HashSet;
 
 }
 
@@ -104,13 +123,15 @@ template<class, class> class expected;
 template<class> class unexpected;
 }}} // namespace std::experimental::fundamentals_v3
 
+using WTF::ASCIILiteral;
+using WTF::AbstractLocker;
 using WTF::AtomString;
 using WTF::AtomStringImpl;
 using WTF::BinarySemaphore;
 using WTF::CString;
 using WTF::CompletionHandler;
-using WTF::DumbPtrTraits;
-using WTF::DumbValueTraits;
+using WTF::EnumeratedArray;
+using WTF::FixedVector;
 using WTF::Function;
 using WTF::FunctionDispatcher;
 using WTF::HashCountedSet;
@@ -118,26 +139,33 @@ using WTF::HashMap;
 using WTF::HashSet;
 using WTF::Hasher;
 using WTF::LazyNeverDestroyed;
+using WTF::Lock;
+using WTF::Logger;
 using WTF::NeverDestroyed;
+using WTF::ObjectIdentifier;
 using WTF::OptionSet;
-using WTF::Optional;
 using WTF::OrdinalNumber;
 using WTF::PrintStream;
+using WTF::RawPtrTraits;
+using WTF::RawValueTraits;
 using WTF::Ref;
 using WTF::RefPtr;
+using WTF::RetainPtr;
 using WTF::SHA1;
+using WTF::ScopedLambda;
 using WTF::String;
 using WTF::StringBuffer;
 using WTF::StringBuilder;
 using WTF::StringImpl;
 using WTF::StringParsingBuffer;
 using WTF::StringView;
+using WTF::SuspendableWorkQueue;
 using WTF::TextPosition;
 using WTF::TextStream;
 using WTF::URL;
 using WTF::UniqueRef;
-using WTF::Variant;
 using WTF::Vector;
+using WTF::WeakPtr;
 
 template<class T, class E> using Expected = std::experimental::expected<T, E>;
 template<class E> using Unexpected = std::experimental::unexpected<E>;

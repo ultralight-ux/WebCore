@@ -25,25 +25,19 @@
 
 WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.TabContentView
 {
-    constructor(identifier, styleClassNames, tabBarItem, navigationSidebarPanelConstructor, detailsSidebarPanelConstructors, disableBackForward, flexibleNavigationItem)
+    constructor(tabInfo, {navigationSidebarPanelConstructor, detailsSidebarPanelConstructors, hideBackForwardButtons, disableBackForwardNavigation, flexibleNavigationItem} = {})
     {
-        if (typeof styleClassNames === "string")
-            styleClassNames = [styleClassNames];
+        super(tabInfo, {navigationSidebarPanelConstructor, detailsSidebarPanelConstructors});
 
-        styleClassNames.push("content-browser");
-
-        var contentBrowser = new WI.ContentBrowser(null, null, disableBackForward, false, flexibleNavigationItem);
-
-        super(identifier, styleClassNames, tabBarItem, navigationSidebarPanelConstructor, detailsSidebarPanelConstructors);
-
-        this._contentBrowser = contentBrowser;
-        this._contentBrowser.delegate = this;
+        const contentBrowserElement = null;
+        const disableFindBanner = false;
+        this._contentBrowser = new WI.ContentBrowser(contentBrowserElement, this, {hideBackForwardButtons, disableBackForwardNavigation, flexibleNavigationItem});
 
         this._ignoreNavigationSidebarPanelCollapsedEvent = false;
         this._ignoreDetailsSidebarPanelCollapsedEvent = false;
         this._ignoreDetailsSidebarPanelSelectedEvent = false;
 
-        this._lastSelectedDetailsSidebarPanelSetting = new WI.Setting(identifier + "-last-selected-details-sidebar-panel", null);
+        this._lastSelectedDetailsSidebarPanelSetting = new WI.Setting(this._identifier + "-last-selected-details-sidebar-panel", null);
 
         this._contentBrowser.addEventListener(WI.ContentBrowser.Event.CurrentRepresentedObjectsDidChange, this._contentBrowserCurrentRepresentedObjectsDidChange, this);
         this._contentBrowser.addEventListener(WI.ContentBrowser.Event.CurrentContentViewDidChange, this._contentBrowserCurrentContentViewDidChange, this);
@@ -52,13 +46,13 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
         // Explicitly update the path for the navigation bar to prevent it from showing up as blank.
         this._contentBrowser.updateHierarchicalPathForCurrentContentView();
 
-        if (navigationSidebarPanelConstructor) {
+        if (this._navigationSidebarPanelConstructor) {
             let showToolTip = WI.UIString("Show the navigation sidebar (%s)").format(WI.navigationSidebarKeyboardShortcut.displayName);
             let hideToolTip = WI.UIString("Hide the navigation sidebar (%s)").format(WI.navigationSidebarKeyboardShortcut.displayName);
             let image = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL ? "Images/ToggleRightSidebar.svg" : "Images/ToggleLeftSidebar.svg";
 
             this._showNavigationSidebarItem = new WI.ActivateButtonNavigationItem("toggle-navigation-sidebar", showToolTip, hideToolTip, image, 16, 16);
-            this._showNavigationSidebarItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, WI.toggleNavigationSidebar, WI);
+            this._showNavigationSidebarItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, WI.toggleNavigationSidebar, this);
             this._showNavigationSidebarItem.activated = !WI.navigationSidebar.collapsed;
             this._showNavigationSidebarItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
 
@@ -68,13 +62,13 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
             WI.navigationSidebar.addEventListener(WI.Sidebar.Event.CollapsedStateDidChange, this._navigationSidebarCollapsedStateDidChange, this);
         }
 
-        if (detailsSidebarPanelConstructors && detailsSidebarPanelConstructors.length) {
+        if (this._detailsSidebarPanelConstructors.length) {
             let showToolTip = WI.UIString("Show the details sidebar (%s)").format(WI.detailsSidebarKeyboardShortcut.displayName);
             let hideToolTip = WI.UIString("Hide the details sidebar (%s)").format(WI.detailsSidebarKeyboardShortcut.displayName);
             let image = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL ? "Images/ToggleLeftSidebar.svg" : "Images/ToggleRightSidebar.svg";
 
             this._showDetailsSidebarItem = new WI.ActivateButtonNavigationItem("toggle-details-sidebar", showToolTip, hideToolTip, image, 16, 16);
-            this._showDetailsSidebarItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, WI.toggleDetailsSidebar, WI);
+            this._showDetailsSidebarItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, WI.toggleDetailsSidebar, this);
             this._showDetailsSidebarItem.activated = !WI.detailsSidebar.collapsed;
             this._showDetailsSidebarItem.enabled = false;
             this._showDetailsSidebarItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
@@ -86,6 +80,8 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
             WI.detailsSidebar.addEventListener(WI.Sidebar.Event.SidebarPanelSelected, this._detailsSidebarPanelSelected, this);
         }
 
+        this.element.classList.add("content-browser");
+
         this.addSubview(this._contentBrowser);
     }
 
@@ -96,36 +92,26 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
         return this._contentBrowser;
     }
 
-    shown()
+    attached()
     {
-        if (this.navigationSidebarPanel) {
-            if (!this.navigationSidebarPanel.contentBrowser)
-                this.navigationSidebarPanel.contentBrowser = this._contentBrowser;
-        }
+        // Ensure that the relationship is established before attempting to restore cookies.
+        if (this.navigationSidebarPanel && !this.navigationSidebarPanel.contentBrowser)
+            this.navigationSidebarPanel.contentBrowser = this._contentBrowser;
 
-        super.shown();
-
-        this._contentBrowser.shown();
-
-        if (this.navigationSidebarPanel) {
-            if (!this._contentBrowser.currentContentView)
-                this.navigationSidebarPanel.showDefaultContentView();
-        }
-    }
-
-    hidden()
-    {
-        super.hidden();
-
-        this._contentBrowser.hidden();
+        super.attached();
     }
 
     closed()
     {
         super.closed();
 
-        WI.navigationSidebar.removeEventListener(null, null, this);
-        WI.detailsSidebar.removeEventListener(null, null, this);
+        if (this._navigationSidebarPanelConstructor)
+            WI.navigationSidebar.removeEventListener(WI.Sidebar.Event.CollapsedStateDidChange, this._navigationSidebarCollapsedStateDidChange, this);
+
+        if (this._detailsSidebarPanelConstructors.length) {
+            WI.detailsSidebar.removeEventListener(WI.Sidebar.Event.CollapsedStateDidChange, this._detailsSidebarCollapsedStateDidChange, this);
+            WI.detailsSidebar.removeEventListener(WI.Sidebar.Event.SidebarPanelSelected, this._detailsSidebarPanelSelected, this);
+        }
 
         if (this.navigationSidebarPanel && typeof this.navigationSidebarPanel.closed === "function")
             this.navigationSidebarPanel.closed();
@@ -140,7 +126,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
     showNavigationSidebarPanel()
     {
-        if (!this.visible)
+        if (!this.isAttached)
             return;
 
         if (!this.navigationSidebarPanel)
@@ -154,12 +140,12 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
         if (shouldShowSidebar) {
             if (!this.navigationSidebarPanel.parentSidebar)
                 WI.navigationSidebar.addSidebarPanel(this.navigationSidebarPanel);
-            WI.navigationSidebar.selectedSidebarPanel = this.navigationSidebarPanel;
             WI.navigationSidebar.collapsed = this.navigationSidebarCollapsedSetting.value;
+            WI.navigationSidebar.selectedSidebarPanel = this.navigationSidebarPanel;
         } else {
-            WI.navigationSidebar.collapsed = true;
             if (this.navigationSidebarPanel.parentSidebar)
                 WI.navigationSidebar.removeSidebarPanel(this.navigationSidebarPanel);
+            WI.navigationSidebar.collapsed = true;
         }
 
         this._ignoreNavigationSidebarPanelCollapsedEvent = false;
@@ -169,12 +155,11 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
     showDetailsSidebarPanels()
     {
-        if (!this.visible)
+        if (!this.isAttached)
             return;
 
         var currentRepresentedObjects = this._contentBrowser.currentRepresentedObjects;
-        var currentSidebarPanels = WI.detailsSidebar.sidebarPanels;
-        var wasSidebarEmpty = !currentSidebarPanels.length;
+        var wasSidebarEmpty = !WI.detailsSidebar.sidebarPanels.length;
 
         // Ignore any changes to the selected sidebar panel during this function so only user initiated
         // changes are recorded in _lastSelectedDetailsSidebarPanelSetting.
@@ -182,11 +167,12 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
         this._ignoreDetailsSidebarPanelCollapsedEvent = true;
 
         let hiddenSidebarPanels = 0;
+        let sidebarPanelToSelect = null;
 
         for (var i = 0; i < this.detailsSidebarPanels.length; ++i) {
             var sidebarPanel = this.detailsSidebarPanels[i];
             if (sidebarPanel.inspect(currentRepresentedObjects)) {
-                if (currentSidebarPanels.includes(sidebarPanel)) {
+                if (WI.detailsSidebar.sidebarPanels.includes(sidebarPanel)) {
                     // Already showing the panel.
                     continue;
                 }
@@ -197,7 +183,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
                 if (this._lastSelectedDetailsSidebarPanelSetting.value === sidebarPanel.identifier) {
                     // Restore the sidebar panel selection if this sidebar panel was the last one selected by the user.
-                    WI.detailsSidebar.selectedSidebarPanel = sidebarPanel;
+                    sidebarPanelToSelect = sidebarPanel;
                 }
             } else {
                 // The sidebar panel can't inspect the current represented objects, so remove the panel and hide the toolbar item.
@@ -206,13 +192,15 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
             }
         }
 
-        if (!WI.detailsSidebar.selectedSidebarPanel && currentSidebarPanels.length)
-            WI.detailsSidebar.selectedSidebarPanel = currentSidebarPanels[0];
-
         if (!WI.detailsSidebar.sidebarPanels.length)
             WI.detailsSidebar.collapsed = true;
         else if (wasSidebarEmpty)
             WI.detailsSidebar.collapsed = this.detailsSidebarCollapsedSetting.value;
+
+        if (sidebarPanelToSelect)
+            WI.detailsSidebar.selectedSidebarPanel = sidebarPanelToSelect;
+        else if (!WI.detailsSidebar.selectedSidebarPanel && WI.detailsSidebar.sidebarPanels.length)
+            WI.detailsSidebar.selectedSidebarPanel = WI.detailsSidebar.sidebarPanels[0];
 
         this._ignoreDetailsSidebarPanelCollapsedEvent = false;
         this._ignoreDetailsSidebarPanelSelectedEvent = false;
@@ -253,7 +241,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
     _navigationSidebarCollapsedStateDidChange(event)
     {
-        if (!this.visible)
+        if (!this.isAttached)
             return;
 
         this._showNavigationSidebarItem.activated = !WI.navigationSidebar.collapsed;
@@ -266,7 +254,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
     _detailsSidebarCollapsedStateDidChange(event)
     {
-        if (!this.visible)
+        if (!this.isAttached)
             return;
 
         this._showDetailsSidebarItem.activated = !WI.detailsSidebar.collapsed;
@@ -280,7 +268,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
 
     _detailsSidebarPanelSelected(event)
     {
-        if (!this.visible)
+        if (!this.isAttached)
             return;
 
         this._showDetailsSidebarItem.activated = !WI.detailsSidebar.collapsed;
@@ -316,7 +304,7 @@ WI.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WI.
         let treeElement = this.treeElementForRepresentedObject(representedObject);
 
         if (treeElement)
-            treeElement.revealAndSelect(true, false, true);
+            treeElement.revealAndSelect();
         else if (this.navigationSidebarPanel && this.navigationSidebarPanel.contentTreeOutline.selectedTreeElement)
             this.navigationSidebarPanel.contentTreeOutline.selectedTreeElement.deselect(true);
     }

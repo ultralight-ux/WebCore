@@ -36,7 +36,8 @@
 #include "LayoutRect.h"
 #include <JavaScriptCore/InspectorBackendDispatchers.h>
 #include <JavaScriptCore/InspectorFrontendDispatchers.h>
-#include <wtf/HashMap.h>
+#include <JavaScriptCore/InspectorProtocolObjects.h>
+#include <wtf/RobinHoodHashMap.h>
 #include <wtf/Seconds.h>
 #include <wtf/text/WTFString.h>
 
@@ -49,16 +50,14 @@ class InspectorClient;
 class InspectorOverlay;
 class Page;
 class RenderObject;
-class SharedBuffer;
-
-typedef String ErrorString;
+class FragmentedSharedBuffer;
 
 class InspectorPageAgent final : public InspectorAgentBase, public Inspector::PageBackendDispatcherHandler {
     WTF_MAKE_NONCOPYABLE(InspectorPageAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorPageAgent(PageAgentContext&, InspectorClient*, InspectorOverlay*);
-    ~InspectorPageAgent() override;
+    ~InspectorPageAgent();
 
     enum ResourceType {
         DocumentResource,
@@ -74,52 +73,54 @@ public:
 #if ENABLE(APPLICATION_MANIFEST)
         ApplicationManifestResource,
 #endif
+        EventSourceResource,
         OtherResource,
     };
 
-    static bool sharedBufferContent(RefPtr<SharedBuffer>&&, const String& textEncodingName, bool withBase64Encode, String* result);
+    static bool sharedBufferContent(RefPtr<FragmentedSharedBuffer>&&, const String& textEncodingName, bool withBase64Encode, String* result);
     static Vector<CachedResource*> cachedResourcesForFrame(Frame*);
-    static void resourceContent(ErrorString&, Frame*, const URL&, String* result, bool* base64Encoded);
+    static void resourceContent(Inspector::Protocol::ErrorString&, Frame*, const URL&, String* result, bool* base64Encoded);
     static String sourceMapURLForResource(CachedResource*);
-    static CachedResource* cachedResource(Frame*, const URL&);
+    static CachedResource* cachedResource(const Frame*, const URL&);
     static Inspector::Protocol::Page::ResourceType resourceTypeJSON(ResourceType);
     static ResourceType inspectorResourceType(CachedResource::Type);
     static ResourceType inspectorResourceType(const CachedResource&);
     static Inspector::Protocol::Page::ResourceType cachedResourceTypeJSON(const CachedResource&);
     static Frame* findFrameWithSecurityOrigin(Page&, const String& originRawString);
-    static DocumentLoader* assertDocumentLoader(ErrorString&, Frame*);
+    static DocumentLoader* assertDocumentLoader(Inspector::Protocol::ErrorString&, Frame*);
 
     // InspectorAgentBase
-    void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
-    void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
+    void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*);
+    void willDestroyFrontendAndBackend(Inspector::DisconnectReason);
 
     // PageBackendDispatcherHandler
-    void enable(ErrorString&) override;
-    void disable(ErrorString&) override;
-    void reload(ErrorString&, const bool* optionalReloadFromOrigin, const bool* optionalRevalidateAllResources) override;
-    void navigate(ErrorString&, const String& url) override;
-    void overrideUserAgent(ErrorString&, const String* value) override;
-    void overrideSetting(ErrorString&, const String& setting, const bool* value) override;
-    void getCookies(ErrorString&, RefPtr<JSON::ArrayOf<Inspector::Protocol::Page::Cookie>>& cookies) override;
-    void setCookie(ErrorString&, const JSON::Object& cookieObject) override;
-    void deleteCookie(ErrorString&, const String& cookieName, const String& url) override;
-    void getResourceTree(ErrorString&, RefPtr<Inspector::Protocol::Page::FrameResourceTree>&) override;
-    void getResourceContent(ErrorString&, const String& frameId, const String& url, String* content, bool* base64Encoded) override;
-    void setBootstrapScript(ErrorString&, const String* optionalSource) final;
-    void searchInResource(ErrorString&, const String& frameId, const String& url, const String& query, const bool* optionalCaseSensitive, const bool* optionalIsRegex, const String* optionalRequestId, RefPtr<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>>&) override;
-    void searchInResources(ErrorString&, const String&, const bool* caseSensitive, const bool* isRegex, RefPtr<JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>>&) override;
+    Inspector::Protocol::ErrorStringOr<void> enable();
+    Inspector::Protocol::ErrorStringOr<void> disable();
+    Inspector::Protocol::ErrorStringOr<void> reload(std::optional<bool>&& ignoreCache, std::optional<bool>&& revalidateAllResources);
+    Inspector::Protocol::ErrorStringOr<void> navigate(const String& url);
+    Inspector::Protocol::ErrorStringOr<void> overrideUserAgent(const String&);
+    Inspector::Protocol::ErrorStringOr<void> overrideSetting(Inspector::Protocol::Page::Setting, std::optional<bool>&& value);
+    Inspector::Protocol::ErrorStringOr<void> overrideUserPreference(Inspector::Protocol::Page::UserPreferenceName, std::optional<Inspector::Protocol::Page::UserPreferenceValue>&&);
+    Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::Page::Cookie>>> getCookies();
+    Inspector::Protocol::ErrorStringOr<void> setCookie(Ref<JSON::Object>&&);
+    Inspector::Protocol::ErrorStringOr<void> deleteCookie(const String& cookieName, const String& url);
+    Inspector::Protocol::ErrorStringOr<Ref<Inspector::Protocol::Page::FrameResourceTree>> getResourceTree();
+    Inspector::Protocol::ErrorStringOr<std::tuple<String, bool /* base64Encoded */>> getResourceContent(const Inspector::Protocol::Network::FrameId&, const String& url);
+    Inspector::Protocol::ErrorStringOr<void> setBootstrapScript(const String& source);
+    Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>>> searchInResource(const Inspector::Protocol::Network::FrameId&, const String& url, const String& query, std::optional<bool>&& caseSensitive, std::optional<bool>&& isRegex, const Inspector::Protocol::Network::RequestId&);
+    Inspector::Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>>> searchInResources(const String&, std::optional<bool>&& caseSensitive, std::optional<bool>&& isRegex);
 #if !PLATFORM(IOS_FAMILY)
-    void setShowRulers(ErrorString&, bool) override;
+    Inspector::Protocol::ErrorStringOr<void> setShowRulers(bool);
 #endif
-    void setShowPaintRects(ErrorString&, bool show) override;
-    void setEmulatedMedia(ErrorString&, const String&) override;
-#if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
-    void setForcedAppearance(ErrorString&, const String&) override;
-#endif
-    void snapshotNode(ErrorString&, int nodeId, String* outDataURL) override;
-    void snapshotRect(ErrorString&, int x, int y, int width, int height, const String& coordinateSystem, String* outDataURL) override;
+    Inspector::Protocol::ErrorStringOr<void> setShowPaintRects(bool);
+    Inspector::Protocol::ErrorStringOr<void> setEmulatedMedia(const String&);
+    Inspector::Protocol::ErrorStringOr<String> snapshotNode(Inspector::Protocol::DOM::NodeId);
+    Inspector::Protocol::ErrorStringOr<String> snapshotRect(int x, int y, int width, int height, Inspector::Protocol::Page::CoordinateSystem);
 #if ENABLE(WEB_ARCHIVE) && USE(CF)
-    void archive(ErrorString&, String* data) override;
+    Inspector::Protocol::ErrorStringOr<String> archive();
+#endif
+#if !PLATFORM(COCOA)
+    Inspector::Protocol::ErrorStringOr<void> setScreenSizeOverride(std::optional<int>&& width, std::optional<int>&& height);
 #endif
 
     // InspectorInstrumentation
@@ -132,27 +133,33 @@ public:
     void frameStoppedLoading(Frame&);
     void frameScheduledNavigation(Frame&, Seconds delay);
     void frameClearedScheduledNavigation(Frame&);
+    void accessibilitySettingsDidChange();
+    void defaultUserPreferencesDidChange();
 #if ENABLE(DARK_MODE_CSS) || HAVE(OS_DARK_MODE_SUPPORT)
-    void defaultAppearanceDidChange(bool useDarkAppearance);
+    void defaultAppearanceDidChange();
 #endif
     void applyUserAgentOverride(String&);
-    void applyEmulatedMedia(String&);
+    void applyEmulatedMedia(AtomString&);
     void didClearWindowObjectInWorld(Frame&, DOMWrapperWorld&);
     void didPaint(RenderObject&, const LayoutRect&);
     void didLayout();
     void didScroll();
     void didRecalculateStyle();
 
-    Frame* frameForId(const String& frameId);
+    Frame* frameForId(const Inspector::Protocol::Network::FrameId&);
     WEBCORE_EXPORT String frameId(Frame*);
     String loaderId(DocumentLoader*);
-    Frame* assertFrame(ErrorString&, const String& frameId);
+    Frame* assertFrame(Inspector::Protocol::ErrorString&, const Inspector::Protocol::Network::FrameId&);
 
 private:
     double timestamp();
 
     static bool mainResourceContent(Frame*, bool withBase64Encode, String* result);
-    static bool dataContent(const char* data, unsigned size, const String& textEncodingName, bool withBase64Encode, String* result);
+    static bool dataContent(const uint8_t* data, unsigned size, const String& textEncodingName, bool withBase64Encode, String* result);
+
+    void overridePrefersReducedMotion(std::optional<Inspector::Protocol::Page::UserPreferenceValue>&&);
+    void overridePrefersContrast(std::optional<Inspector::Protocol::Page::UserPreferenceValue>&&);
+    void overridePrefersColorScheme(std::optional<Inspector::Protocol::Page::UserPreferenceValue>&&);
 
     Ref<Inspector::Protocol::Page::Frame> buildObjectForFrame(Frame*);
     Ref<Inspector::Protocol::Page::FrameResourceTree> buildObjectForFrameTree(Frame*);
@@ -164,11 +171,12 @@ private:
     InspectorClient* m_client { nullptr };
     InspectorOverlay* m_overlay { nullptr };
 
+    // FIXME: Make a WeakHashMap and use it for m_frameToIdentifier and m_loaderToIdentifier.
     HashMap<Frame*, String> m_frameToIdentifier;
-    HashMap<String, Frame*> m_identifierToFrame;
+    MemoryCompactRobinHoodHashMap<String, WeakPtr<Frame>> m_identifierToFrame;
     HashMap<DocumentLoader*, String> m_loaderToIdentifier;
     String m_userAgentOverride;
-    String m_emulatedMedia;
+    AtomString m_emulatedMedia;
     String m_bootstrapScript;
     bool m_isFirstLayoutAfterOnLoad { false };
     bool m_showPaintRects { false };

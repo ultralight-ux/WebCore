@@ -25,12 +25,14 @@
 
 WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends WI.Object
 {
-    constructor(codeMirror, delegate, stopCharactersRegex)
+    constructor(mode, codeMirror, delegate, stopCharactersRegex)
     {
+        console.assert(Object.values(WI.CodeMirrorCompletionController.Mode).includes(mode), mode);
+        console.assert(codeMirror instanceof CodeMirror, codeMirror);
+
         super();
 
-        console.assert(codeMirror);
-
+        this._mode = mode;
         this._codeMirror = codeMirror;
         this._stopCharactersRegex = stopCharactersRegex || null;
         this._delegate = delegate || null;
@@ -74,10 +76,7 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
 
     // Public
 
-    get delegate()
-    {
-        return this._delegate;
-    }
+    get mode() { return this._mode; }
 
     addExtendedCompletionProvider(modeName, provider)
     {
@@ -144,6 +143,32 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
     isHandlingClickEvent()
     {
         return this._suggestionsView.isHandlingClickEvent();
+    }
+
+    commitCurrentCompletion()
+    {
+        this._removeCompletionHint(true, true);
+
+        let replacementText = this._currentReplacementText;
+        if (!replacementText)
+            return;
+
+        let from = {line: this._lineNumber, ch: this._startOffset};
+        let cursor = {line: this._lineNumber, ch: this._endOffset};
+        let to = {line: this._lineNumber, ch: this._startOffset + replacementText.length};
+
+        let lastChar = this._currentCompletion.charAt(this._currentCompletion.length - 1);
+        let isClosing = ")]}".indexOf(lastChar);
+        if (isClosing !== -1)
+            to.ch -= 1 + this._implicitSuffix.length;
+
+        this._codeMirror.replaceRange(replacementText, from, cursor, WI.CodeMirrorCompletionController.CompletionOrigin);
+
+        // Don't call _removeLastChangeFromHistory here to allow the committed completion to be undone.
+
+        this._codeMirror.setCursor(to);
+
+        this.hideCompletions();
     }
 
     hideCompletions()
@@ -221,7 +246,7 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
 
     get _currentReplacementText()
     {
-        return this._currentCompletion + this._implicitSuffix;
+        return (this._currentCompletion ?? "") + (this._implicitSuffix ?? "");
     }
 
     _hasPendingCompletion()
@@ -293,34 +318,10 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
 
     _commitCompletionHint()
     {
-        function update()
-        {
-            this._removeCompletionHint(true, true);
-
-            var replacementText = this._currentReplacementText;
-
-            var from = {line: this._lineNumber, ch: this._startOffset};
-            var cursor = {line: this._lineNumber, ch: this._endOffset};
-            var to = {line: this._lineNumber, ch: this._startOffset + replacementText.length};
-
-            var lastChar = this._currentCompletion.charAt(this._currentCompletion.length - 1);
-            var isClosing = ")]}".indexOf(lastChar);
-            if (isClosing !== -1)
-                to.ch -= 1 + this._implicitSuffix.length;
-
-            this._codeMirror.replaceRange(replacementText, from, cursor, WI.CodeMirrorCompletionController.CompletionOrigin);
-
-            // Don't call _removeLastChangeFromHistory here to allow the committed completion to be undone.
-
-            this._codeMirror.setCursor(to);
-
-            this.hideCompletions();
-        }
-
         this._ignoreChange = true;
         this._ignoreNextCursorActivity = true;
 
-        this._codeMirror.operation(update.bind(this));
+        this._codeMirror.operation(this.commitCurrentCompletion.bind(this));
 
         delete this._ignoreChange;
     }
@@ -628,7 +629,7 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
         this._implicitSuffix = suffix !== ":" ? ": " : "";
 
         // Complete property names.
-        return WI.CSSCompletions.cssNameCompletions.startsWith(this._prefix);
+        return WI.cssManager.propertyNameCompletions.startsWith(this._prefix);
     }
 
     _generateJavaScriptCompletions(mainToken, base, suffix)
@@ -654,36 +655,38 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
         // FIXME: Include module keywords if we know this is a module environment.
         // var moduleKeywords = ["default", "export", "import"];
 
-        var allKeywords = [
+        const allKeywords = [
             "break", "case", "catch", "class", "const", "continue", "debugger", "default",
             "delete", "do", "else", "extends", "false", "finally", "for", "function",
             "if", "in", "Infinity", "instanceof", "let", "NaN", "new", "null", "of",
             "return", "static", "super", "switch", "this", "throw", "true", "try",
             "typeof", "undefined", "var", "void", "while", "with", "yield"
         ];
-        var valueKeywords = ["false", "Infinity", "NaN", "null", "this", "true", "undefined", "globalThis"];
+        const valueKeywords = ["false", "Infinity", "NaN", "null", "this", "true", "undefined", "globalThis"];
 
-        var allowedKeywordsInsideBlocks = allKeywords.keySet();
-        var allowedKeywordsWhenDeclaringVariable = valueKeywords.keySet();
-        var allowedKeywordsInsideParenthesis = valueKeywords.concat(["class", "function"]).keySet();
-        var allowedKeywordsInsideBrackets = allowedKeywordsInsideParenthesis;
-        var allowedKeywordsOnlyInsideSwitch = ["case", "default"].keySet();
+        const allowedKeywordsInsideBlocks = new Set(allKeywords);
+        const allowedKeywordsWhenDeclaringVariable = new Set(valueKeywords);
+        const allowedKeywordsInsideParenthesis = new Set(valueKeywords.concat(["class", "function"]));
+        const allowedKeywordsInsideBrackets = allowedKeywordsInsideParenthesis;
+        const allowedKeywordsOnlyInsideSwitch = new Set(["case", "default"]);
 
         function matchKeywords(keywords)
         {
-            matchingWords = matchingWords.concat(keywords.filter(function(word) {
-                if (!insideSwitch && word in allowedKeywordsOnlyInsideSwitch)
-                    return false;
-                if (insideBlock && !(word in allowedKeywordsInsideBlocks))
-                    return false;
-                if (insideBrackets && !(word in allowedKeywordsInsideBrackets))
-                    return false;
-                if (insideParenthesis && !(word in allowedKeywordsInsideParenthesis))
-                    return false;
-                if (declaringVariable && !(word in allowedKeywordsWhenDeclaringVariable))
-                    return false;
-                return word.startsWith(prefix);
-            }));
+            for (let keyword of keywords) {
+                if (!insideSwitch && allowedKeywordsOnlyInsideSwitch.has(keyword))
+                    continue;
+                if (insideBlock && !allowedKeywordsInsideBlocks.has(keyword))
+                    continue;
+                if (insideBrackets && !allowedKeywordsInsideBrackets.has(keyword))
+                    continue;
+                if (insideParenthesis && !allowedKeywordsInsideParenthesis.has(keyword))
+                    continue;
+                if (declaringVariable && !allowedKeywordsWhenDeclaringVariable.has(keyword))
+                    continue;
+                if (!keyword.startsWith(prefix))
+                    continue;
+                matchingWords.push(keyword);
+            }
         }
 
         function matchVariables()
@@ -894,6 +897,14 @@ WI.CodeMirrorCompletionController = class CodeMirrorCompletionController extends
 
         this.hideCompletions();
     }
+};
+
+WI.CodeMirrorCompletionController.Mode = {
+    Basic: "basic",
+    EventBreakpoint: "event-breakpoint",
+    ExceptionBreakpoint: "exception-breakpoint",
+    FullConsoleCommandLineAPI: "full-console-command-line-api",
+    PausedConsoleCommandLineAPI: "paused-console-command-line-api",
 };
 
 WI.CodeMirrorCompletionController.UpdatePromise = {

@@ -56,8 +56,12 @@ WI.ConsolePrompt = class ConsolePrompt extends WI.View
 
         this._codeMirror.addKeyMap(keyMap);
 
-        this._completionController = new WI.CodeMirrorCompletionController(this._codeMirror, this);
+        this._completionController = new WI.CodeMirrorCompletionController(WI.CodeMirrorCompletionController.Mode.PausedConsoleCommandLineAPI, this._codeMirror, this);
         this._completionController.addExtendedCompletionProvider("javascript", WI.javaScriptRuntimeCompletionProvider);
+
+        let textarea = this._codeMirror.getInputField();
+        if (textarea)
+            textarea.ariaLabel = WI.UIString("Console prompt");
 
         this._history = [{}];
         this._historyIndex = 0;

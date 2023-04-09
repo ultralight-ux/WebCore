@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,14 +25,16 @@
 #include "JSGlobalObject.h"
 #include "MachineStackMarker.h"
 #include "SamplingProfiler.h"
-#include "WasmCapabilities.h"
-#include "WasmMachineThreads.h"
 #include <wtf/StackPointer.h>
 #include <wtf/Threading.h>
 #include <wtf/threads/Signals.h>
 
 #if USE(WEB_THREAD)
 #include <wtf/ios/WebCoreThread.h>
+#endif
+
+#if PLATFORM(COCOA)
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
 #endif
 
 namespace JSC {
@@ -95,7 +97,9 @@ void JSLock::lock()
     lock(1);
 }
 
-void JSLock::lock(intptr_t lockCount)
+// Use WTF_IGNORES_THREAD_SAFETY_ANALYSIS because this function conditionally unlocks m_lock, which
+// is not supported by analysis.
+void JSLock::lock(intptr_t lockCount) WTF_IGNORES_THREAD_SAFETY_ANALYSIS
 {
     ASSERT(lockCount > 0);
 #if USE(WEB_THREAD)
@@ -134,8 +138,7 @@ void JSLock::didAcquireLock()
     m_entryAtomStringTable = thread.setCurrentAtomStringTable(m_vm->atomStringTable());
     ASSERT(m_entryAtomStringTable);
 
-    m_vm->setLastStackTop(thread.savedLastStackTop());
-    ASSERT(thread.stack().contains(m_vm->lastStackTop()));
+    m_vm->setLastStackTop(thread);
 
     if (m_vm->heap.hasAccess())
         m_shouldReleaseHeapAccess = false;
@@ -148,28 +151,23 @@ void JSLock::didAcquireLock()
     void* p = currentStackPointer();
     m_vm->setStackPointerAtVMEntry(p);
 
-    if (m_vm->heap.machineThreads().addCurrentThread()) {
-        if (isKernTCSMAvailable())
-            enableKernTCSM();
+    if (thread.uid() != m_lastOwnerThread) {
+        m_lastOwnerThread = thread.uid();
+        if (m_vm->heap.machineThreads().addCurrentThread()) {
+            if (isKernTCSMAvailable())
+                enableKernTCSM();
+        }
     }
-
-#if ENABLE(WEBASSEMBLY)
-    if (Wasm::isSupported())
-        Wasm::startTrackingCurrentThread();
-#endif
-
-#if HAVE(MACH_EXCEPTIONS)
-    registerThreadForMachExceptionHandling(Thread::current());
-#endif
 
     // Note: everything below must come after addCurrentThread().
     m_vm->traps().notifyGrabAllLocks();
-    
-    m_vm->firePrimitiveGigacageEnabledIfNecessary();
 
 #if ENABLE(SAMPLING_PROFILER)
-    if (SamplingProfiler* samplingProfiler = m_vm->samplingProfiler())
-        samplingProfiler->noticeJSLockAcquisition();
+    {
+        SamplingProfiler* samplingProfiler = m_vm->samplingProfiler();
+        if (UNLIKELY(samplingProfiler))
+            samplingProfiler->noticeJSLockAcquisition();
+    }
 #endif
 }
 
@@ -178,7 +176,9 @@ void JSLock::unlock()
     unlock(1);
 }
 
-void JSLock::unlock(intptr_t unlockCount)
+// Use WTF_IGNORES_THREAD_SAFETY_ANALYSIS because this function conditionally unlocks m_lock, which
+// is not supported by analysis.
+void JSLock::unlock(intptr_t unlockCount) WTF_IGNORES_THREAD_SAFETY_ANALYSIS
 {
     RELEASE_ASSERT(currentThreadIsHoldingLock());
     ASSERT(m_lockCount >= unlockCount);
@@ -200,8 +200,16 @@ void JSLock::willReleaseLock()
 {   
     RefPtr<VM> vm = m_vm;
     if (vm) {
-        RELEASE_ASSERT_WITH_MESSAGE(!vm->hasCheckpointOSRSideState(), "Releasing JSLock but pending checkpoint side state still available");
-        vm->drainMicrotasks();
+        static bool useLegacyDrain = false;
+#if PLATFORM(COCOA)
+        static std::once_flag once;
+        std::call_once(once, [] {
+            useLegacyDrain = !linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::DoesNotDrainTheMicrotaskQueueWhenCallingObjC);
+        });
+#endif
+
+        if (!m_lockDropDepth || useLegacyDrain)
+            vm->drainMicrotasks();
 
         if (!vm->topCallFrame)
             vm->clearLastException();
@@ -268,7 +276,7 @@ void JSLock::grabAllLocks(DropAllLocks* dropper, unsigned droppedLockCount)
 
     Thread& thread = Thread::current();
     m_vm->setStackPointerAtVMEntry(thread.savedStackPointerAtVMEntry());
-    m_vm->setLastStackTop(thread.savedLastStackTop());
+    m_vm->setLastStackTop(thread);
 }
 
 JSLock::DropAllLocks::DropAllLocks(VM* vm)

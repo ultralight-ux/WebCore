@@ -32,6 +32,7 @@
 #import "ApplePayInstallmentItemType.h"
 #import "ApplePayInstallmentRetailChannel.h"
 #import "ExceptionOr.h"
+#import <wtf/cocoa/TypeCastsCocoa.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
 #import <pal/cocoa/PassKitSoftLink.h>
@@ -56,15 +57,18 @@ static String fromDecimalNumber(NSDecimalNumber *number)
     return [numberFormatter stringFromNumber:number];
 }
 
-static ApplePaySetupFeatureType applePaySetupFeatureType(PKPaymentSetupFeatureType featureType)
+static std::optional<ApplePaySetupFeatureType> applePaySetupFeatureType(PKPaymentSetupFeatureType featureType)
 {
     switch (featureType) {
     case PKPaymentSetupFeatureTypeApplePay:
         return ApplePaySetupFeatureType::ApplePay;
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    case PKPaymentSetupFeatureTypeApplePay_X:
-    ALLOW_DEPRECATED_DECLARATIONS_END
+
+    case PKPaymentSetupFeatureTypeAppleCard:
         return ApplePaySetupFeatureType::AppleCard;
+
+    default:
+        ASSERT_NOT_REACHED();
+        return std::nullopt;
     }
 }
 
@@ -74,9 +78,7 @@ static PKPaymentSetupFeatureType platformFeatureType(ApplePaySetupFeatureType fe
     case ApplePaySetupFeatureType::ApplePay:
         return PKPaymentSetupFeatureTypeApplePay;
     case ApplePaySetupFeatureType::AppleCard:
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        return PKPaymentSetupFeatureTypeApplePay_X;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+        return PKPaymentSetupFeatureTypeAppleCard;
     }
 }
 
@@ -153,10 +155,10 @@ static RetainPtr<id> makeNSArrayElement(const ApplePayInstallmentItem& item)
     return installmentItem;
 }
 
-static Optional<ApplePayInstallmentItem> makeVectorElement(const ApplePayInstallmentItem*, id arrayElement)
+static std::optional<ApplePayInstallmentItem> makeVectorElement(const ApplePayInstallmentItem*, id arrayElement)
 {
     if (![arrayElement isKindOfClass:PAL::getPKPaymentInstallmentItemClass()])
-        return WTF::nullopt;
+        return std::nullopt;
 
     PKPaymentInstallmentItem *item = arrayElement;
     return ApplePayInstallmentItem {
@@ -205,7 +207,7 @@ ExceptionOr<PaymentInstallmentConfiguration> PaymentInstallmentConfiguration::cr
         NSData *applicationMetadata = [configuration.applicationMetadata dataUsingEncoding:NSUTF8StringEncoding];
         applicationMetadataDictionary = dynamic_objc_cast<NSDictionary>([NSJSONSerialization JSONObjectWithData:applicationMetadata options:0 error:nil]);
         if (!applicationMetadataDictionary)
-            return Exception { TypeError, "applicationMetadata must be a JSON object" };
+            return Exception { TypeError, "applicationMetadata must be a JSON object"_s };
     }
 
     return PaymentInstallmentConfiguration(configuration, applicationMetadataDictionary);
@@ -232,7 +234,10 @@ ApplePayInstallmentConfiguration PaymentInstallmentConfiguration::applePayInstal
     if (!PAL::getPKPaymentInstallmentConfigurationClass())
         return installmentConfiguration;
 
-    installmentConfiguration.featureType = applePaySetupFeatureType([m_configuration feature]);
+    if (auto featureType = applePaySetupFeatureType([m_configuration feature]))
+        installmentConfiguration.featureType = *featureType;
+    else
+        return installmentConfiguration;
 
     installmentConfiguration.bindingTotalAmount = fromDecimalNumber([m_configuration bindingTotalAmount]);
     installmentConfiguration.currencyCode = [m_configuration currencyCode];

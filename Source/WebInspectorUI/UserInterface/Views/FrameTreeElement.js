@@ -116,11 +116,13 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
         WI.GeneralTreeElement.prototype.onattach.call(this);
 
         WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetAdded, this._styleSheetAdded, this);
+        WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._styleSheetRemoved, this);
     }
 
     ondetach()
     {
         WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetAdded, this._styleSheetAdded, this);
+        WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._styleSheetRemoved, this);
 
         super.ondetach();
     }
@@ -178,8 +180,8 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
                 this.addChildForRepresentedObject(extraScript);
         }
 
-        const doNotCreateIfMissing = true;
-        WI.cssManager.preferredInspectorStyleSheetForFrame(this._frame, this.addRepresentedObjectToNewChildQueue.bind(this), doNotCreateIfMissing);
+        for (let styleSheet of WI.cssManager.inspectorStyleSheetsForFrame(this._frame))
+            this.addChildForRepresentedObject(styleSheet);
     }
 
     onexpand()
@@ -259,9 +261,19 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
 
     _styleSheetAdded(event)
     {
-        if (!event.data.styleSheet.isInspectorStyleSheet())
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.injected || styleSheet.anonymous)
             return;
 
-        this.addRepresentedObjectToNewChildQueue(event.data.styleSheet);
+        this.addRepresentedObjectToNewChildQueue(styleSheet);
+    }
+
+    _styleSheetRemoved(event)
+    {
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.injected || styleSheet.anonymous)
+            return;
+
+        this.removeChildForRepresentedObject(styleSheet);
     }
 };

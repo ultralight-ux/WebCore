@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if ENABLE(B3_JIT)
 
 #include "AirCode.h"
+#include "AirStackSlotKind.h"
 #include "B3BackwardsCFG.h"
 #include "B3BackwardsDominators.h"
 #include "B3BasicBlockUtils.h"
@@ -36,20 +37,23 @@
 #include "B3DataSection.h"
 #include "B3Dominators.h"
 #include "B3NaturalLoops.h"
-#include "B3OpaqueByproducts.h"
 #include "B3ProcedureInlines.h"
-#include "B3StackSlot.h"
 #include "B3ValueInlines.h"
 #include "B3Variable.h"
+#include "JITOpaqueByproducts.h"
 
 namespace JSC { namespace B3 {
 
-Procedure::Procedure()
+Procedure::Procedure(bool usesSIMD)
     : m_cfg(new CFG(*this))
     , m_lastPhaseName("initial")
     , m_byproducts(makeUnique<OpaqueByproducts>())
-    , m_code(new Air::Code(*this))
 {
+    if (usesSIMD)
+        setUsessSIMD();
+    // Initialize all our fields before constructing Air::Code since
+    // it looks into our fields.
+    m_code = std::unique_ptr<Air::Code>(new Air::Code(*this));
     m_code->setNumEntrypoints(m_numEntrypoints);
 }
 
@@ -73,9 +77,9 @@ BasicBlock* Procedure::addBlock(double frequency)
     return result;
 }
 
-StackSlot* Procedure::addStackSlot(unsigned byteSize)
+Air::StackSlot* Procedure::addStackSlot(uint64_t byteSize)
 {
-    return m_stackSlots.addNew(byteSize);
+    return m_code->addStackSlot(byteSize, Air::StackSlotKind::Locked);
 }
 
 Variable* Procedure::addVariable(Type type)
@@ -142,6 +146,20 @@ Value* Procedure::addConstant(Origin origin, Type type, uint64_t bits)
         return add<ConstFloatValue>(origin, bitwise_cast<float>(static_cast<int32_t>(bits)));
     case Double:
         return add<ConstDoubleValue>(origin, bitwise_cast<double>(bits));
+    case V128:
+        RELEASE_ASSERT(!bits);
+        return addConstant(origin, type, v128_t { });
+    default:
+        RELEASE_ASSERT_NOT_REACHED();
+        return nullptr;
+    }
+}
+
+Value* Procedure::addConstant(Origin origin, Type type, v128_t bits)
+{
+    switch (type.kind()) {
+    case V128:
+        return add<Const128Value>(origin, bits);
     default:
         RELEASE_ASSERT_NOT_REACHED();
         return nullptr;
@@ -152,7 +170,7 @@ Value* Procedure::addBottom(Origin origin, Type type)
 {
     if (type.isTuple())
         return add<BottomTupleValue>(origin, type);
-    return addIntConstant(origin, type, 0);
+    return addConstant(origin, type, 0);
 }
 
 Value* Procedure::addBottom(Value* value)
@@ -228,6 +246,7 @@ void Procedure::invalidateCFG()
 
 void Procedure::dump(PrintStream& out) const
 {
+    out.print("Opt Level: ", optLevel(), "\n");
     IndexSet<Value*> valuesInBlocks;
     for (BasicBlock* block : *this) {
         out.print(deepDump(*this, block));
@@ -253,7 +272,7 @@ void Procedure::dump(PrintStream& out) const
     }
     if (stackSlots().size()) {
         out.print(tierName, "Stack slots:\n");
-        for (StackSlot* slot : stackSlots())
+        for (Air::StackSlot* slot : stackSlots())
             out.print(tierName, "    ", pointerDump(slot), ": ", deepDump(slot), "\n");
     }
     if (m_byproducts->count())
@@ -268,11 +287,6 @@ Vector<BasicBlock*> Procedure::blocksInPreOrder()
 Vector<BasicBlock*> Procedure::blocksInPostOrder()
 {
     return B3::blocksInPostOrder(at(0));
-}
-
-void Procedure::deleteStackSlot(StackSlot* stackSlot)
-{
-    m_stackSlots.remove(stackSlot);
 }
 
 void Procedure::deleteVariable(Variable* variable)
@@ -423,20 +437,72 @@ void Procedure::setWasmBoundsCheckGenerator(RefPtr<WasmBoundsCheckGenerator> gen
     code().setWasmBoundsCheckGenerator(generator);
 }
 
-RegisterSet Procedure::mutableGPRs()
+RegisterSetBuilder Procedure::mutableGPRs()
 {
     return code().mutableGPRs();
-}
-
-RegisterSet Procedure::mutableFPRs()
-{
-    return code().mutableFPRs();
 }
 
 void Procedure::setNumEntrypoints(unsigned numEntrypoints)
 {
     m_numEntrypoints = numEntrypoints;
     m_code->setNumEntrypoints(numEntrypoints);
+}
+
+void Procedure::freeUnneededB3ValuesAfterLowering()
+{
+    // We cannot clear m_stackSlots() or m_tuples here, as they are unfortunately modified and read respectively by Air.
+    m_variables.clearAll();
+    m_blocks.clear();
+    m_cfg = nullptr;
+    m_dominators = nullptr;
+    m_naturalLoops = nullptr;
+    m_backwardsCFG = nullptr;
+    m_backwardsDominators = nullptr;
+    m_fastConstants.clear();
+
+    if (m_code->shouldPreserveB3Origins())
+        return;
+
+    BitVector valuesToPreserve;
+    valuesToPreserve.ensureSize(m_values.size());
+    for (Value* value : m_values) {
+        switch (value->opcode()) {
+        // Ideally we would also be able to get rid of all of those.
+        // But Air currently relies on these origins being preserved, see https://bugs.webkit.org/show_bug.cgi?id=194040
+        case WasmBoundsCheck:
+            valuesToPreserve.quickSet(value->index());
+            break;
+        case CCall:
+        case Patchpoint:
+        case CheckAdd:
+        case CheckSub:
+        case CheckMul:
+        case Check:
+            valuesToPreserve.quickSet(value->index());
+            for (Value* child : value->children())
+                valuesToPreserve.quickSet(child->index());
+            break;
+        default:
+            break;
+        }
+    }
+    for (Value* value : m_values) {
+        if (!valuesToPreserve.quickGet(value->index()))
+            m_values.remove(value);
+    }
+    m_values.packIndices();
+}
+
+void Procedure::setShouldDumpIR()
+{
+    m_shouldDumpIR = true;
+    m_code->forcePreservationOfB3Origins();
+}
+
+void Procedure::setNeedsPCToOriginMap()
+{ 
+    m_needsPCToOriginMap = true;
+    m_code->forcePreservationOfB3Origins();
 }
 
 } } // namespace JSC::B3

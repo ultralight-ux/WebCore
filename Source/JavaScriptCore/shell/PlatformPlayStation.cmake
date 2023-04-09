@@ -20,7 +20,21 @@ endif ()
 set(PLAYSTATION_jsc_PROCESS_NAME "JSCShell")
 set(PLAYSTATION_jsc_MAIN_THREAD_NAME "JSCShell")
 
-# Set the debugger working directory for Visual Studio
 if (${CMAKE_GENERATOR} MATCHES "Visual Studio")
+    # Set the debugger working directory for Visual Studio
     set_target_properties(jsc PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
+    # Set the startup target to JSC if WebCore disabled
+    if (NOT ENABLE_WEBCORE)
+        set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT jsc)
+    endif ()
+endif ()
+
+if (${CMAKE_GENERATOR} MATCHES "Visual Studio")
+    # With the VisualStudio generator, the compiler complains about -std=c++* for C sources.
+    set_source_files_properties(
+        ../API/tests/CustomGlobalObjectClassTest.c
+        ../API/tests/testapi.c
+        PROPERTIES COMPILE_FLAGS --std=gnu2a
+    )
 endif ()

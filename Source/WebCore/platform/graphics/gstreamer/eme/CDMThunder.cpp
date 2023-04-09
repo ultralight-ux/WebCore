@@ -39,19 +39,19 @@
 #include "GStreamerEMEUtilities.h"
 #include "Logging.h"
 #include "MediaKeyMessageType.h"
-#include "MediaKeyStatus.h"
 #include "NotImplemented.h"
 #include "SharedBuffer.h"
+#include "WebKitThunderDecryptorGStreamer.h"
 #include <algorithm>
 #include <iterator>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/PrintStream.h>
 #include <wtf/text/Base64.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
-#if (!defined(GST_DISABLE_GST_DEBUG))
-GST_DEBUG_CATEGORY_EXTERN(webkitMediaThunderDecryptDebugCategory);
-#define GST_CAT_DEFAULT webkitMediaThunderDecryptDebugCategory
-#endif
+GST_DEBUG_CATEGORY(webkitMediaThunderDebugCategory);
+#define GST_CAT_DEFAULT webkitMediaThunderDebugCategory
 
 namespace {
 
@@ -79,13 +79,13 @@ namespace WebCore {
 
 static CDMInstanceSession::SessionLoadFailure sessionLoadFailureFromThunder(const StringView& loadStatus)
 {
-    if (loadStatus == "None")
+    if (loadStatus == "None"_s)
         return CDMInstanceSession::SessionLoadFailure::None;
-    if (loadStatus == "SessionNotFound")
+    if (loadStatus == "SessionNotFound"_s)
         return CDMInstanceSession::SessionLoadFailure::NoSessionData;
-    if (loadStatus == "MismatchedSessionType")
+    if (loadStatus == "MismatchedSessionType"_s)
         return CDMInstanceSession::SessionLoadFailure::MismatchedSessionType;
-    if (loadStatus == "QuotaExceeded")
+    if (loadStatus == "QuotaExceeded"_s)
         return CDMInstanceSession::SessionLoadFailure::QuotaExceeded;
     return CDMInstanceSession::SessionLoadFailure::Other;
 }
@@ -93,11 +93,16 @@ static CDMInstanceSession::SessionLoadFailure sessionLoadFailureFromThunder(cons
 
 CDMFactoryThunder& CDMFactoryThunder::singleton()
 {
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        ensureGStreamerInitialized();
+        GST_DEBUG_CATEGORY_INIT(webkitMediaThunderDebugCategory, "webkitthunder", 0, "Thunder");
+    });
     static NeverDestroyed<CDMFactoryThunder> s_factory;
     return s_factory;
 }
 
-std::unique_ptr<CDMPrivate> CDMFactoryThunder::createCDM(const String& keySystem)
+std::unique_ptr<CDMPrivate> CDMFactoryThunder::createCDM(const String& keySystem, const CDMPrivateClient&)
 {
     ASSERT(supportsKeySystem(keySystem));
     return makeUnique<CDMPrivateThunder>(keySystem);
@@ -111,20 +116,17 @@ RefPtr<CDMProxy> CDMFactoryThunder::createCDMProxy(const String& keySystem)
 
 const Vector<String>& CDMFactoryThunder::supportedKeySystems() const
 {
-    static std::once_flag onceFlag;
+    ASSERT(isMainThread());
+
     static Vector<String> supportedKeySystems;
-    std::call_once(onceFlag, [] {
+    if (supportedKeySystems.isEmpty()) {
         std::string emptyString;
-        // Yes, this is right, 0 means supported, hence something else means not supported.
-        if (!opencdm_is_type_supported(GStreamerEMEUtilities::s_WidevineKeySystem, emptyString.c_str()))
-            supportedKeySystems.append(GStreamerEMEUtilities::s_WidevineKeySystem);
-#ifndef NDEBUG
-        if (supportedKeySystems.isEmpty() && isThunderRanked()) {
-            ASSERT_NOT_REACHED_WITH_MESSAGE("Thunder is up-ranked as preferred decryptor but Thunder is not supporting any encryption system. Is "
-                "Thunder running? Are the plugins built?");
-        }
-#endif
-    });
+        if (opencdm_is_type_supported(GStreamerEMEUtilities::s_WidevineKeySystem, emptyString.c_str()) == ERROR_NONE)
+            supportedKeySystems.append(String::fromLatin1(GStreamerEMEUtilities::s_WidevineKeySystem));
+        if (opencdm_is_type_supported(GStreamerEMEUtilities::s_ClearKeyKeySystem, emptyString.c_str()) == ERROR_NONE)
+            supportedKeySystems.append(String::fromLatin1(GStreamerEMEUtilities::s_ClearKeyKeySystem));
+        GST_DEBUG("%zu supported key systems", supportedKeySystems.size());
+    };
     return supportedKeySystems;
 }
 
@@ -133,15 +135,22 @@ bool CDMFactoryThunder::supportsKeySystem(const String& keySystem)
     return CDMFactoryThunder::singleton().supportedKeySystems().contains(keySystem);
 }
 
+CDMPrivateThunder::CDMPrivateThunder(const String& keySystem)
+    : m_keySystem(keySystem)
+    , m_thunderSystem(opencdm_create_system(keySystem.utf8().data()))
+{
+};
+
 Vector<AtomString> CDMPrivateThunder::supportedInitDataTypes() const
 {
     static std::once_flag onceFlag;
     static Vector<AtomString> supportedInitDataTypes;
     std::call_once(onceFlag, [] {
-        supportedInitDataTypes.reserveInitialCapacity(3);
-        supportedInitDataTypes.uncheckedAppend(AtomString("keyids"));
-        supportedInitDataTypes.uncheckedAppend(AtomString("cenc"));
-        supportedInitDataTypes.uncheckedAppend(AtomString("webm"));
+        supportedInitDataTypes.reserveInitialCapacity(4);
+        supportedInitDataTypes.uncheckedAppend("keyids"_s);
+        supportedInitDataTypes.uncheckedAppend("cenc"_s);
+        supportedInitDataTypes.uncheckedAppend("webm"_s);
+        supportedInitDataTypes.uncheckedAppend("cbcs"_s);
     });
     return supportedInitDataTypes;
 }
@@ -161,7 +170,7 @@ bool CDMPrivateThunder::supportsConfiguration(const CDMKeySystemConfiguration& c
 
 Vector<AtomString> CDMPrivateThunder::supportedRobustnesses() const
 {
-    return { emptyAtom() };
+    return { emptyAtom(), "SW_SECURE_DECODE"_s, "SW_SECURE_CRYPTO"_s };
 }
 
 CDMRequirement CDMPrivateThunder::distinctiveIdentifiersRequirement(const CDMKeySystemConfiguration&, const CDMRestrictions&) const
@@ -191,8 +200,9 @@ void CDMPrivateThunder::loadAndInitialize()
 
 bool CDMPrivateThunder::supportsServerCertificates() const
 {
-    // Server certificates are not supported.
-    return false;
+    bool isSupported = opencdm_system_supports_server_certificate(m_thunderSystem.get());
+    GST_DEBUG("server certificate supported %s", boolForPrinting(isSupported));
+    return isSupported;
 }
 
 bool CDMPrivateThunder::supportsSessions() const
@@ -204,15 +214,15 @@ bool CDMPrivateThunder::supportsSessions() const
 bool CDMPrivateThunder::supportsInitData(const AtomString& initDataType, const SharedBuffer& initData) const
 {
     // Validate the initData buffer as an JSON object in keyids case.
-    if (equalLettersIgnoringASCIICase(initDataType, "keyids") && CDMUtilities::parseJSONObject(initData))
+    if (equalLettersIgnoringASCIICase(initDataType, "keyids"_s) && CDMUtilities::parseJSONObject(initData))
         return true;
 
     // Validate the initData buffer as CENC initData. FIXME: Validate it is actually CENC.
-    if (equalLettersIgnoringASCIICase(initDataType, "cenc") && !initData.isEmpty())
+    if (equalLettersIgnoringASCIICase(initDataType, "cenc"_s) && !initData.isEmpty())
         return true;
 
     // Validate the initData buffer as WebM initData.
-    if (equalLettersIgnoringASCIICase(initDataType, "webm") && !initData.isEmpty())
+    if (equalLettersIgnoringASCIICase(initDataType, "webm"_s) && !initData.isEmpty())
         return true;
 
     return false;
@@ -220,10 +230,10 @@ bool CDMPrivateThunder::supportsInitData(const AtomString& initDataType, const S
 
 RefPtr<SharedBuffer> CDMPrivateThunder::sanitizeResponse(const SharedBuffer& response) const
 {
-    return response.copy();
+    return response.makeContiguous();
 }
 
-Optional<String> CDMPrivateThunder::sanitizeSessionId(const String& sessionId) const
+std::optional<String> CDMPrivateThunder::sanitizeSessionId(const String& sessionId) const
 {
     return sessionId;
 }
@@ -243,14 +253,14 @@ void CDMInstanceThunder::initializeWithConfiguration(const CDMKeySystemConfigura
 
 void CDMInstanceThunder::setServerCertificate(Ref<SharedBuffer>&& certificate,  SuccessCallback&& callback)
 {
-    OpenCDMError error = opencdm_system_set_server_certificate(m_thunderSystem.get(), const_cast<uint8_t*>(certificate->dataAsUInt8Ptr()),
-        certificate->size());
+    auto data = certificate->extractData();
+    OpenCDMError error = opencdm_system_set_server_certificate(m_thunderSystem.get(), const_cast<uint8_t*>(data.data()), data.size());
     callback(!error ? Succeeded : Failed);
 }
 
-void CDMInstanceThunder::setStorageDirectory(const String&)
+void CDMInstanceThunder::setStorageDirectory(const String& storageDirectory)
 {
-    notImplemented();
+    FileSystem::makeAllDirectories(storageDirectory);
 }
 
 CDMInstanceSessionThunder::CDMInstanceSessionThunder(CDMInstanceThunder& instance)
@@ -259,8 +269,9 @@ CDMInstanceSessionThunder::CDMInstanceSessionThunder(CDMInstanceThunder& instanc
     ASSERT(isMainThread());
     m_thunderSessionCallbacks.process_challenge_callback = [](OpenCDMSession*, void* userData, const char[], const uint8_t challenge[],
         const uint16_t challengeLength) {
-        GST_DEBUG("Got 'challenge' OCDM notification");
-        callOnMainThread([session = makeWeakPtr(static_cast<CDMInstanceSessionThunder*>(userData)), buffer = WebCore::SharedBuffer::create(challenge,
+        GST_DEBUG("Got 'challenge' OCDM notification with length %hu", challengeLength);
+        ASSERT(challengeLength > 0);
+        callOnMainThread([session = WeakPtr { static_cast<CDMInstanceSessionThunder*>(userData) }, buffer = WebCore::SharedBuffer::create(challenge,
             challengeLength)]() mutable {
             if (!session)
                 return;
@@ -271,7 +282,7 @@ CDMInstanceSessionThunder::CDMInstanceSessionThunder(CDMInstanceThunder& instanc
         GST_DEBUG("Got 'key updated' OCDM notification");
         KeyIDType keyID;
         keyID.append(keyIDData, keyIDLength);
-        callOnMainThread([session = makeWeakPtr(static_cast<CDMInstanceSessionThunder*>(userData)), keyID = WTFMove(keyID)]() mutable {
+        callOnMainThread([session = WeakPtr { static_cast<CDMInstanceSessionThunder*>(userData) }, keyID = WTFMove(keyID)]() mutable {
             if (!session)
                 return;
             session->keyUpdatedCallback(WTFMove(keyID));
@@ -279,7 +290,7 @@ CDMInstanceSessionThunder::CDMInstanceSessionThunder(CDMInstanceThunder& instanc
     };
     m_thunderSessionCallbacks.keys_updated_callback = [](const OpenCDMSession*, void* userData) {
         GST_DEBUG("Got 'all keys updated' OCDM notification");
-        callOnMainThread([session = makeWeakPtr(static_cast<CDMInstanceSessionThunder*>(userData))]() {
+        callOnMainThread([session = WeakPtr { static_cast<CDMInstanceSessionThunder*>(userData) }]() {
             if (!session)
                 return;
             session->keysUpdateDoneCallback();
@@ -287,7 +298,7 @@ CDMInstanceSessionThunder::CDMInstanceSessionThunder(CDMInstanceThunder& instanc
     };
     m_thunderSessionCallbacks.error_message_callback = [](OpenCDMSession*, void* userData, const char message[]) {
         GST_ERROR("Got 'error' OCDM notification: %s", message);
-        callOnMainThread([session = makeWeakPtr(static_cast<CDMInstanceSessionThunder*>(userData)), buffer = WebCore::SharedBuffer::create(message,
+        callOnMainThread([session = WeakPtr { static_cast<CDMInstanceSessionThunder*>(userData) }, buffer = WebCore::SharedBuffer::create(message,
             strlen(message))]() mutable {
             if (!session)
                 return;
@@ -300,7 +311,6 @@ RefPtr<CDMInstanceSession> CDMInstanceThunder::createSession()
 {
     RefPtr<CDMInstanceSessionThunder> newSession = adoptRef(new CDMInstanceSessionThunder(*this));
     ASSERT(newSession);
-    trackSession(*newSession);
     return newSession;
 }
 
@@ -309,41 +319,54 @@ class ParsedResponseMessage {
 public:
     ParsedResponseMessage(const RefPtr<SharedBuffer>& buffer)
     {
-        if (!buffer)
+        if (!buffer || !buffer->size())
             return;
 
-        StringView payload(reinterpret_cast<const LChar*>(buffer->data()), buffer->size());
-        size_t typePosition = payload.find(":Type:");
-        StringView requestType(payload.characters8(), typePosition != notFound ? typePosition : 0);
+        GST_DEBUG("parsing buffer of size %zu", buffer->size());
         unsigned offset = 0u;
-        if (!requestType.isEmpty() && requestType.length() != payload.length())
-            offset = typePosition + 6;
-
-        if (requestType.length() == 1)
-            m_type = makeOptional(static_cast<WebCore::MediaKeyMessageType>(requestType.toInt()));
-
-        m_payload = SharedBuffer::create(payload.characters8() + offset, payload.length() - offset);
+        if (buffer->size() >= 7) {
+            auto data = buffer->read(0, 7);
+            StringView dataString(reinterpret_cast<const LChar*>(data.data()), data.size());
+            static NeverDestroyed<StringView> type(reinterpret_cast<const LChar*>(":Type:"), 6);
+            if (dataString.endsWith(type)) {
+                m_type.emplace(static_cast<WebCore::MediaKeyMessageType>(dataString.characterAt(0) - '0'));
+                offset = 7;
+            }
+        }
+        auto remainingData = buffer->read(offset, buffer->size() - offset);
+        m_payload = SharedBuffer::create(WTFMove(remainingData));
+        m_isValid = true;
     }
 
+    bool isValid() const { return m_isValid; }
     bool hasPayload() const { return static_cast<bool>(m_payload); }
     const Ref<SharedBuffer>& payload() const& { ASSERT(m_payload); return m_payload.value(); }
     Ref<SharedBuffer>& payload() & { ASSERT(m_payload); return m_payload.value(); }
-    bool hasType() const { return static_cast<bool>(m_type); }
+    bool hasType() const { return m_type.has_value(); }
     WebCore::MediaKeyMessageType type() const { ASSERT(m_type); return m_type.value(); }
     WebCore::MediaKeyMessageType typeOr(WebCore::MediaKeyMessageType alternate) const { return m_type ? m_type.value() : alternate; }
+    explicit operator bool() const { return m_isValid; }
+    bool operator!() const { return !m_isValid; }
 
 private:
-    Optional<Ref<SharedBuffer>> m_payload;
-    Optional<WebCore::MediaKeyMessageType> m_type;
+    bool m_isValid { false };
+    std::optional<Ref<SharedBuffer>> m_payload;
+    std::optional<WebCore::MediaKeyMessageType> m_type;
 };
 
 void CDMInstanceSessionThunder::challengeGeneratedCallback(RefPtr<SharedBuffer>&& buffer)
 {
     ParsedResponseMessage parsedResponseMessage(buffer);
+    if (!parsedResponseMessage) {
+        GST_ERROR("response message parsing failed");
+        ASSERT_NOT_REACHED();
+        return;
+    }
 
     if (!m_challengeCallbacks.isEmpty()) {
         m_message = WTFMove(parsedResponseMessage.payload());
-        m_needsIndividualization = parsedResponseMessage.type() == CDMInstanceSession::MessageType::IndividualizationRequest;
+        m_needsIndividualization = parsedResponseMessage.hasType()
+            && parsedResponseMessage.type() == CDMInstanceSession::MessageType::IndividualizationRequest;
 
         for (const auto& challengeCallback : m_challengeCallbacks)
             challengeCallback();
@@ -387,7 +410,7 @@ static const char* toString(CDMInstanceSession::KeyStatus status)
 
 CDMInstanceSession::KeyStatus CDMInstanceSessionThunder::status(const KeyIDType& keyID) const
 {
-    ThunderKeyStatus status = m_session && !m_sessionID.isEmpty() ? opencdm_session_status(m_session.get(), keyID.data(), keyID.size()) : StatusPending;
+    ThunderKeyStatus status = m_session && !m_sessionID.isEmpty() ? opencdm_session_status(m_session->get(), keyID.data(), keyID.size()) : StatusPending;
 
     switch (status) {
     case Usable:
@@ -416,7 +439,7 @@ void CDMInstanceSessionThunder::keyUpdatedCallback(KeyIDType&& keyID)
 
     auto keyStatus = status(keyID);
     GST_DEBUG("updated with with key status %s", toString(keyStatus));
-    m_doesKeyStoreNeedMerging |= m_keyStore.add(KeyHandle::create(keyStatus, WTFMove(keyID), BoxPtr<OpenCDMSession>()));
+    m_doesKeyStoreNeedMerging |= m_keyStore.add(KeyHandle::create(keyStatus, WTFMove(keyID), BoxPtr<OpenCDMSession>(m_session)));
 }
 
 void CDMInstanceSessionThunder::keysUpdateDoneCallback()
@@ -424,8 +447,7 @@ void CDMInstanceSessionThunder::keysUpdateDoneCallback()
     GST_DEBUG("update done");
     if (m_doesKeyStoreNeedMerging) {
         m_doesKeyStoreNeedMerging = false;
-        auto instance = cdmInstanceThunder();
-        if (instance)
+        if (auto instance = cdmInstanceThunder())
             instance->mergeKeysFrom(m_keyStore);
     }
 
@@ -442,7 +464,8 @@ void CDMInstanceSessionThunder::keysUpdateDoneCallback()
 void CDMInstanceSessionThunder::errorCallback(RefPtr<SharedBuffer>&& message)
 {
     GST_ERROR("CDM error");
-    GST_MEMDUMP("error dump", message->dataAsUInt8Ptr(), message->size());
+    auto data = message->extractData();
+    GST_MEMDUMP("error dump", data.data(), data.size());
     for (const auto& challengeCallback : m_challengeCallbacks)
         challengeCallback();
     m_challengeCallbacks.clear();
@@ -462,20 +485,21 @@ void CDMInstanceSessionThunder::requestLicense(LicenseType licenseType, const At
     ASSERT(instance);
     m_initData = InitData(instance->keySystem(), WTFMove(initDataSharedBuffer));
 
-    GST_TRACE("Going to request a new session id, init data size %lu", m_initData.payload()->size());
-    GST_MEMDUMP("init data", m_initData.payload()->dataAsUInt8Ptr(), m_initData.payload()->size());
+    GST_TRACE("Going to request a new session id, init data size %zu", m_initData.payload()->size());
+    auto payloadData = m_initData.payload()->extractData();
+    GST_MEMDUMP("init data", payloadData.data(), payloadData.size());
 
     OpenCDMSession* session = nullptr;
     opencdm_construct_session(&instance->thunderSystem(), thunderLicenseType(licenseType), initDataType.string().utf8().data(),
-        m_initData.payload()->dataAsUInt8Ptr(), m_initData.payload()->size(), nullptr, 0, &m_thunderSessionCallbacks, this, &session);
+        payloadData.data(), payloadData.size(), nullptr, 0, &m_thunderSessionCallbacks, this, &session);
     if (!session) {
         GST_ERROR("Could not create session");
         RefPtr<SharedBuffer> initData = m_initData.payload();
         callback(initData.releaseNonNull(), { }, false, Failed);
         return;
     }
-    m_session.reset(session);
-    m_sessionID = String::fromUTF8(opencdm_session_id(m_session.get()));
+    m_session = adoptInBoxPtr(session);
+    m_sessionID = String::fromUTF8(opencdm_session_id(m_session->get()));
 
     auto generateChallenge = [this, callback = WTFMove(callback)]() mutable {
         ASSERT(isMainThread());
@@ -489,7 +513,6 @@ void CDMInstanceSessionThunder::requestLicense(LicenseType licenseType, const At
         if (!isValid()) {
             GST_WARNING("created invalid session %s", m_sessionID.utf8().data());
             callback(initData.releaseNonNull(), m_sessionID, false, Failed);
-            removeFromInstanceProxy();
             return;
         }
 
@@ -519,31 +542,35 @@ void CDMInstanceSessionThunder::updateLicense(const String& sessionID, LicenseTy
     m_sessionChangedCallbacks.append([this, callback = WTFMove(callback)](bool success, RefPtr<SharedBuffer>&& responseMessage) mutable {
         ASSERT(isMainThread());
         if (success) {
-            if (!responseMessage) {
-                ASSERT(!m_keyStore.isEmpty());
-                callback(false, m_keyStore.convertToJSKeyStatusVector(), WTF::nullopt, WTF::nullopt, SuccessValue::Succeeded);
-            } else {
+            if (!responseMessage)
+                callback(false, m_keyStore.convertToJSKeyStatusVector(), std::nullopt, std::nullopt, SuccessValue::Succeeded);
+            else {
                 // FIXME: Using JSON reponse messages is much cleaner than using string prefixes, I believe there
                 // will even be other parts of the spec where not having structured data will be bad.
                 ParsedResponseMessage parsedResponseMessage(responseMessage);
+                ASSERT(parsedResponseMessage);
                 if (parsedResponseMessage.hasPayload()) {
                     Ref<SharedBuffer> message = WTFMove(parsedResponseMessage.payload());
-                    GST_DEBUG("got message of size %lu", message->size());
-                    GST_MEMDUMP("message", message->dataAsUInt8Ptr(), message->size());
-                    callback(false, WTF::nullopt, WTF::nullopt,
+                    GST_DEBUG("got message of size %zu", message->size());
+#ifndef GST_DISABLE_GST_DEBUG
+                    auto data = message->copyData();
+                    GST_MEMDUMP("message", data.data(), data.size());
+#endif
+                    callback(false, std::nullopt, std::nullopt,
                         std::make_pair(parsedResponseMessage.typeOr(MediaKeyMessageType::LicenseRequest),
                             WTFMove(message)), SuccessValue::Succeeded);
                 } else {
-                    GST_ERROR("message of size %lu incorrectly formatted", responseMessage ? responseMessage->size() : 0);
-                    callback(false, WTF::nullopt, WTF::nullopt, WTF::nullopt, SuccessValue::Failed);
+                    GST_ERROR("message of size %zu incorrectly formatted", responseMessage ? responseMessage->size() : 0);
+                    callback(false, std::nullopt, std::nullopt, std::nullopt, SuccessValue::Failed);
                 }
             }
         } else {
             GST_ERROR("update license reported error state");
-            callback(false, WTF::nullopt, WTF::nullopt, WTF::nullopt, SuccessValue::Failed);
+            callback(false, std::nullopt, std::nullopt, std::nullopt, SuccessValue::Failed);
         }
     });
-    if (!m_session || m_sessionID.isEmpty() || opencdm_session_update(m_session.get(), response->dataAsUInt8Ptr(), response->size()))
+    auto responseData = response->extractData();
+    if (!m_session || m_sessionID.isEmpty() || opencdm_session_update(m_session->get(), responseData.data(), responseData.size()))
         sessionFailure();
 }
 
@@ -555,31 +582,39 @@ void CDMInstanceSessionThunder::loadSession(LicenseType, const String& sessionID
         ASSERT(isMainThread());
         if (success) {
             if (!responseMessage)
-                callback(m_keyStore.convertToJSKeyStatusVector(), WTF::nullopt, WTF::nullopt, SuccessValue::Succeeded, SessionLoadFailure::None);
+                callback(m_keyStore.convertToJSKeyStatusVector(), std::nullopt, std::nullopt, SuccessValue::Succeeded, SessionLoadFailure::None);
             else {
                 // FIXME: Using JSON reponse messages is much cleaner than using string prefixes, I believe there
                 // will even be other parts of the spec where not having structured data will be bad.
                 ParsedResponseMessage parsedResponseMessage(responseMessage);
+                ASSERT(parsedResponseMessage);
                 if (parsedResponseMessage.hasPayload()) {
                     Ref<SharedBuffer> message = WTFMove(parsedResponseMessage.payload());
-                    GST_DEBUG("got message of size %lu", message->size());
-                    GST_MEMDUMP("message", message->dataAsUInt8Ptr(), message->size());
-                    callback(WTF::nullopt, WTF::nullopt, std::make_pair(parsedResponseMessage.typeOr(MediaKeyMessageType::LicenseRequest),
+                    GST_DEBUG("got message of size %zu", message->size());
+#ifndef GST_DISABLE_GST_DEBUG
+                    auto data = message->copyData();
+                    GST_MEMDUMP("message", data.data(), data.size());
+#endif
+                    callback(std::nullopt, std::nullopt, std::make_pair(parsedResponseMessage.typeOr(MediaKeyMessageType::LicenseRequest),
                         WTFMove(message)), SuccessValue::Succeeded, SessionLoadFailure::None);
                 } else {
-                    GST_ERROR("message of size %lu incorrectly formatted", responseMessage ? responseMessage->size() : 0);
-                    callback(WTF::nullopt, WTF::nullopt, WTF::nullopt, SuccessValue::Failed, SessionLoadFailure::Other);
+                    GST_ERROR("message of size %zu incorrectly formatted", responseMessage ? responseMessage->size() : 0);
+                    callback(std::nullopt, std::nullopt, std::nullopt, SuccessValue::Failed, SessionLoadFailure::Other);
                 }
             }
         } else {
-            auto responseMessageData = responseMessage ? responseMessage->data() : nullptr;
-            auto responseMessageSize = responseMessage ? responseMessage->size() : 0;
-            StringView response(reinterpret_cast<const LChar*>(responseMessageData), responseMessageSize);
-            GST_ERROR("session %s not loaded, reason %s", m_sessionID.utf8().data(), response.utf8().data());
-            callback(WTF::nullopt, WTF::nullopt, WTF::nullopt, SuccessValue::Failed, sessionLoadFailureFromThunder(response));
+            GST_ERROR("session %s not loaded", m_sessionID.utf8().data());
+            if (responseMessage->isEmpty())
+                callback(std::nullopt, std::nullopt, std::nullopt, SuccessValue::Failed, sessionLoadFailureFromThunder({ }));
+            else {
+                auto responseData = responseMessage->extractData();
+                StringView response(reinterpret_cast<const LChar*>(responseData.data()), responseData.size());
+                GST_DEBUG("Error message: %s", response.utf8().data());
+                callback(std::nullopt, std::nullopt, std::nullopt, SuccessValue::Failed, sessionLoadFailureFromThunder(response));
+            }
         }
     });
-    if (!m_session || m_sessionID.isEmpty() || opencdm_session_load(m_session.get()))
+    if (!m_session || m_sessionID.isEmpty() || opencdm_session_load(m_session->get()))
         sessionFailure();
 }
 
@@ -587,10 +622,15 @@ void CDMInstanceSessionThunder::closeSession(const String& sessionID, CloseSessi
 {
     ASSERT_UNUSED(sessionID, m_sessionID == sessionID);
 
-    if (m_session && !m_sessionID.isEmpty())
-        opencdm_session_close(m_session.get());
-
-    removeFromInstanceProxy();
+    if (m_session && !m_sessionID.isEmpty()) {
+        opencdm_session_close(m_session->get());
+        m_session = BoxPtr<OpenCDMSession>();
+        auto instance = cdmInstanceThunder();
+        if (instance) {
+            instance->unrefAllKeysFrom(m_keyStore);
+            m_keyStore.unrefAllKeys();
+        }
+    }
 
     callback();
 }
@@ -603,28 +643,27 @@ void CDMInstanceSessionThunder::removeSessionData(const String& sessionID, Licen
         ASSERT(isMainThread());
         if (success) {
             if (!buffer)
-                callback(m_keyStore.allKeysAs(MediaKeyStatus::Released), WTF::nullopt, SuccessValue::Succeeded);
+                callback(m_keyStore.allKeysAs(MediaKeyStatus::Released), nullptr, SuccessValue::Succeeded);
             else {
                 ParsedResponseMessage parsedResponseMessage(buffer);
+                ASSERT(parsedResponseMessage);
                 if (parsedResponseMessage.hasPayload()) {
                     Ref<SharedBuffer> message = WTFMove(parsedResponseMessage.payload());
-                    GST_DEBUG("session %s removed, message length %lu", m_sessionID.utf8().data(), message->size());
+                    GST_DEBUG("session %s removed, message length %zu", m_sessionID.utf8().data(), message->size());
                     callback(m_keyStore.allKeysAs(MediaKeyStatus::Released), WTFMove(message), SuccessValue::Succeeded);
                 } else {
-                    GST_WARNING("message of size %lu incorrectly formatted as session %s removal answer", buffer ? buffer->size() : 0,
+                    GST_WARNING("message of size %zu incorrectly formatted as session %s removal answer", buffer ? buffer->size() : 0,
                         m_sessionID.utf8().data());
-                    callback(m_keyStore.allKeysAs(MediaKeyStatus::InternalError), WTF::nullopt, SuccessValue::Failed);
+                    callback(m_keyStore.allKeysAs(MediaKeyStatus::InternalError), nullptr, SuccessValue::Failed);
                 }
             }
         } else {
             GST_WARNING("could not remove session %s", m_sessionID.utf8().data());
-            callback(m_keyStore.allKeysAs(MediaKeyStatus::InternalError), WTF::nullopt, SuccessValue::Failed);
+            callback(m_keyStore.allKeysAs(MediaKeyStatus::InternalError), nullptr, SuccessValue::Failed);
         }
     });
-    if (!m_session || m_sessionID.isEmpty() || opencdm_session_remove(m_session.get()))
+    if (!m_session || m_sessionID.isEmpty() || opencdm_session_remove(m_session->get()))
         sessionFailure();
-
-    removeFromInstanceProxy();
 }
 
 void CDMInstanceSessionThunder::storeRecordOfKeyUsage(const String&)
@@ -632,12 +671,10 @@ void CDMInstanceSessionThunder::storeRecordOfKeyUsage(const String&)
     notImplemented();
 }
 
-Optional<CDMInstanceThunder&> CDMInstanceSessionThunder::cdmInstanceThunder() const
+CDMInstanceThunder* CDMInstanceSessionThunder::cdmInstanceThunder() const
 {
-    auto instance = cdmInstanceProxy();
-    if (!instance)
-        return WTF::nullopt;
-    return static_cast<CDMInstanceThunder&>(*instance);
+    auto proxy = cdmInstanceProxy();
+    return static_cast<CDMInstanceThunder*>(proxy.get());
 }
 
 } // namespace WebCore

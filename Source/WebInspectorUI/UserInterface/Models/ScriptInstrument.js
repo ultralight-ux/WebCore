@@ -34,28 +34,20 @@ WI.ScriptInstrument = class ScriptInstrument extends WI.Instrument
 
     startInstrumentation(initiatedByBackend)
     {
-        // COMPATIBILITY (iOS 9): Legacy backends did not have ScriptProfilerAgent. They use TimelineAgent.
-        if (!window.ScriptProfilerAgent) {
-            super.startInstrumentation();
-            return;
-        }
+        let target = WI.assumingMainTarget();
 
         // FIXME: Make this some UI visible option.
         const includeSamples = true;
 
         if (!initiatedByBackend)
-            ScriptProfilerAgent.startTracking(includeSamples);
+            target.ScriptProfilerAgent.startTracking(includeSamples);
     }
 
     stopInstrumentation(initiatedByBackend)
     {
-        // COMPATIBILITY (iOS 9): Legacy backends did not have ScriptProfilerAgent. They use TimelineAgent.
-        if (!window.ScriptProfilerAgent) {
-            super.stopInstrumentation();
-            return;
-        }
+        let target = WI.assumingMainTarget();
 
         if (!initiatedByBackend)
-            ScriptProfilerAgent.stopTracking();
+            target.ScriptProfilerAgent.stopTracking();
     }
 };

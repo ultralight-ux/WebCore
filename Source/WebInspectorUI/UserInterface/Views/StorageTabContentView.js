@@ -25,25 +25,37 @@
 
 WI.StorageTabContentView = class StorageTabContentView extends WI.ContentBrowserTabContentView
 {
-    constructor(identifier)
+    constructor()
     {
-        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.StorageTabContentView.tabInfo());
-        let detailsSidebarPanelConstructors = [WI.ApplicationCacheDetailsSidebarPanel, WI.IndexedDatabaseDetailsSidebarPanel];
+        super(StorageTabContentView.tabInfo(), {
+            navigationSidebarPanelConstructor: WI.StorageSidebarPanel,
+            detailsSidebarPanelConstructors: [
+                WI.ApplicationCacheDetailsSidebarPanel,
+                WI.IndexedDatabaseDetailsSidebarPanel,
+            ],
+        });
 
-        super(identifier || "storage", "storage", tabBarItem, WI.StorageSidebarPanel, detailsSidebarPanelConstructors);
+        WI.applicationCacheManager.enable();
+        WI.databaseManager.enable();
+        WI.domStorageManager.enable();
+        WI.indexedDBManager.enable();
     }
 
     static tabInfo()
     {
         return {
+            identifier: StorageTabContentView.Type,
             image: "Images/Storage.svg",
-            title: WI.UIString("Storage"),
+            displayName: WI.UIString("Storage", "Storage Tab Name", "Name of Storage Tab"),
         };
     }
 
     static isTabAllowed()
     {
-        return !!window.DOMStorageAgent || !!window.DatabaseAgent || !!window.IndexedDBAgent;
+        return InspectorBackend.hasDomain("ApplicationCache")
+            || InspectorBackend.hasDomain("DOMStorage")
+            || InspectorBackend.hasDomain("Database")
+            || InspectorBackend.hasDomain("IndexedDB");
     }
 
     // Public
@@ -60,10 +72,34 @@ WI.StorageTabContentView = class StorageTabContentView extends WI.ContentBrowser
 
     canShowRepresentedObject(representedObject)
     {
-        return representedObject instanceof WI.DOMStorageObject || representedObject instanceof WI.CookieStorageObject ||
-            representedObject instanceof WI.DatabaseTableObject || representedObject instanceof WI.DatabaseObject ||
-            representedObject instanceof WI.ApplicationCacheFrame || representedObject instanceof WI.IndexedDatabaseObjectStore ||
-            representedObject instanceof WI.IndexedDatabase || representedObject instanceof WI.IndexedDatabaseObjectStoreIndex;
+        return representedObject instanceof WI.ApplicationCacheFrame
+            || representedObject instanceof WI.CookieStorageObject
+            || representedObject instanceof WI.DOMStorageObject
+            || representedObject instanceof WI.DatabaseObject
+            || representedObject instanceof WI.DatabaseTableObject
+            || representedObject instanceof WI.IndexedDatabase
+            || representedObject instanceof WI.IndexedDatabaseObjectStore
+            || representedObject instanceof WI.IndexedDatabaseObjectStoreIndex;
+    }
+
+    get canHandleFindEvent()
+    {
+        return this.contentBrowser.currentContentView.canFocusFilterBar;
+    }
+
+    handleFindEvent(event)
+    {
+        this.contentBrowser.currentContentView.focusFilterBar();
+    }
+
+    closed()
+    {
+        WI.applicationCacheManager.disable();
+        WI.databaseManager.disable();
+        WI.domStorageManager.disable();
+        WI.indexedDBManager.disable();
+
+        super.closed();
     }
 };
 

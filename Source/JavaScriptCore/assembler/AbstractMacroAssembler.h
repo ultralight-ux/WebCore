@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 #include "AbortReason.h"
 #include "AssemblerBuffer.h"
 #include "AssemblerCommon.h"
+#include "AssemblyComments.h"
 #include "CPU.h"
 #include "CodeLocation.h"
 #include "JSCJSValue.h"
@@ -35,9 +36,9 @@
 #include "MacroAssemblerCodeRef.h"
 #include "MacroAssemblerHelpers.h"
 #include "Options.h"
-#include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/SharedTask.h>
+#include <wtf/StringPrintStream.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakRandom.h>
 
@@ -54,6 +55,8 @@ template<typename T> class DisallowMacroScratchRegisterUsage;
 namespace DFG {
 struct OSRExit;
 }
+
+#define JIT_COMMENT(jit, ...) do { if (UNLIKELY(Options::dumpDisassembly())) { (jit).comment(__VA_ARGS__); } else { (void) jit; } } while (0);
 
 class AbstractMacroAssemblerBase {
     WTF_MAKE_FAST_ALLOCATED;
@@ -74,6 +77,19 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
         return Success;
     }
+
+protected:
+    uint32_t random()
+    {
+        if (!m_randomSource)
+            initializeRandom();
+        return m_randomSource->getUint32();
+    }
+
+private:
+    JS_EXPORT_PRIVATE void initializeRandom();
+
+    std::optional<WeakRandom> m_randomSource;
 };
 
 template <class AssemblerType>
@@ -82,7 +98,6 @@ public:
     typedef AbstractMacroAssembler<AssemblerType> AbstractMacroAssemblerType;
     typedef AssemblerType AssemblerType_T;
 
-    template<PtrTag tag> using CodePtr = MacroAssemblerCodePtr<tag>;
     template<PtrTag tag> using CodeRef = MacroAssemblerCodeRef<tag>;
 
     enum class CPUIDCheckState {
@@ -123,8 +138,15 @@ public:
         TimesFour,
         TimesEight,
         ScalePtr = isAddress64Bit() ? TimesEight : TimesFour,
+        ScaleRegWord = isRegister64Bit() ? TimesEight : TimesFour,
     };
-    
+
+    enum class Extend : uint8_t {
+        ZExt32,
+        SExt32,
+        None
+    };
+
     struct BaseIndex;
     
     static RegisterID withSwappedRegister(RegisterID original, RegisterID left, RegisterID right)
@@ -173,55 +195,27 @@ public:
         intptr_t offset;
     };
 
-    // ImplicitAddress:
-    //
-    // This class is used for explicit 'load' and 'store' operations
-    // (as opposed to situations in which a memory operand is provided
-    // to a generic operation, such as an integer arithmetic instruction).
-    //
-    // In the case of a load (or store) operation we want to permit
-    // addresses to be implicitly constructed, e.g. the two calls:
-    //
-    //     load32(Address(addrReg), destReg);
-    //     load32(addrReg, destReg);
-    //
-    // Are equivalent, and the explicit wrapping of the Address in the former
-    // is unnecessary.
-    struct ImplicitAddress {
-        ImplicitAddress(RegisterID base)
-            : base(base)
-            , offset(0)
-        {
-            ASSERT(base != RegisterID::InvalidGPRReg);
-        }
-
-        ImplicitAddress(Address address)
-            : base(address.base)
-            , offset(address.offset)
-        {
-            ASSERT(base != RegisterID::InvalidGPRReg);
-        }
-
-        RegisterID base;
-        int32_t offset;
-    };
-
     // BaseIndex:
     //
     // Describes a complex addressing mode.
     struct BaseIndex {
-        BaseIndex(RegisterID base, RegisterID index, Scale scale, int32_t offset = 0)
+        BaseIndex(RegisterID base, RegisterID index, Scale scale, int32_t offset = 0, Extend extend = Extend::None)
             : base(base)
             , index(index)
             , scale(scale)
             , offset(offset)
+            , extend(extend)
         {
+#if !CPU(ARM64)
+            ASSERT(extend == Extend::None);
+#endif
         }
         
         RegisterID base;
         RegisterID index;
         Scale scale;
         int32_t offset;
+        Extend extend;
         
         BaseIndex withOffset(int32_t additionalOffset)
         {
@@ -232,6 +226,34 @@ public:
         {
             return BaseIndex(AbstractMacroAssembler::withSwappedRegister(base, left, right), AbstractMacroAssembler::withSwappedRegister(index, left, right), scale, offset);
         }
+    };
+
+    // PreIndexAddress:
+    //
+    // Describes an address with base address and pre-increment/decrement index.
+    struct PreIndexAddress {
+        PreIndexAddress(RegisterID base, int index)
+            : base(base)
+            , index(index)
+        {
+        }
+
+        RegisterID base;
+        int index;
+    };
+
+    // PostIndexAddress:
+    //
+    // Describes an address with base address and post-increment/decrement index.
+    struct PostIndexAddress {
+        PostIndexAddress(RegisterID base, int index)
+            : base(base)
+            , index(index)
+        {
+        }
+
+        RegisterID base;
+        int index;
     };
 
     // AbsoluteAddress:
@@ -259,9 +281,9 @@ public:
     // in a class requiring explicit construction in order to differentiate
     // from pointers used as absolute addresses to memory operations
     struct TrustedImmPtr : public TrustedImm {
-        TrustedImmPtr() { }
+        constexpr TrustedImmPtr() { }
         
-        explicit TrustedImmPtr(const void* value)
+        explicit constexpr TrustedImmPtr(const void* value)
             : m_value(value)
         {
         }
@@ -272,21 +294,21 @@ public:
         {
         }
 
-        explicit TrustedImmPtr(std::nullptr_t)
+        explicit constexpr TrustedImmPtr(std::nullptr_t)
         {
         }
 
-        explicit TrustedImmPtr(size_t value)
+        explicit constexpr TrustedImmPtr(size_t value)
             : m_value(reinterpret_cast<void*>(value))
         {
         }
 
-        intptr_t asIntptr()
+        constexpr intptr_t asIntptr()
         {
             return reinterpret_cast<intptr_t>(m_value);
         }
 
-        void* asPtr()
+        constexpr void* asPtr()
         {
             return const_cast<void*>(m_value);
         }
@@ -296,12 +318,12 @@ public:
 
     struct ImmPtr : private TrustedImmPtr
     {
-        explicit ImmPtr(const void* value)
+        explicit constexpr ImmPtr(const void* value)
             : TrustedImmPtr(value)
         {
         }
 
-        TrustedImmPtr asTrustedImmPtr() { return *this; }
+        constexpr TrustedImmPtr asTrustedImmPtr() { return *this; }
     };
 
     // TrustedImm32:
@@ -311,36 +333,36 @@ public:
     // (which are implemented as an enum) from accidentally being passed as
     // immediate values.
     struct TrustedImm32 : public TrustedImm {
-        TrustedImm32() { }
+        constexpr TrustedImm32() = default;
         
-        explicit TrustedImm32(int32_t value)
+        explicit constexpr TrustedImm32(int32_t value)
             : m_value(value)
         {
         }
 
 #if !CPU(X86_64)
-        explicit TrustedImm32(TrustedImmPtr ptr)
+        explicit constexpr TrustedImm32(TrustedImmPtr ptr)
             : m_value(ptr.asIntptr())
         {
         }
 #endif
 
-        int32_t m_value;
+        int32_t m_value { 0 };
     };
 
 
     struct Imm32 : private TrustedImm32 {
-        explicit Imm32(int32_t value)
+        explicit constexpr Imm32(int32_t value)
             : TrustedImm32(value)
         {
         }
 #if !CPU(X86_64)
-        explicit Imm32(TrustedImmPtr ptr)
+        explicit constexpr Imm32(TrustedImmPtr ptr)
             : TrustedImm32(ptr)
         {
         }
 #endif
-        const TrustedImm32& asTrustedImm32() const { return *this; }
+        constexpr const TrustedImm32& asTrustedImm32() const { return *this; }
 
     };
     
@@ -351,15 +373,15 @@ public:
     // (which are implemented as an enum) from accidentally being passed as
     // immediate values.
     struct TrustedImm64 : TrustedImm {
-        TrustedImm64() { }
+        constexpr TrustedImm64() { }
         
-        explicit TrustedImm64(int64_t value)
+        explicit constexpr TrustedImm64(int64_t value)
             : m_value(value)
         {
         }
 
-#if CPU(X86_64) || CPU(ARM64)
-        explicit TrustedImm64(TrustedImmPtr ptr)
+#if CPU(X86_64) || CPU(ARM64) || CPU(RISCV64)
+        explicit constexpr TrustedImm64(TrustedImmPtr ptr)
             : m_value(ptr.asIntptr())
         {
         }
@@ -370,17 +392,17 @@ public:
 
     struct Imm64 : private TrustedImm64
     {
-        explicit Imm64(int64_t value)
+        explicit constexpr Imm64(int64_t value)
             : TrustedImm64(value)
         {
         }
-#if CPU(X86_64) || CPU(ARM64)
-        explicit Imm64(TrustedImmPtr ptr)
+#if CPU(X86_64) || CPU(ARM64) || CPU(RISCV64)
+        explicit constexpr Imm64(TrustedImmPtr ptr)
             : TrustedImm64(ptr)
         {
         }
 #endif
-        const TrustedImm64& asTrustedImm64() const { return *this; }
+        constexpr const TrustedImm64& asTrustedImm64() const { return *this; }
     };
     
     // Section 2: MacroAssembler code buffer handles
@@ -539,8 +561,8 @@ public:
             Linkable = 0x1,
             Near = 0x2,
             Tail = 0x4,
-            LinkableNear = 0x3,
-            LinkableNearTail = 0x7,
+            LinkableNear = Linkable | Near,
+            LinkableNearTail = Linkable | Near | Tail,
         };
 
         Call()
@@ -581,10 +603,8 @@ public:
         friend struct DFG::OSRExit;
         friend class LinkBuffer;
     public:
-        Jump()
-        {
-        }
-        
+        Jump() = default;
+
 #if CPU(ARM_THUMB2)
         // Fixme: this information should be stored in the instruction stream, not in the Jump object.
         Jump(AssemblerLabel jmp, ARMv7Assembler::JumpType type = ARMv7Assembler::JumpNoCondition, ARMv7Assembler::Condition condition = ARMv7Assembler::ConditionInvalid)
@@ -639,7 +659,7 @@ public:
             masm->invalidateAllTempRegisters();
 
 #if ENABLE(DFG_REGISTER_ALLOCATION_VALIDATION)
-            masm->checkRegisterAllocationAgainstBranchRange(m_label.m_offset, masm->debugOffset());
+            masm->checkRegisterAllocationAgainstBranchRange(m_label.offset(), masm->debugOffset());
 #endif
 
 #if CPU(ARM_THUMB2)
@@ -659,7 +679,7 @@ public:
         void linkTo(Label label, AbstractMacroAssemblerType* masm) const
         {
 #if ENABLE(DFG_REGISTER_ALLOCATION_VALIDATION)
-            masm->checkRegisterAllocationAgainstBranchRange(label.m_label.m_offset, m_label.m_offset);
+            masm->checkRegisterAllocationAgainstBranchRange(label.m_label.offset(), m_label.offset());
 #endif
 
 #if CPU(ARM_THUMB2)
@@ -681,14 +701,14 @@ public:
     private:
         AssemblerLabel m_label;
 #if CPU(ARM_THUMB2)
-        ARMv7Assembler::JumpType m_type;
-        ARMv7Assembler::Condition m_condition;
+        ARMv7Assembler::JumpType m_type { ARMv7Assembler::JumpNoCondition };
+        ARMv7Assembler::Condition m_condition { ARMv7Assembler::ConditionInvalid };
 #elif CPU(ARM64)
-        ARM64Assembler::JumpType m_type;
-        ARM64Assembler::Condition m_condition;
-        bool m_is64Bit;
-        unsigned m_bitNumber;
-        ARM64Assembler::RegisterID m_compareRegister;
+        ARM64Assembler::JumpType m_type { ARM64Assembler::JumpNoCondition };
+        ARM64Assembler::Condition m_condition { ARM64Assembler::ConditionInvalid };
+        bool m_is64Bit { false };
+        unsigned m_bitNumber { 0 };
+        ARM64Assembler::RegisterID m_compareRegister { ARM64Registers::InvalidGPRReg };
 #endif
     };
 
@@ -849,7 +869,7 @@ public:
     }
 
     template<PtrTag aTag, PtrTag bTag>
-    static ptrdiff_t differenceBetweenCodePtr(const MacroAssemblerCodePtr<aTag>& a, const MacroAssemblerCodePtr<bTag>& b)
+    static ptrdiff_t differenceBetweenCodePtr(const CodePtr<aTag>& a, const CodePtr<bTag>& b)
     {
         return b.template dataLocation<ptrdiff_t>() - a.template dataLocation<ptrdiff_t>();
     }
@@ -873,15 +893,15 @@ public:
     }
 
     template<PtrTag tag>
-    static void linkPointer(void* code, AssemblerLabel label, MacroAssemblerCodePtr<tag> value)
+    static void linkPointer(void* code, AssemblerLabel label, CodePtr<tag> value)
     {
-        AssemblerType::linkPointer(code, label, value.executableAddress());
+        AssemblerType::linkPointer(code, label, value.taggedPtr());
     }
 
     template<PtrTag tag>
     static void* getLinkerAddress(void* code, AssemblerLabel label)
     {
-        return tagCodePtr(AssemblerType::getRelocatedAddress(code, label), tag);
+        return tagCodePtr<tag>(AssemblerType::getRelocatedAddress(code, label));
     }
 
     static unsigned getLinkerCallReturnOffset(Call call)
@@ -895,21 +915,15 @@ public:
         AssemblerType::relinkJump(jump.dataLocation(), destination.dataLocation());
     }
     
-    template<PtrTag jumpTag>
-    static void repatchJumpToNop(CodeLocationJump<jumpTag> jump)
-    {
-        AssemblerType::relinkJumpToNop(jump.dataLocation());
-    }
-
     template<PtrTag callTag, PtrTag destTag>
     static void repatchNearCall(CodeLocationNearCall<callTag> nearCall, CodeLocationLabel<destTag> destination)
     {
         switch (nearCall.callMode()) {
         case NearCallMode::Tail:
-            AssemblerType::relinkJump(nearCall.dataLocation(), destination.dataLocation());
+            AssemblerType::relinkTailCall(nearCall.dataLocation(), destination.dataLocation());
             return;
         case NearCallMode::Regular:
-            AssemblerType::relinkCall(nearCall.dataLocation(), destination.untaggedExecutableAddress());
+            AssemblerType::relinkCall(nearCall.dataLocation(), destination.untaggedPtr());
             return;
         }
         RELEASE_ASSERT_NOT_REACHED();
@@ -918,23 +932,18 @@ public:
     template<PtrTag callTag, PtrTag destTag>
     static CodeLocationLabel<destTag> prepareForAtomicRepatchNearCallConcurrently(CodeLocationNearCall<callTag> nearCall, CodeLocationLabel<destTag> destination)
     {
-#if USE(JUMP_ISLANDS)
+#if ENABLE(JUMP_ISLANDS)
         switch (nearCall.callMode()) {
         case NearCallMode::Tail:
             return CodeLocationLabel<destTag>(tagCodePtr<destTag>(AssemblerType::prepareForAtomicRelinkJumpConcurrently(nearCall.dataLocation(), destination.dataLocation())));
         case NearCallMode::Regular:
-            return CodeLocationLabel<destTag>(tagCodePtr<destTag>(AssemblerType::prepareForAtomicRelinkCallConcurrently(nearCall.dataLocation(), destination.untaggedExecutableAddress())));
+            return CodeLocationLabel<destTag>(tagCodePtr<destTag>(AssemblerType::prepareForAtomicRelinkCallConcurrently(nearCall.dataLocation(), destination.untaggedPtr())));
         }
+        RELEASE_ASSERT_NOT_REACHED();
 #else
         UNUSED_PARAM(nearCall);
         return destination;
 #endif
-    }
-
-    template<PtrTag tag>
-    static void repatchCompact(CodeLocationDataLabelCompact<tag> dataLabelCompact, int32_t value)
-    {
-        AssemblerType::repatchCompact(dataLabelCompact.template dataLocation(), value);
     }
 
     template<PtrTag tag>
@@ -973,6 +982,12 @@ public:
         m_linkTasks.append(createSharedTask<void(LinkBuffer&)>(functor));
     }
 
+    template<typename Functor>
+    void addLateLinkTask(const Functor& functor) // Run after all link tasks
+    {
+        m_lateLinkTasks.append(createSharedTask<void(LinkBuffer&)>(functor));
+    }
+
 #if COMPILER(GCC)
     // Workaround for GCC demanding that memcpy "must be the name of a function with external linkage".
     static void* memcpy(void* dst, const void* src, size_t size)
@@ -1007,25 +1022,23 @@ public:
     ALWAYS_INLINE void removePtrTag(RegisterID) { }
     ALWAYS_INLINE void validateUntaggedPtr(RegisterID, RegisterID = RegisterID::InvalidGPRReg) { }
 
+    template<typename... Types>
+    void comment(const Types&... values)
+    {
+        if (LIKELY(!Options::dumpDisassembly()))
+            return;
+        StringPrintStream s;
+        s.print(values...);
+        commentImpl(s.toString());
+    }
+
 protected:
     AbstractMacroAssembler()
-        : m_randomSource(0)
-        , m_assembler()
+        : m_assembler()
     {
         invalidateAllTempRegisters();
     }
 
-    uint32_t random()
-    {
-        if (!m_randomSourceIsInitialized) {
-            m_randomSourceIsInitialized = true;
-            m_randomSource.setSeed(cryptographicallyRandomNumber());
-        }
-        return m_randomSource.getUint32();
-    }
-
-    bool m_randomSourceIsInitialized { false };
-    WeakRandom m_randomSource;
 public:
     AssemblerType m_assembler;
 protected:
@@ -1043,9 +1056,9 @@ protected:
         UNREACHABLE_FOR_PLATFORM();
         return firstRegister();
     }
-    static bool canBlind() { return false; }
-    static bool shouldBlindForSpecificArch(uint32_t) { return false; }
-    static bool shouldBlindForSpecificArch(uint64_t) { return false; }
+    static constexpr bool canBlind() { return false; }
+    static constexpr bool shouldBlindForSpecificArch(uint32_t) { return false; }
+    static constexpr bool shouldBlindForSpecificArch(uint64_t) { return false; }
 
     class CachedTempRegister {
         friend class DataLabelPtr;
@@ -1068,7 +1081,7 @@ protected:
 
         ALWAYS_INLINE RegisterID registerIDNoInvalidate() { return m_registerID; }
 
-        bool value(intptr_t& value)
+        WARN_UNUSED_RETURN bool value(intptr_t& value)
         {
             value = m_value;
             return m_masm->isTempRegisterValid(m_validBit);
@@ -1109,13 +1122,18 @@ protected:
         m_tempRegistersValidBits |= registerMask;
     }
 
+    void commentImpl(String&& str) { m_comments.append({ labelIgnoringWatchpoints(), WTFMove(str) }); }
+
     friend class AllowMacroScratchRegisterUsage;
     friend class AllowMacroScratchRegisterUsageIf;
     template<typename T> friend class DisallowMacroScratchRegisterUsage;
     unsigned m_tempRegistersValidBits;
     bool m_allowScratchRegister { true };
 
+    Vector<std::pair<Label, String>> m_comments;
+
     Vector<RefPtr<SharedTask<void(LinkBuffer&)>>> m_linkTasks;
+    Vector<RefPtr<SharedTask<void(LinkBuffer&)>>> m_lateLinkTasks;
 
     friend class LinkBuffer;
 }; // class AbstractMacroAssembler

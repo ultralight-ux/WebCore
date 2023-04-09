@@ -17,7 +17,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#if !defined(__JSC_H_INSIDE__) && !defined(JSC_COMPILATION) && !defined(WEBKIT2_COMPILATION)
+#if !defined(__JSC_H_INSIDE__) && !defined(BUILDING_WEBKIT)
 #error "Only <jsc/jsc.h> can be included directly."
 #endif
 
@@ -60,6 +60,8 @@ G_BEGIN_DECLS
  * @major: major version (e.g. 1 for version 1.2.5)
  * @minor: minor version (e.g. 2 for version 1.2.5)
  * @micro: micro version (e.g. 5 for version 1.2.5)
+ *
+ * Check the version of JSC header files at compile time.
  *
  * Returns: %TRUE if the version of the JavaScriptCore header files
  * is the same as or newer than the passed-in version.

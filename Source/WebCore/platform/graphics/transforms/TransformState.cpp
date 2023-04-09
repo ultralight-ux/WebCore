@@ -26,7 +26,6 @@
 #include "config.h"
 #include "TransformState.h"
 
-#include <wtf/Optional.h>
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
@@ -34,6 +33,7 @@ namespace WebCore {
 TransformState& TransformState::operator=(const TransformState& other)
 {
     m_accumulatedOffset = other.m_accumulatedOffset;
+    m_tracking = other.m_tracking;
     m_mapPoint = other.m_mapPoint;
     m_mapQuad = other.m_mapQuad;
     if (m_mapPoint)
@@ -43,6 +43,7 @@ TransformState& TransformState::operator=(const TransformState& other)
         m_lastPlanarSecondaryQuad = other.m_lastPlanarSecondaryQuad;
     }
     m_accumulatingTransform = other.m_accumulatingTransform;
+    m_useCSS3DTransformInterop = other.m_useCSS3DTransformInterop;
     m_direction = other.m_direction;
     
     m_accumulatedTransform = nullptr;
@@ -50,6 +51,10 @@ TransformState& TransformState::operator=(const TransformState& other)
     if (other.m_accumulatedTransform)
         m_accumulatedTransform = makeUnique<TransformationMatrix>(*other.m_accumulatedTransform);
         
+    m_trackedTransform = nullptr;
+    if (other.m_trackedTransform)
+        m_trackedTransform = makeUnique<TransformationMatrix>(*other.m_trackedTransform);
+
     return *this;
 }
 
@@ -71,11 +76,22 @@ void TransformState::translateMappedCoordinates(const LayoutSize& offset)
         if (m_lastPlanarSecondaryQuad)
             m_lastPlanarSecondaryQuad->move(adjustedOffset);
     }
+    if (m_tracking != DoNotTrackTransformMatrix) {
+        if (!m_trackedTransform)
+            m_trackedTransform = makeUnique<TransformationMatrix>();
+        if (m_direction == ApplyTransformDirection)
+            m_trackedTransform->translateRight(offset.width(), offset.height());
+        else
+            m_trackedTransform->translate(offset.width(), offset.height());
+    }
 }
 
 void TransformState::move(const LayoutSize& offset, TransformAccumulation accumulate)
 {
-    if (accumulate == FlattenTransform && !m_accumulatedTransform)
+    if (shouldFlattenBefore(accumulate))
+        flatten();
+
+    if (accumulate == FlattenTransform && !m_accumulatedTransform && m_tracking == DoNotTrackTransformMatrix)
         m_accumulatedOffset += offset;
     else {
         applyAccumulatedOffset();
@@ -84,13 +100,12 @@ void TransformState::move(const LayoutSize& offset, TransformAccumulation accumu
             translateTransform(offset);
 
             // Then flatten if necessary.
-            if (accumulate == FlattenTransform)
+            if (shouldFlattenAfter(accumulate))
                 flatten();
         } else
             // Just move the point and/or quad.
             translateMappedCoordinates(offset);
     }
-    m_accumulatingTransform = accumulate == AccumulateTransform;
 }
 
 void TransformState::applyAccumulatedOffset()
@@ -104,6 +119,20 @@ void TransformState::applyAccumulatedOffset()
         } else
             translateMappedCoordinates(offset);
     }
+}
+
+bool TransformState::shouldFlattenBefore(TransformAccumulation accumulate)
+{
+    if (m_useCSS3DTransformInterop)
+        return accumulate == FlattenTransform && m_direction != ApplyTransformDirection;
+    return false;
+}
+
+bool TransformState::shouldFlattenAfter(TransformAccumulation accumulate)
+{
+    if (m_useCSS3DTransformInterop)
+        return accumulate == FlattenTransform && m_direction == ApplyTransformDirection;
+    return accumulate == FlattenTransform;
 }
 
 // FIXME: We transform AffineTransform to TransformationMatrix. This is rather inefficient.
@@ -124,22 +153,24 @@ void TransformState::applyTransform(const TransformationMatrix& transformFromCon
 
     applyAccumulatedOffset();
 
+    if (shouldFlattenBefore(accumulate))
+        flatten();
+
     // If we have an accumulated transform from last time, multiply in this transform
     if (m_accumulatedTransform) {
         if (m_direction == ApplyTransformDirection)
             m_accumulatedTransform = makeUnique<TransformationMatrix>(transformFromContainer * *m_accumulatedTransform);
         else
             m_accumulatedTransform->multiply(transformFromContainer);
-    } else if (accumulate == AccumulateTransform) {
-        // Make one if we started to accumulate
-        m_accumulatedTransform = makeUnique<TransformationMatrix>(transformFromContainer);
     }
-    
-    if (accumulate == FlattenTransform) {
+
+    if (shouldFlattenAfter(accumulate)) {
         const TransformationMatrix* finalTransform = m_accumulatedTransform ? m_accumulatedTransform.get() : &transformFromContainer;
         flattenWithTransform(*finalTransform, wasClamped);
+    } else if (!m_accumulatedTransform) {
+        m_accumulatedTransform = makeUnique<TransformationMatrix>(transformFromContainer);
+        m_accumulatingTransform = true;
     }
-    m_accumulatingTransform = accumulate == AccumulateTransform;
 }
 
 void TransformState::flatten(bool* wasClamped)
@@ -170,7 +201,7 @@ FloatPoint TransformState::mappedPoint(bool* wasClamped) const
     if (m_direction == ApplyTransformDirection)
         return m_accumulatedTransform->mapPoint(point);
 
-    return m_accumulatedTransform->inverse().valueOr(TransformationMatrix()).projectPoint(point, wasClamped);
+    return valueOrDefault(m_accumulatedTransform->inverse()).projectPoint(point, wasClamped);
 }
 
 FloatQuad TransformState::mappedQuad(bool* wasClamped) const
@@ -183,23 +214,23 @@ FloatQuad TransformState::mappedQuad(bool* wasClamped) const
     return quad;
 }
 
-Optional<FloatQuad> TransformState::mappedSecondaryQuad(bool* wasClamped) const
+std::optional<FloatQuad> TransformState::mappedSecondaryQuad(bool* wasClamped) const
 {
     if (wasClamped)
         *wasClamped = false;
 
     if (!m_lastPlanarSecondaryQuad)
-        return WTF::nullopt;
+        return std::nullopt;
 
     FloatQuad quad = *m_lastPlanarSecondaryQuad;
     mapQuad(quad, m_direction, wasClamped);
     return quad;
 }
 
-void TransformState::setLastPlanarSecondaryQuad(const Optional<FloatQuad>& quad)
+void TransformState::setLastPlanarSecondaryQuad(const std::optional<FloatQuad>& quad)
 {
     if (!quad) {
-        m_lastPlanarSecondaryQuad = WTF::nullopt;
+        m_lastPlanarSecondaryQuad = std::nullopt;
         return;
     }
     
@@ -220,7 +251,7 @@ void TransformState::mapQuad(FloatQuad& quad, TransformDirection direction, bool
         return;
     }
 
-    quad = m_accumulatedTransform->inverse().valueOr(TransformationMatrix()).projectQuad(quad, wasClamped);
+    quad = valueOrDefault(m_accumulatedTransform->inverse()).projectQuad(quad, wasClamped);
 }
 
 void TransformState::flattenWithTransform(const TransformationMatrix& t, bool* wasClamped)
@@ -234,7 +265,7 @@ void TransformState::flattenWithTransform(const TransformationMatrix& t, bool* w
                 m_lastPlanarSecondaryQuad = t.mapQuad(*m_lastPlanarSecondaryQuad);
         }
     } else {
-        TransformationMatrix inverseTransform = t.inverse().valueOr(TransformationMatrix());
+        TransformationMatrix inverseTransform = valueOrDefault(t.inverse());
         if (m_mapPoint)
             m_lastPlanarPoint = inverseTransform.projectPoint(m_lastPlanarPoint);
         if (m_mapQuad) {
@@ -243,6 +274,11 @@ void TransformState::flattenWithTransform(const TransformationMatrix& t, bool* w
                 m_lastPlanarSecondaryQuad = inverseTransform.projectQuad(*m_lastPlanarSecondaryQuad, wasClamped);
         }
     }
+
+    if (m_trackedTransform)
+        *m_trackedTransform = (m_direction == ApplyTransformDirection) ? (t * *m_trackedTransform) : (*m_trackedTransform * t);
+    else if (m_tracking != DoNotTrackTransformMatrix)
+        m_trackedTransform = makeUnique<TransformationMatrix>(t);
 
     // We could throw away m_accumulatedTransform if we wanted to here, but that
     // would cause thrash when traversing hierarchies with alternating

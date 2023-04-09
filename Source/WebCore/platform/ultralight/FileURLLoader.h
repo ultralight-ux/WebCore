@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <wtf/Optional.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
 
@@ -18,7 +17,7 @@ struct Result {
   RefPtr<SharedBuffer> data;
 };
 
-using LoadCompletionHandler = WTF::Function<void(Optional<Result>)>;
+using LoadCompletionHandler = WTF::Function<void(std::optional<Result>)>;
 
 void load(const URL&, LoadCompletionHandler&&);
 

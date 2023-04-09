@@ -36,7 +36,9 @@
 #include "Page.h"
 #include "RenderBox.h"
 #include "RenderTheme.h"
+#include "ScriptDisallowedScope.h"
 #include "ScrollbarTheme.h"
+#include "ShadowPseudoIds.h"
 #include "WheelEvent.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/Ref.h>
@@ -55,14 +57,15 @@ inline SpinButtonElement::SpinButtonElement(Document& document, SpinButtonOwner&
     , m_pressStartingState(Indeterminate)
     , m_repeatingTimer(*this, &SpinButtonElement::repeatingTimerFired)
 {
-    static MainThreadNeverDestroyed<const AtomString> webkitInnerSpinButtonName("-webkit-inner-spin-button", AtomString::ConstructFromLiteral);
     setHasCustomStyleResolveCallbacks();
-    setPseudo(webkitInnerSpinButtonName);
 }
 
 Ref<SpinButtonElement> SpinButtonElement::create(Document& document, SpinButtonOwner& spinButtonOwner)
 {
-    return adoptRef(*new SpinButtonElement(document, spinButtonOwner));
+    auto element = adoptRef(*new SpinButtonElement(document, spinButtonOwner));
+    ScriptDisallowedScope::EventAllowedScope eventAllowedScope { element };
+    element->setPseudo(ShadowPseudoIds::webkitInnerSpinButton());
+    return element;
 }
 
 void SpinButtonElement::willDetachRenderers()
@@ -171,7 +174,7 @@ void SpinButtonElement::forwardEvent(Event& event)
     event.setDefaultHandled();
 }
 
-bool SpinButtonElement::willRespondToMouseMoveEvents()
+bool SpinButtonElement::willRespondToMouseMoveEvents() const
 {
     if (renderBox() && shouldRespondToMouseEvents())
         return true;
@@ -179,12 +182,12 @@ bool SpinButtonElement::willRespondToMouseMoveEvents()
     return HTMLDivElement::willRespondToMouseMoveEvents();
 }
 
-bool SpinButtonElement::willRespondToMouseClickEvents()
+bool SpinButtonElement::willRespondToMouseClickEventsWithEditability(Editability editability) const
 {
     if (renderBox() && shouldRespondToMouseEvents())
         return true;
 
-    return HTMLDivElement::willRespondToMouseClickEvents();
+    return HTMLDivElement::willRespondToMouseClickEventsWithEditability(editability);
 }
 
 void SpinButtonElement::doStepAction(int amount)
@@ -235,7 +238,7 @@ void SpinButtonElement::step(int amount)
     // On Mac OS, NSStepper updates the value for the button under the mouse
     // cursor regardless of the button pressed at the beginning. So the
     // following check is not needed for Mac OS.
-#if !OS(MAC_OS_X)
+#if !OS(MACOS)
     if (m_upDownState != m_pressStartingState)
         return;
 #endif
@@ -248,14 +251,14 @@ void SpinButtonElement::repeatingTimerFired()
         step(m_upDownState == Up ? 1 : -1);
 }
 
-void SpinButtonElement::setHovered(bool flag)
+void SpinButtonElement::setHovered(bool flag, Style::InvalidationScope invalidationScope, HitTestRequest request)
 {
     if (!flag)
         m_upDownState = Indeterminate;
-    HTMLDivElement::setHovered(flag);
+    HTMLDivElement::setHovered(flag, invalidationScope, request);
 }
 
-bool SpinButtonElement::shouldRespondToMouseEvents()
+bool SpinButtonElement::shouldRespondToMouseEvents() const
 {
     return !m_spinButtonOwner || m_spinButtonOwner->shouldSpinButtonRespondToMouseEvents();
 }

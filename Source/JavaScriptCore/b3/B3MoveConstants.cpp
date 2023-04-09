@@ -51,15 +51,15 @@ public:
     void run()
     {
         hoistConstants(
-            [&] (const ValueKey& key) -> bool {
-                return key.opcode() == ConstFloat || key.opcode() == ConstDouble;
+            [&] (const Value* value) -> bool {
+                return value->opcode() == ConstFloat || value->opcode() == ConstDouble || value->opcode() == Const128;
             });
 
-        lowerFPConstants();
+        lowerMaterializationCostHeavyConstants();
         
         hoistConstants(
-            [&] (const ValueKey& key) -> bool {
-                return key.opcode() == Const32 || key.opcode() == Const64 || key.opcode() == ArgumentReg;
+            [&] (const Value* value) -> bool {
+                return value->opcode() == Const32 || value->opcode() == Const64 || value->opcode() == ArgumentReg;
             });
     }
 
@@ -75,10 +75,10 @@ private:
         for (BasicBlock* block : m_proc) {
             for (Value* value : *block) {
                 for (Value*& child : value->children()) {
-                    ValueKey key = child->key();
-                    if (!filter(key))
+                    if (!filter(child))
                         continue;
 
+                    ValueKey key = child->key();
                     auto result = valueForConstant.add(key, child);
                     if (result.isNewEntry) {
                         // Assume that this block is where we want to materialize the value.
@@ -115,10 +115,10 @@ private:
         // ones from the CFG, since we're going to reinsert them elsewhere.
         for (BasicBlock* block : m_proc) {
             for (Value*& value : *block) {
-                ValueKey key = value->key();
-                if (!filter(key))
+                if (!filter(value))
                     continue;
 
+                ValueKey key = value->key();
                 if (valueForConstant.get(key) == value)
                     value = m_proc.add<Value>(Nop, value->origin());
                 else
@@ -153,13 +153,12 @@ private:
                 // we have computed that the constant should be materialized in this block, but we
                 // haven't inserted it yet. This inserts the constant if necessary.
                 auto materialize = [&] (Value* child) {
-                    ValueKey key = child->key();
-                    if (!filter(key))
+                    if (!filter(child))
                         return;
 
                     // If we encounter a fast constant, then it must be canonical, since we already
                     // got rid of the non-canonical ones.
-                    ASSERT(valueForConstant.get(key) == child);
+                    ASSERT(valueForConstant.get(child->key()) == child);
 
                     if (child->owner != block) {
                         // This constant isn't our problem. It's going to be materialized in another
@@ -175,7 +174,7 @@ private:
                 
                 if (MemoryValue* memoryValue = value->as<MemoryValue>()) {
                     Value* pointer = memoryValue->lastChild();
-                    if (pointer->hasIntPtr() && filter(pointer->key())) {
+                    if (pointer->hasIntPtr() && filter(pointer)) {
                         auto desiredOffset = [&] (Value* otherPointer) -> intptr_t {
                             // We would turn this:
                             //
@@ -213,7 +212,7 @@ private:
                     case Add:
                     case Sub: {
                         Value* addend = value->child(1);
-                        if (!addend->hasInt() || !filter(addend->key()))
+                        if (!addend->hasInt() || !filter(addend))
                             break;
                         int64_t addendConst = addend->asInt();
                         Value* bestAddend = findBestConstant(
@@ -258,17 +257,65 @@ private:
         }
     }
 
-    void lowerFPConstants()
+    void lowerMaterializationCostHeavyConstants()
     {
+        unsigned floatSize = 0;
+        unsigned doubleSize = 0;
+        unsigned v128Size = 0;
+        HashMap<ValueKey, unsigned> constTable;
         for (Value* value : m_proc.values()) {
+            if (!goesInTable(value))
+                continue;
+
             ValueKey key = value->key();
-            if (goesInTable(key))
-                m_constTable.add(key, m_constTable.size());
+            switch (value->opcode()) {
+            case Const128:
+                constTable.add(key, v128Size++);
+                break;
+            case ConstDouble:
+                constTable.add(key, doubleSize++);
+                break;
+            case ConstFloat:
+                constTable.add(key, floatSize++);
+                break;
+            default:
+                RELEASE_ASSERT_NOT_REACHED();
+                break;
+            }
         }
-        
-        m_dataSection = static_cast<int64_t*>(m_proc.addDataSection(m_constTable.size() * sizeof(int64_t)));
-        for (auto& entry : m_constTable)
-            m_dataSection[entry.value] = entry.key.value();
+
+        auto getOffset = [&](Opcode opcode, unsigned indexInKind) -> size_t {
+            switch (opcode) {
+            case Const128:
+                return sizeof(v128_t) * indexInKind;
+            case ConstDouble:
+                return sizeof(v128_t) * v128Size + sizeof(double) * indexInKind;
+            case ConstFloat:
+                return sizeof(v128_t) * v128Size + sizeof(double) * doubleSize + sizeof(float) * indexInKind;
+            default:
+                RELEASE_ASSERT_NOT_REACHED();
+                break;
+            }
+        };
+
+        uint8_t* dataSection = static_cast<uint8_t*>(m_proc.addDataSection(sizeof(v128_t) * v128Size + sizeof(double) * doubleSize + sizeof(float) * floatSize));
+        for (auto& entry : constTable) {
+            auto* pointer = dataSection + getOffset(entry.key.opcode(), entry.value);
+            switch (entry.key.opcode()) {
+            case Const128:
+                *bitwise_cast<v128_t*>(pointer) = entry.key.vectorValue();
+                break;
+            case ConstDouble:
+                *bitwise_cast<double*>(pointer) = entry.key.doubleValue();
+                break;
+            case ConstFloat:
+                *bitwise_cast<float*>(pointer) = entry.key.floatValue();
+                break;
+            default:
+                RELEASE_ASSERT_NOT_REACHED();
+                break;
+            }
+        }
 
         IndexSet<Value*> offLimits;
         for (BasicBlock* block : m_proc) {
@@ -280,12 +327,16 @@ private:
                 for (unsigned childIndex = 0; childIndex < value->numChildren(); ++childIndex) {
                     if (!value->constrainedChild(childIndex).rep().isAny())
                         continue;
-                    
+
                     Value*& child = value->child(childIndex);
-                    ValueKey key = child->key();
-                    if (!goesInTable(key))
+                    if (!goesInTable(child))
                         continue;
 
+                    // This is still the best representation for vectors
+                    if (child->type().isVector())
+                        continue;
+
+                    ValueKey key = child->key();
                     child = m_insertionSet.insertValue(
                         valueIndex, key.materialize(m_proc, value->origin()));
                     offLimits.add(child);
@@ -298,19 +349,19 @@ private:
         for (BasicBlock* block : m_proc) {
             for (unsigned valueIndex = 0; valueIndex < block->size(); ++valueIndex) {
                 Value* value = block->at(valueIndex);
-                ValueKey key = value->key();
-                if (!goesInTable(key))
+                if (!goesInTable(value))
                     continue;
                 if (offLimits.contains(value))
                     continue;
 
-                auto offset = sizeof(int64_t) * m_constTable.get(key);
+                ValueKey key = value->key();
+                auto offset = getOffset(key.opcode(), constTable.get(key));
                 if (!isRepresentableAs<Value::OffsetType>(offset))
                     continue;
 
                 Value* tableBase = m_insertionSet.insertIntConstant(
                     valueIndex, value->origin(), pointerType(),
-                    bitwise_cast<intptr_t>(m_dataSection));
+                    bitwise_cast<intptr_t>(dataSection));
                 Value* result = m_insertionSet.insert<MemoryValue>(
                     valueIndex, Load, value->type(), value->origin(), tableBase,
                     static_cast<Value::OffsetType>(offset));
@@ -321,25 +372,27 @@ private:
         }
     }
 
-    bool goesInTable(const ValueKey& key)
+    static bool goesInTable(const Value* value)
     {
-        return (key.opcode() == ConstDouble && key != doubleZero())
-            || (key.opcode() == ConstFloat && key != floatZero());
-    }
-
-    static ValueKey doubleZero()
-    {
-        return ValueKey(ConstDouble, Double, 0.0);
-    }
-
-    static ValueKey floatZero()
-    {
-        return ValueKey(ConstFloat, Float, 0.0);
+        switch (value->opcode()) {
+        case ConstDouble: {
+            double doubleZero = 0.0;
+            return bitwise_cast<uint64_t>(value->asDouble()) != bitwise_cast<uint64_t>(doubleZero);
+        }
+        case ConstFloat: {
+            float floatZero = 0.0;
+            return bitwise_cast<uint32_t>(value->asFloat()) != bitwise_cast<uint32_t>(floatZero);
+        }
+        case Const128: {
+            return !bitEquals(value->asV128(), v128_t { });
+        }
+        default:
+            break;
+        }
+        return false;
     }
 
     Procedure& m_proc;
-    HashMap<ValueKey, unsigned> m_constTable;
-    int64_t* m_dataSection;
     InsertionSet m_insertionSet;
 };
 

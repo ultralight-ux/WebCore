@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include <Security/SecAccessControlPriv.h>
 #include <Security/SecCertificatePriv.h>
+#include <Security/SecCodePriv.h>
 #include <Security/SecIdentityPriv.h>
 #include <Security/SecItemPriv.h>
 #include <Security/SecKeyPriv.h>
@@ -76,26 +77,33 @@ WTF_EXTERN_C_BEGIN
 
 SecTaskRef SecTaskCreateWithAuditToken(CFAllocatorRef, audit_token_t);
 SecTaskRef SecTaskCreateFromSelf(CFAllocatorRef);
+CFStringRef SecTaskCopySigningIdentifier(SecTaskRef, CFErrorRef *);
 CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef, CFStringRef entitlement, CFErrorRef*);
+uint32_t SecTaskGetCodeSignStatus(SecTaskRef);
 SecIdentityRef SecIdentityCreate(CFAllocatorRef, SecCertificateRef, SecKeyRef);
-OSStatus SecKeyFindWithPersistentRef(CFDataRef persistentRef, SecKeyRef* lookedUpData);
 SecAccessControlRef SecAccessControlCreateFromData(CFAllocatorRef, CFDataRef, CFErrorRef*);
 CFDataRef SecAccessControlCopyData(SecAccessControlRef);
 
+CFDataRef SecKeyCopySubjectPublicKeyInfo(SecKeyRef);
+
 #if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 #include <Security/SecAsn1Types.h>
-CFStringRef SecTaskCopySigningIdentifier(SecTaskRef, CFErrorRef *);
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 extern const SecAsn1Template kSecAsn1AlgorithmIDTemplate[];
 extern const SecAsn1Template kSecAsn1SubjectPublicKeyInfoTemplate[];
-uint32_t SecTaskGetCodeSignStatus(SecTaskRef);
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
 
-#if HAVE(SEC_TRUST_SERIALIZATION)
+#if PLATFORM(COCOA)
 CF_RETURNS_RETAINED CFDataRef SecTrustSerialize(SecTrustRef, CFErrorRef *);
 CF_RETURNS_RETAINED SecTrustRef SecTrustDeserialize(CFDataRef serializedTrust, CFErrorRef *);
 #endif
 
 CF_RETURNS_RETAINED CFDictionaryRef SecTrustCopyInfo(SecTrustRef);
+
+#if HAVE(SEC_TRUST_SET_CLIENT_AUDIT_TOKEN)
+OSStatus SecTrustSetClientAuditToken(SecTrustRef, CFDataRef);
+#endif
 
 extern const CFStringRef kSecTrustInfoExtendedValidationKey;
 extern const CFStringRef kSecTrustInfoCompanyNameKey;

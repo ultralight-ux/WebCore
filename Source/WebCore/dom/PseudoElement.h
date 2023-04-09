@@ -37,23 +37,20 @@ public:
     static Ref<PseudoElement> create(Element& host, PseudoId);
     virtual ~PseudoElement();
 
-    Element* hostElement() const { return m_hostElement; }
+    Element* hostElement() const { return m_hostElement.get(); }
     void clearHostElement();
 
     bool rendererIsNeeded(const RenderStyle&) override;
-    bool isTargetedByKeyframeEffectRequiringPseudoElement();
 
     bool canStartSelection() const override { return false; }
     bool canContainRangeEndPoint() const override { return false; }
-
-    static String pseudoElementNameForEvents(PseudoId);
 
 private:
     PseudoElement(Element&, PseudoId);
 
     PseudoId customPseudoId() const override { return m_pseudoId; }
 
-    Element* m_hostElement;
+    WeakPtr<Element, WeakPtrImplWithEventTargetData> m_hostElement;
     PseudoId m_pseudoId;
 };
 

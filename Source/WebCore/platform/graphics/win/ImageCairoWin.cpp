@@ -26,7 +26,7 @@
 #include "config.h"
 #include "Image.h"
 #include "BitmapImage.h"
-#include "GraphicsContextImplCairo.h"
+#include "GraphicsContextCairo.h"
 #include "RefPtrCairo.h"
 #include <cairo.h>
 #include <cairo-win32.h>
@@ -40,15 +40,15 @@ RefPtr<BitmapImage> BitmapImage::create(HBITMAP hBitmap)
 {
     DIBSECTION dibSection;
     if (!GetObject(hBitmap, sizeof(DIBSECTION), &dibSection))
-        return 0;
+        return nullptr;
 
     ASSERT(dibSection.dsBm.bmBitsPixel == 32);
     if (dibSection.dsBm.bmBitsPixel != 32)
-        return 0;
+        return nullptr;
 
     ASSERT(dibSection.dsBm.bmBits);
     if (!dibSection.dsBm.bmBits)
-        return 0;
+        return nullptr;
 
     RefPtr<cairo_surface_t> surface = adoptRef(cairo_win32_surface_create_with_dib(CAIRO_FORMAT_ARGB32, dibSection.dsBm.bmWidth, dibSection.dsBm.bmHeight));
 
@@ -70,21 +70,15 @@ bool BitmapImage::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
 
     unsigned char* bmpdata = (unsigned char*)bmpInfo.bmBits + bmpInfo.bmWidthBytes*(bmpInfo.bmHeight-1);
 
-    cairo_surface_t* image = cairo_image_surface_create_for_data(bmpdata, CAIRO_FORMAT_ARGB32, bmpInfo.bmWidth, bmpInfo.bmHeight, -bmpInfo.bmWidthBytes);
+    RefPtr<cairo_surface_t> image = adoptRef(cairo_image_surface_create_for_data(bmpdata, CAIRO_FORMAT_ARGB32, bmpInfo.bmWidth, bmpInfo.bmHeight, -bmpInfo.bmWidthBytes));
 
-    cairo_t* targetRef = cairo_create(image);
-    cairo_surface_destroy(image);
-
-    GraphicsContext gc(GraphicsContextImplCairo::createFactory(targetRef));
+    GraphicsContextCairo gc(image.get());
 
     FloatSize imageSize = BitmapImage::size();
     if (size)
         drawFrameMatchingSourceSize(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), *size, CompositeOperator::Copy);
     else
         draw(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), FloatRect(0.0f, 0.0f, imageSize.width(), imageSize.height()), { CompositeOperator::Copy });
-
-    // Do cleanup
-    cairo_destroy(targetRef);
 
     return true;
 }
@@ -93,17 +87,15 @@ void BitmapImage::drawFrameMatchingSourceSize(GraphicsContext& ctxt, const Float
 {
     size_t frames = frameCount();
     for (size_t i = 0; i < frames; ++i) {
-        auto surface = frameImageAtIndex(i);
-        if (!surface)
+        auto nativeImage = frameImageAtIndex(i);
+        if (!nativeImage || nativeImage->size() != srcSize)
             continue;
 
-        if (cairo_image_surface_get_height(surface.get()) == static_cast<size_t>(srcSize.height()) && cairo_image_surface_get_width(surface.get()) == static_cast<size_t>(srcSize.width())) {
-            size_t currentFrame = m_currentFrame;
-            m_currentFrame = i;
-            draw(ctxt, dstRect, FloatRect(0.0f, 0.0f, srcSize.width(), srcSize.height()), { compositeOp });
-            m_currentFrame = currentFrame;
-            return;
-        }
+        size_t currentFrame = m_currentFrame;
+        m_currentFrame = i;
+        draw(ctxt, dstRect, FloatRect(0.0f, 0.0f, srcSize.width(), srcSize.height()), { compositeOp });
+        m_currentFrame = currentFrame;
+        return;
     }
 
     // No image of the correct size was found, fallback to drawing the current frame

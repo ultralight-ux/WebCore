@@ -32,19 +32,34 @@
 
 namespace WebCore {
 
-AVAudioSessionCaptureDevice AVAudioSessionCaptureDevice::create(AVAudioSessionPortDescription* portDescription)
+AVAudioSessionCaptureDevice AVAudioSessionCaptureDevice::create(AVAudioSessionPortDescription* deviceInput, AVAudioSessionPortDescription *defaultInput)
 {
-    String persistentID = portDescription.UID;
-    String label = portDescription.portName;
-    auto device = AVAudioSessionCaptureDevice(portDescription, persistentID, label);
-    device.setEnabled(portDescription.dataSources.count);
-    return device;
+    return AVAudioSessionCaptureDevice(deviceInput, defaultInput);
 }
 
-AVAudioSessionCaptureDevice::AVAudioSessionCaptureDevice(AVAudioSessionPortDescription* portDescription, const String& persistentID, const String& label)
-    : CaptureDevice(persistentID, CaptureDevice::DeviceType::Microphone, label)
-    , m_portDescription(portDescription)
+AVAudioSessionCaptureDevice::AVAudioSessionCaptureDevice(AVAudioSessionPortDescription *deviceInput, AVAudioSessionPortDescription *defaultInput)
+    : CaptureDevice(deviceInput.UID, CaptureDevice::DeviceType::Microphone, deviceInput.portName)
 {
+    setEnabled(true);
+    setIsDefault(defaultInput && [defaultInput.UID isEqualToString:deviceInput.UID]);
+}
+
+AVAudioSessionCaptureDevice::AVAudioSessionCaptureDevice(const String& persistentId, DeviceType type, const String& label, const String& groupId, bool isEnabled, bool isDefault, bool isMock)
+    : CaptureDevice(persistentId, type, label, groupId, isEnabled, isDefault, isMock)
+{
+}
+
+AVAudioSessionCaptureDevice AVAudioSessionCaptureDevice::isolatedCopy() &&
+{
+    return {
+        WTFMove(m_persistentId).isolatedCopy(),
+        m_type,
+        WTFMove(m_label).isolatedCopy(),
+        WTFMove(m_groupId).isolatedCopy(),
+        m_enabled,
+        m_default,
+        m_isMockDevice,
+    };
 }
 
 }

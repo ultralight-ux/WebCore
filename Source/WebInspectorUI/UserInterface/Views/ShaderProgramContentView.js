@@ -31,92 +31,166 @@ WI.ShaderProgramContentView = class ShaderProgramContentView extends WI.ContentV
 
         super(shaderProgram);
 
+        let isWebGPU = this.representedObject.canvas.contextType === WI.Canvas.ContextType.WebGPU;
+        let sharesVertexFragmentShader = isWebGPU && this.representedObject.sharesVertexFragmentShader;
+
+        this._refreshButtonNavigationItem = new WI.ButtonNavigationItem("refresh", WI.UIString("Refresh"), "Images/ReloadFull.svg", 13, 13);
+        this._refreshButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
+        this._refreshButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._refreshContent, this);
+
         let contentDidChangeDebouncer = new Debouncer((event) => {
             this._contentDidChange(event);
         });
 
-        this.element.classList.add("shader-program");
+        this.element.classList.add("shader-program", this.representedObject.programType);
 
         let createEditor = (shaderType) => {
+            let container = this.element.appendChild(document.createElement("div"));
+
+            let header = container.appendChild(document.createElement("header"));
+
+            let shaderTypeContainer = header.appendChild(document.createElement("div"));
+            shaderTypeContainer.classList.add("shader-type");
+
             let textEditor = new WI.TextEditor;
             textEditor.readOnly = false;
             textEditor.addEventListener(WI.TextEditor.Event.Focused, this._editorFocused, this);
             textEditor.addEventListener(WI.TextEditor.Event.NumberOfSearchResultsDidChange, this._numberOfSearchResultsDidChange, this);
-            textEditor.addEventListener(WI.TextEditor.Event.ContentDidChange, (event) => {
+            textEditor.addEventListener(WI.TextEditor.Event.ContentDidChange, function(event) {
                 contentDidChangeDebouncer.delayForTime(250, event);
-            }, this);
-            textEditor.element.classList.add("shader");
-
-            let shaderTypeContainer = textEditor.element.insertAdjacentElement("afterbegin", document.createElement("div"));
-            shaderTypeContainer.classList.add("type-title");
+            }, textEditor);
 
             switch (shaderType) {
-            case WI.ShaderProgram.ShaderType.Vertex:
-                shaderTypeContainer.textContent = WI.UIString("Vertex Shader");
-                textEditor.mimeType = "x-shader/x-vertex";
-                textEditor.element.classList.add("vertex");
+            case WI.ShaderProgram.ShaderType.Compute:
+                shaderTypeContainer.textContent = WI.UIString("Compute Shader");
+                textEditor.mimeType = isWebGPU ? "x-pipeline/x-compute" : "x-shader/x-compute";
                 break;
 
             case WI.ShaderProgram.ShaderType.Fragment:
                 shaderTypeContainer.textContent = WI.UIString("Fragment Shader");
-                textEditor.mimeType = "x-shader/x-fragment";
-                textEditor.element.classList.add("fragment");
+                textEditor.mimeType = isWebGPU ? "x-pipeline/x-render" : "x-shader/x-fragment";
+                break;
+
+            case WI.ShaderProgram.ShaderType.Vertex:
+                if (sharesVertexFragmentShader)
+                    shaderTypeContainer.textContent = WI.UIString("Vertex/Fragment Shader");
+                else
+                    shaderTypeContainer.textContent = WI.UIString("Vertex Shader");
+                textEditor.mimeType = isWebGPU ? "x-pipeline/x-render" : "x-shader/x-vertex";
                 break;
             }
 
             this.addSubview(textEditor);
+            container.appendChild(textEditor.element);
+            container.classList.add("shader", shaderType);
+            container.classList.toggle("shares-vertex-fragment-shader", sharesVertexFragmentShader);
+
             return textEditor;
         };
 
-        this._vertexEditor = createEditor(WI.ShaderProgram.ShaderType.Vertex);
-        this._fragmentEditor = createEditor(WI.ShaderProgram.ShaderType.Fragment);
-        this._lastActiveEditor = this._vertexEditor;
+        switch (this.representedObject.programType) {
+        case WI.ShaderProgram.ProgramType.Compute: {
+            this._computeEditor = createEditor(WI.ShaderProgram.ShaderType.Compute);
+
+            this._lastActiveEditor = this._computeEditor;
+            break;
+        }
+
+        case WI.ShaderProgram.ProgramType.Render: {
+            this._vertexEditor = createEditor(WI.ShaderProgram.ShaderType.Vertex);
+
+            if (!sharesVertexFragmentShader) {
+                this._fragmentEditor = createEditor(WI.ShaderProgram.ShaderType.Fragment);
+            }
+
+            this._lastActiveEditor = this._vertexEditor;
+            break;
+        }
+        }
+
+        if (WI.FileUtilities.canSave(WI.FileUtilities.SaveMode.FileVariants))
+            this._saveMode = WI.FileUtilities.SaveMode.FileVariants;
+        else if (WI.FileUtilities.canSave(WI.FileUtilities.SaveMode.SingleFile))
+            this._saveMode = WI.FileUtilities.SaveMode.SingleFile;
+        else
+            this._saveMode = null;
+    }
+
+    // Public
+
+    get navigationItems()
+    {
+        return [this._refreshButtonNavigationItem];
     }
 
     // Protected
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
-        this._vertexEditor.shown();
-        this._fragmentEditor.shown();
-
-        this.representedObject.requestVertexShaderSource((content) => {
-            this._vertexEditor.string = content || "";
-        });
-
-        this.representedObject.requestFragmentShaderSource((content) => {
-            this._fragmentEditor.string = content || "";
-        });
-    }
-
-    hidden()
-    {
-        this._vertexEditor.hidden();
-        this._fragmentEditor.hidden();
-
-        super.hidden();
+        this._refreshContent();
     }
 
     get supportsSave()
     {
-        return true;
+        return !!this._saveMode;
+    }
+
+    get saveMode()
+    {
+        return this._saveMode;
     }
 
     get saveData()
     {
-        let filename = WI.UIString("Shader");
-        if (this._lastActiveEditor === this._vertexEditor)
-            filename = WI.UIString("Vertex");
-        else if (this._lastActiveEditor === this._fragmentEditor)
-            filename = WI.UIString("Fragment");
+        let data = [];
+        let addDataForEditor = (editor) => {
+            if (!editor || (editor !== this._lastActiveEditor && this._saveMode === WI.FileUtilities.SaveMode.SingleFile))
+                return;
 
-        return {
-            url: WI.FileUtilities.inspectorURLForFilename(filename + ".glsl"),
-            content: this._lastActiveEditor.string,
-            forceSaveAs: true,
+            let filename = "";
+            let displayType = "";
+            switch (editor) {
+            case this._computeEditor:
+                filename = WI.UIString("Compute");
+                displayType = WI.UIString("Compute Shader");
+                break;
+            case this._fragmentEditor:
+                filename = WI.UIString("Fragment");
+                displayType = WI.UIString("Fragment Shader");
+                break;
+            case this._vertexEditor:
+                filename = WI.UIString("Vertex");
+                displayType = WI.UIString("Vertex Shader");
+                break;
+            }
+            console.assert(filename);
+            console.assert(displayType);
+
+            let extension = "";
+            switch (this.representedObject.canvas.contextType) {
+            case WI.Canvas.ContextType.WebGL:
+            case WI.Canvas.ContextType.WebGL2:
+                extension = WI.unlocalizedString(".glsl");
+                break;
+            case WI.Canvas.ContextType.WebGPU:
+                extension = WI.unlocalizedString(".wsl");
+                break;
+            }
+            console.assert(extension);
+
+            data.push({
+                displayType,
+                content: editor.string,
+                suggestedName: filename + extension,
+                forceSaveAs: true,
+            });
         };
+        addDataForEditor(this._computeEditor);
+        addDataForEditor(this._fragmentEditor);
+        addDataForEditor(this._vertexEditor);
+        return data;
     }
 
     get supportsSearch()
@@ -164,12 +238,76 @@ WI.ShaderProgramContentView = class ShaderProgramContentView extends WI.ContentV
         this._lastActiveEditor.revealNextSearchResult(changeFocus);
     }
 
-    revealPosition(position, textRangeToSelect, forceUnformatted)
+    revealPosition(position, options = {})
     {
-        this._lastActiveEditor.revealPosition(position, textRangeToSelect, forceUnformatted);
+        this._lastActiveEditor.revealPosition(position, options);
     }
 
     // Private
+
+    _refreshContent()
+    {
+        let spinnerContainer = null;
+
+        if (!this.didInitialLayout) {
+            spinnerContainer = this.element.appendChild(document.createElement("div"));
+            spinnerContainer.className = "spinner-container";
+            spinnerContainer.appendChild((new WI.IndeterminateProgressSpinner).element);
+
+            this._contentErrorMessageElement?.remove();
+        }
+
+        let createCallback = (textEditor) => {
+            return (source) => {
+                spinnerContainer?.remove();
+
+                if (source === null) {
+                    if (!this._contentErrorMessageElement) {
+                        const isError = true;
+                        this._contentErrorMessageElement = WI.createMessageTextView(WI.UIString("An error occurred trying to load the resource."), isError);
+                    }
+                    if (!this._contentErrorMessageElement.parentNode)
+                        this.element.appendChild(this._contentErrorMessageElement);
+                    return;
+                }
+
+                textEditor.string = source || "";
+            };
+        };
+
+        switch (this.representedObject.programType) {
+        case WI.ShaderProgram.ProgramType.Compute:
+            this.representedObject.requestShaderSource(WI.ShaderProgram.ShaderType.Compute, createCallback(this._computeEditor));
+            return;
+
+        case WI.ShaderProgram.ProgramType.Render:
+            this.representedObject.requestShaderSource(WI.ShaderProgram.ShaderType.Vertex, createCallback(this._vertexEditor));
+            if (!this.representedObject.sharesVertexFragmentShader)
+                this.representedObject.requestShaderSource(WI.ShaderProgram.ShaderType.Fragment, createCallback(this._fragmentEditor));
+            return;
+        }
+
+        console.assert();
+    }
+
+    _updateShader(shaderType)
+    {
+        switch (shaderType) {
+        case WI.ShaderProgram.ShaderType.Compute:
+            this.representedObject.updateShader(shaderType, this._computeEditor.string);
+            return;
+
+        case WI.ShaderProgram.ShaderType.Fragment:
+            this.representedObject.updateShader(shaderType, this._fragmentEditor.string);
+            return;
+
+        case WI.ShaderProgram.ShaderType.Vertex:
+            this.representedObject.updateShader(shaderType, this._vertexEditor.string);
+            return;
+        }
+
+        console.assert();
+    }
 
     _editorFocused(event)
     {
@@ -197,9 +335,20 @@ WI.ShaderProgramContentView = class ShaderProgramContentView extends WI.ContentV
 
     _contentDidChange(event)
     {
-        if (event.target === this._vertexEditor)
-            this.representedObject.updateVertexShader(this._vertexEditor.string);
-        else if (event.target === this._fragmentEditor)
-            this.representedObject.updateFragmentShader(this._fragmentEditor.string);
+        switch (event.target) {
+        case this._computeEditor:
+            this._updateShader(WI.ShaderProgram.ShaderType.Compute);
+            return;
+
+        case this._fragmentEditor:
+            this._updateShader(WI.ShaderProgram.ShaderType.Fragment);
+            return;
+
+        case this._vertexEditor:
+            this._updateShader(WI.ShaderProgram.ShaderType.Vertex);
+            return;
+        }
+
+        console.assert();
     }
 };

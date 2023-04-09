@@ -33,22 +33,30 @@
 #include "Timer.h"
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
+#include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/RunLoop.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 namespace WebCore {
 
-class IOSurfacePool {
+class DestinatationColorSpace;
+
+class IOSurfacePool : public ThreadSafeRefCounted<IOSurfacePool> {
     WTF_MAKE_NONCOPYABLE(IOSurfacePool);
     WTF_MAKE_FAST_ALLOCATED;
-    friend class NeverDestroyed<IOSurfacePool>;
+    friend class LazyNeverDestroyed<IOSurfacePool>;
 
 public:
     WEBCORE_EXPORT static IOSurfacePool& sharedPool();
+    WEBCORE_EXPORT static Ref<IOSurfacePool> create();
 
-    std::unique_ptr<IOSurface> takeSurface(IntSize, CGColorSpaceRef, IOSurface::Format);
-    WEBCORE_EXPORT void addSurface(std::unique_ptr<IOSurface>);
+    WEBCORE_EXPORT ~IOSurfacePool();
 
-    void discardAllSurfaces();
+    std::unique_ptr<IOSurface> takeSurface(IntSize, const DestinationColorSpace&, IOSurface::Format);
+    WEBCORE_EXPORT void addSurface(std::unique_ptr<IOSurface>&&);
+
+    WEBCORE_EXPORT void discardAllSurfaces();
 
     WEBCORE_EXPORT void setPoolSize(size_t);
 
@@ -69,37 +77,46 @@ private:
     typedef Deque<std::unique_ptr<IOSurface>> CachedSurfaceQueue;
     typedef HashMap<IntSize, CachedSurfaceQueue> CachedSurfaceMap;
     typedef HashMap<IOSurface*, CachedSurfaceDetails> CachedSurfaceDetailsMap;
+
+    static constexpr size_t defaultMaximumBytesCached { 1024 * 1024 * 64 };
+
+    // We'll never allow more than 1/2 of the cache to be filled with in-use surfaces, because
+    // they can't be immediately returned when requested (but will be freed up in the future).
+    static constexpr size_t maximumInUseBytes = defaultMaximumBytesCached / 2;
     
-    bool shouldCacheSurface(const IOSurface&) const;
+    bool shouldCacheSurface(const IOSurface&) const WTF_REQUIRES_LOCK(m_lock);
 
-    void willAddSurface(IOSurface&, bool inUse);
-    void didRemoveSurface(IOSurface&, bool inUse);
-    void didUseSurfaceOfSize(IntSize);
+    void willAddSurface(IOSurface&, bool inUse) WTF_REQUIRES_LOCK(m_lock);
+    void didRemoveSurface(IOSurface&, bool inUse) WTF_REQUIRES_LOCK(m_lock);
+    void didUseSurfaceOfSize(IntSize) WTF_REQUIRES_LOCK(m_lock);
 
-    void insertSurfaceIntoPool(std::unique_ptr<IOSurface>);
+    void insertSurfaceIntoPool(std::unique_ptr<IOSurface>) WTF_REQUIRES_LOCK(m_lock);
 
-    void evict(size_t additionalSize);
-    void tryEvictInUseSurface();
-    void tryEvictOldestCachedSurface();
+    void evict(size_t additionalSize) WTF_REQUIRES_LOCK(m_lock);
+    void tryEvictInUseSurface() WTF_REQUIRES_LOCK(m_lock);
+    void tryEvictOldestCachedSurface() WTF_REQUIRES_LOCK(m_lock);
 
-    void scheduleCollectionTimer();
+    void scheduleCollectionTimer() WTF_REQUIRES_LOCK(m_lock);
     void collectionTimerFired();
-    void collectInUseSurfaces();
-    bool markOlderSurfacesPurgeable();
+    void collectInUseSurfaces() WTF_REQUIRES_LOCK(m_lock);
+    bool markOlderSurfacesPurgeable() WTF_REQUIRES_LOCK(m_lock);
 
     void platformGarbageCollectNow();
 
-    void showPoolStatistics(const char*);
+    void discardAllSurfacesInternal() WTF_REQUIRES_LOCK(m_lock);
 
-    Timer m_collectionTimer;
-    CachedSurfaceMap m_cachedSurfaces;
-    CachedSurfaceQueue m_inUseSurfaces;
-    CachedSurfaceDetailsMap m_surfaceDetails;
-    Vector<IntSize> m_sizesInPruneOrder;
+    String poolStatistics() const WTF_REQUIRES_LOCK(m_lock);
 
-    size_t m_bytesCached;
-    size_t m_inUseBytesCached;
-    size_t m_maximumBytesCached;
+    Lock m_lock;
+    RunLoop::Timer m_collectionTimer WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceMap m_cachedSurfaces WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceQueue m_inUseSurfaces WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceDetailsMap m_surfaceDetails WTF_GUARDED_BY_LOCK(m_lock);
+    Vector<IntSize> m_sizesInPruneOrder WTF_GUARDED_BY_LOCK(m_lock);
+
+    size_t m_bytesCached WTF_GUARDED_BY_LOCK(m_lock) { 0 };
+    size_t m_inUseBytesCached WTF_GUARDED_BY_LOCK(m_lock) { 0 };
+    size_t m_maximumBytesCached WTF_GUARDED_BY_LOCK(m_lock) { defaultMaximumBytesCached };
 };
 
 }

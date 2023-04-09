@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2005-2008, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -31,16 +31,23 @@
 
 namespace WebCore {
 
-Ref<StyleCachedImage> StyleCachedImage::create(CSSImageValue& cssValue, float scaleFactor)
+Ref<StyleCachedImage> StyleCachedImage::create(Ref<CSSImageValue> cssValue, float scaleFactor)
 {
-    return adoptRef(*new StyleCachedImage(cssValue, scaleFactor));
+    return adoptRef(*new StyleCachedImage(WTFMove(cssValue), scaleFactor));
 }
 
-StyleCachedImage::StyleCachedImage(CSSImageValue& cssValue, float scaleFactor)
-    : m_cssValue(cssValue)
-    , m_scaleFactor(scaleFactor)
+Ref<StyleCachedImage> StyleCachedImage::copyOverridingScaleFactor(StyleCachedImage& other, float scaleFactor)
 {
-    m_isCachedImage = true;
+    if (other.m_scaleFactor == scaleFactor)
+        return other;
+    return StyleCachedImage::create(other.m_cssValue, scaleFactor);
+}
+
+StyleCachedImage::StyleCachedImage(Ref<CSSImageValue>&& cssValue, float scaleFactor)
+    : StyleImage { Type::CachedImage }
+    , m_cssValue { WTFMove(cssValue) }
+    , m_scaleFactor { scaleFactor }
+{
     m_cachedImage = m_cssValue->cachedImage();
     if (m_cachedImage)
         m_isPending = false;
@@ -50,23 +57,30 @@ StyleCachedImage::~StyleCachedImage() = default;
 
 bool StyleCachedImage::operator==(const StyleImage& other) const
 {
-    if (!is<StyleCachedImage>(other))
-        return false;
-    auto& otherCached = downcast<StyleCachedImage>(other);
-    if (&otherCached == this)
+    return is<StyleCachedImage>(other) && equals(downcast<StyleCachedImage>(other));
+}
+
+bool StyleCachedImage::equals(const StyleCachedImage& other) const
+{
+    if (&other == this)
         return true;
-    if (m_scaleFactor != otherCached.m_scaleFactor)
+    if (m_scaleFactor != other.m_scaleFactor)
         return false;
-    if (m_cssValue.ptr() == otherCached.m_cssValue.ptr())
+    if (m_cssValue.ptr() == other.m_cssValue.ptr() || m_cssValue->equals(other.m_cssValue.get()))
         return true;
-    if (m_cachedImage && m_cachedImage == otherCached.m_cachedImage)
+    if (m_cachedImage && m_cachedImage == other.m_cachedImage)
         return true;
     return false;
 }
 
-URL StyleCachedImage::imageURL()
+URL StyleCachedImage::imageURL() const
 {
-    return m_cssValue->url();
+    return m_cssValue->imageURL();
+}
+
+URL StyleCachedImage::reresolvedURL(const Document& document) const
+{
+    return m_cssValue->reresolvedURL(document);
 }
 
 void StyleCachedImage::load(CachedResourceLoader& loader, const ResourceLoaderOptions& options)
@@ -81,7 +95,7 @@ CachedImage* StyleCachedImage::cachedImage() const
     return m_cachedImage.get();
 }
 
-Ref<CSSValue> StyleCachedImage::cssValue() const
+Ref<CSSValue> StyleCachedImage::computedStyleValue(const RenderStyle&) const
 {
     return m_cssValue.copyRef();
 }
@@ -156,26 +170,38 @@ void StyleCachedImage::setContainerContextForRenderer(const RenderElement& rende
     m_cachedImage->setContainerContextForClient(renderer, LayoutSize(containerSize), containerZoom, imageURL());
 }
 
-void StyleCachedImage::addClient(RenderElement* renderer)
+void StyleCachedImage::addClient(RenderElement& renderer)
 {
     ASSERT(!m_isPending);
     if (!m_cachedImage)
         return;
-    ASSERT(renderer);
-    m_cachedImage->addClient(*renderer);
+    m_cachedImage->addClient(renderer);
 }
 
-void StyleCachedImage::removeClient(RenderElement* renderer)
+void StyleCachedImage::removeClient(RenderElement& renderer)
 {
     ASSERT(!m_isPending);
     if (!m_cachedImage)
         return;
-    ASSERT(renderer);
-
-    m_cachedImage->removeClient(*renderer);
+    m_cachedImage->removeClient(renderer);
 }
 
-RefPtr<Image> StyleCachedImage::image(RenderElement* renderer, const FloatSize&) const
+bool StyleCachedImage::hasClient(RenderElement& renderer) const
+{
+    ASSERT(!m_isPending);
+    if (!m_cachedImage)
+        return false;
+    return m_cachedImage->hasClient(renderer);
+}
+
+bool StyleCachedImage::hasImage() const
+{
+    if (!m_cachedImage)
+        return false;
+    return m_cachedImage->hasImage();
+}
+
+RefPtr<Image> StyleCachedImage::image(const RenderElement* renderer, const FloatSize&) const
 {
     ASSERT(!m_isPending);
     if (!m_cachedImage)
@@ -188,11 +214,14 @@ float StyleCachedImage::imageScaleFactor() const
     return m_scaleFactor;
 }
 
-bool StyleCachedImage::knownToBeOpaque(const RenderElement* renderer) const
+bool StyleCachedImage::knownToBeOpaque(const RenderElement& renderer) const
 {
-    if (!m_cachedImage)
-        return false;
-    return m_cachedImage->currentFrameKnownToBeOpaque(renderer);
+    return m_cachedImage && m_cachedImage->currentFrameKnownToBeOpaque(&renderer);
+}
+
+bool StyleCachedImage::usesDataProtocol() const
+{
+    return m_cssValue->imageURL().protocolIsData();
 }
 
 }

@@ -91,10 +91,6 @@ derived class (the parent class) first, and the most derived class last.
 typedef void
 (*JSObjectInitializeCallback) (JSContextRef ctx, JSObjectRef object);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef void
-(*JSObjectInitializeCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object);
-
 /*! 
 @typedef JSObjectFinalizeCallback
 @abstract The callback invoked when an object is finalized (prepared for garbage collection). An object may be finalized on any thread.
@@ -112,10 +108,6 @@ all functions that have a JSContextRef parameter.
 */
 typedef void            
 (*JSObjectFinalizeCallback) (JSObjectRef object);
-
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef void
-(*JSObjectFinalizeCallbackEx) (JSClassRef jsClass, JSObjectRef object);
 
 /*! 
 @typedef JSObjectHasPropertyCallback
@@ -137,10 +129,6 @@ If this callback is NULL, the getProperty callback will be used to service hasPr
 typedef bool
 (*JSObjectHasPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef bool
-(*JSObjectHasPropertyCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSStringRef propertyName);
-
 /*! 
 @typedef JSObjectGetPropertyCallback
 @abstract The callback invoked when getting a property's value.
@@ -157,10 +145,6 @@ If this function returns NULL, the get request forwards to object's statically d
 */
 typedef JSValueRef
 (*JSObjectGetPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
-
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef JSValueRef
-(*JSObjectGetPropertyCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
 
 /*! 
 @typedef JSObjectSetPropertyCallback
@@ -180,10 +164,6 @@ If this function returns false, the set request forwards to object's statically 
 typedef bool
 (*JSObjectSetPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef value, JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef bool
-(*JSObjectSetPropertyCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSStringRef propertyName, JSValueRef value, JSValueRef* exception);
-
 /*! 
 @typedef JSObjectDeletePropertyCallback
 @abstract The callback invoked when deleting a property.
@@ -201,10 +181,6 @@ If this function returns false, the delete request forwards to object's statical
 typedef bool
 (*JSObjectDeletePropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef bool
-(*JSObjectDeletePropertyCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
-
 /*! 
 @typedef JSObjectGetPropertyNamesCallback
 @abstract The callback invoked when collecting the names of an object's properties.
@@ -221,10 +197,6 @@ Use JSPropertyNameAccumulatorAddName to add property names to accumulator. A cla
 */
 typedef void
 (*JSObjectGetPropertyNamesCallback) (JSContextRef ctx, JSObjectRef object, JSPropertyNameAccumulatorRef propertyNames);
-
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef void
-(*JSObjectGetPropertyNamesCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSPropertyNameAccumulatorRef propertyNames);
 
 /*! 
 @typedef JSObjectCallAsFunctionCallback
@@ -247,12 +219,6 @@ If this callback is NULL, calling your object as a function will throw an except
 typedef JSValueRef 
 (*JSObjectCallAsFunctionCallback) (JSContextRef ctx, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
-/* Extension of the above callback with the class and class name of the object being called as a function. 
-@discussion If this is a JSStaticFunctionEx, className will actually be the name of the function.
-*/
-typedef JSValueRef
-(*JSObjectCallAsFunctionCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSStringRef className, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
-
 /*! 
 @typedef JSObjectCallAsConstructorCallback
 @abstract The callback invoked when an object is used as a constructor in a 'new' expression.
@@ -272,10 +238,6 @@ If this callback is NULL, using your object as a constructor in a 'new' expressi
 */
 typedef JSObjectRef 
 (*JSObjectCallAsConstructorCallback) (JSContextRef ctx, JSObjectRef constructor, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
-
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef JSObjectRef
-(*JSObjectCallAsConstructorCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef constructor, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
 /*! 
 @typedef JSObjectHasInstanceCallback
@@ -298,10 +260,6 @@ Standard JavaScript practice calls for objects that implement the callAsConstruc
 typedef bool 
 (*JSObjectHasInstanceCallback)  (JSContextRef ctx, JSObjectRef constructor, JSValueRef possibleInstance, JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef bool
-(*JSObjectHasInstanceCallbackEx)  (JSContextRef ctx, JSClassRef jsClass, JSObjectRef constructor, JSValueRef possibleInstance, JSValueRef* exception);
-
 /*! 
 @typedef JSObjectConvertToTypeCallback
 @abstract The callback invoked when converting an object to a particular JavaScript type.
@@ -321,10 +279,6 @@ This function is only invoked when converting an object to number or string. An 
 typedef JSValueRef
 (*JSObjectConvertToTypeCallback) (JSContextRef ctx, JSObjectRef object, JSType type, JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
-typedef JSValueRef
-(*JSObjectConvertToTypeCallbackEx) (JSContextRef ctx, JSClassRef jsClass, JSObjectRef object, JSType type, JSValueRef* exception);
-
 /*! 
 @struct JSStaticValue
 @abstract This structure describes a statically declared value property.
@@ -340,14 +294,6 @@ typedef struct {
     JSPropertyAttributes attributes;
 } JSStaticValue;
 
-/* Extension of the above structure for use with class version 1000 */
-typedef struct {
-  const char* name;
-  JSObjectGetPropertyCallbackEx getPropertyEx;
-  JSObjectSetPropertyCallbackEx setPropertyEx;
-  JSPropertyAttributes attributes;
-} JSStaticValueEx;
-
 /*! 
 @struct JSStaticFunction
 @abstract This structure describes a statically declared function property.
@@ -360,13 +306,6 @@ typedef struct {
     JSObjectCallAsFunctionCallback callAsFunction;
     JSPropertyAttributes attributes;
 } JSStaticFunction;
-
-/* Extension of the above structure for use with class version 1000 */
-typedef struct {
-  const char* name;
-  JSObjectCallAsFunctionCallbackEx callAsFunctionEx;
-  JSPropertyAttributes attributes;
-} JSStaticFunctionEx;
 
 /*!
 @struct JSClassDefinition
@@ -400,51 +339,30 @@ JSStaticValue StaticValueArray[] = {
 Standard JavaScript practice calls for storing function objects in prototypes, so they can be shared. The default JSClass created by JSClassCreate follows this idiom, instantiating objects with a shared, automatically generating prototype containing the class's function objects. The kJSClassAttributeNoAutomaticPrototype attribute specifies that a JSClass should not automatically generate such a prototype. The resulting JSClass instantiates objects with the default object prototype, and gives each instance object its own copy of the class's function objects.
 
 A NULL callback specifies that the default object callback should substitute, except in the case of hasProperty, where it specifies that getProperty should substitute.
+
+It is not possible to use JS subclassing with objects created from a class definition that sets callAsConstructor by default. Subclassing is supported via the JSObjectMakeConstructor function, however.
 */
 typedef struct {
-    int                                 version; /* default version is 0, use version 1000 for callbacks with extended class information */
+    int                                 version; /* current (and only) version is 0 */
     JSClassAttributes                   attributes;
 
     const char*                         className;
     JSClassRef                          parentClass;
-
-    union {
-        /* version 0 */
-        struct { 
-            const JSStaticValue*                staticValues;
-            const JSStaticFunction*             staticFunctions;
-            JSObjectInitializeCallback          initialize;
-            JSObjectFinalizeCallback            finalize;
-            JSObjectHasPropertyCallback         hasProperty;
-            JSObjectGetPropertyCallback         getProperty;
-            JSObjectSetPropertyCallback         setProperty;
-            JSObjectDeletePropertyCallback      deleteProperty;
-            JSObjectGetPropertyNamesCallback    getPropertyNames;
-            JSObjectCallAsFunctionCallback      callAsFunction;
-            JSObjectCallAsConstructorCallback   callAsConstructor;
-            JSObjectHasInstanceCallback         hasInstance;
-            JSObjectConvertToTypeCallback       convertToType;
-        };
-
-        /* version 1000 */
-        struct {
-            const JSStaticValueEx*                staticValuesEx;
-            const JSStaticFunctionEx*             staticFunctionsEx;
-            JSObjectInitializeCallbackEx          initializeEx;
-            JSObjectFinalizeCallbackEx            finalizeEx;
-            JSObjectHasPropertyCallbackEx         hasPropertyEx;
-            JSObjectGetPropertyCallbackEx         getPropertyEx;
-            JSObjectSetPropertyCallbackEx         setPropertyEx;
-            JSObjectDeletePropertyCallbackEx      deletePropertyEx;
-            JSObjectGetPropertyNamesCallbackEx    getPropertyNamesEx;
-            JSObjectCallAsFunctionCallbackEx      callAsFunctionEx;
-            JSObjectCallAsConstructorCallbackEx   callAsConstructorEx;
-            JSObjectHasInstanceCallbackEx         hasInstanceEx;
-            JSObjectConvertToTypeCallbackEx       convertToTypeEx;
-        };
-    };
-
-    void* privateData; /* version 1000 only */
+        
+    const JSStaticValue*                staticValues;
+    const JSStaticFunction*             staticFunctions;
+    
+    JSObjectInitializeCallback          initialize;
+    JSObjectFinalizeCallback            finalize;
+    JSObjectHasPropertyCallback         hasProperty;
+    JSObjectGetPropertyCallback         getProperty;
+    JSObjectSetPropertyCallback         setProperty;
+    JSObjectDeletePropertyCallback      deleteProperty;
+    JSObjectGetPropertyNamesCallback    getPropertyNames;
+    JSObjectCallAsFunctionCallback      callAsFunction;
+    JSObjectCallAsConstructorCallback   callAsConstructor;
+    JSObjectHasInstanceCallback         hasInstance;
+    JSObjectConvertToTypeCallback       convertToType;
 } JSClassDefinition;
 
 /*! 
@@ -482,25 +400,6 @@ JS_EXPORT void JSClassRelease(JSClassRef jsClass);
 
 /*!
 @function
-@abstract Retrieves the private data from a class reference, only possible with classes created with version 1000 (extended callbacks).
-@param jsClass The class to get the data from
-@result The private data on the class, or NULL, if not set
-@discussion Only classes with version 1000 (extended callbacks) can store private data, for other classes always NULL will always be returned.
-*/
-JS_EXPORT void* JSClassGetPrivate(JSClassRef jsClass);
-
-/*!
-@function
-@abstract Sets the private data on a class, only possible with classes created with version 1000 (extended callbacks).
-@param jsClass The class to set the data on
-@param data A void* to set as the private data for the class
-@result true if the data has been set on the class, false if the class has not been created with version 1000 (extended callbacks)
-@discussion Only classes with version 1000 (extended callbacks) can store private data, for other classes the function always fails. The set pointer is not touched by the engine.
-*/
-JS_EXPORT bool JSClassSetPrivate(JSClassRef jsClass, void* data);
-
-/*!
-@function
 @abstract Creates a JavaScript object.
 @param ctx The execution context to use.
 @param jsClass The JSClass to assign to the object. Pass NULL to use the default object class.
@@ -529,7 +428,7 @@ JS_EXPORT JSObjectRef JSObjectMakeFunctionWithCallback(JSContextRef ctx, JSStrin
 @param jsClass A JSClass that is the class your constructor will assign to the objects its constructs. jsClass will be used to set the constructor's .prototype property, and to evaluate 'instanceof' expressions. Pass NULL to use the default object class.
 @param callAsConstructor A JSObjectCallAsConstructorCallback to invoke when your constructor is used in a 'new' expression. Pass NULL to use the default object constructor.
 @result A JSObject that is a constructor. The object's prototype will be the default object prototype.
-@discussion The default object constructor takes no arguments and constructs an object of class jsClass with no private data.
+@discussion The default object constructor takes no arguments and constructs an object of class jsClass with no private data. If the constructor is inherited via JS subclassing and the value returned from callAsConstructor was created with jsClass, then the returned object will have it's prototype overridden to the derived class's prototype.
 */
 JS_EXPORT JSObjectRef JSObjectMakeConstructor(JSContextRef ctx, JSClassRef jsClass, JSObjectCallAsConstructorCallback callAsConstructor);
 

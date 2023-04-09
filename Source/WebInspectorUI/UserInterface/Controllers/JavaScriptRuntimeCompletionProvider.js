@@ -41,7 +41,53 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
 
         console.assert(!WI.JavaScriptRuntimeCompletionProvider._instance);
 
+        this._ongoingCompletionRequests = 0;
+
         WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ActiveCallFrameDidChange, this._clearLastProperties, this);
+    }
+
+    // Static
+
+    static get _commandLineAPIKeys()
+    {
+        if (!JavaScriptRuntimeCompletionProvider.__cachedCommandLineAPIKeys) {
+            JavaScriptRuntimeCompletionProvider.__cachedCommandLineAPIKeys = [
+                "$_",
+                "assert",
+                "clear",
+                "count",
+                "countReset",
+                "debug",
+                "dir",
+                "dirxml",
+                "error",
+                "group",
+                "groupCollapsed",
+                "groupEnd",
+                "info",
+                "inspect",
+                "keys",
+                "log",
+                "profile",
+                "profileEnd",
+                "queryHolders",
+                "queryInstances",
+                "queryObjects",
+                "record",
+                "recordEnd",
+                "screenshot",
+                "table",
+                "takeHeapSnapshot",
+                "time",
+                "timeEnd",
+                "timeLog",
+                "timeStamp",
+                "trace",
+                "values",
+                "warn",
+            ];
+        }
+        return JavaScriptRuntimeCompletionProvider.__cachedCommandLineAPIKeys;
     }
 
     // Protected
@@ -86,16 +132,20 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
                 bracketNotation = false;
         }
 
+        // Start an completion request. We must now decrement before calling completionController.updateCompletions.
+        this._incrementOngoingCompletionRequests();
+
         // If the base is the same as the last time, we can reuse the property names we have already gathered.
         // Doing this eliminates delay caused by the async nature of the code below and it only calls getters
         // and functions once instead of repetitively. Sure, there can be difference each time the base is evaluated,
         // but this optimization gives us more of a win. We clear the cache after 30 seconds or when stepping in the
         // debugger to make sure we don't use stale properties in most cases.
-        if (this._lastBase === base && this._lastPropertyNames) {
+        if (this._lastMode === completionController.mode && this._lastBase === base && this._lastPropertyNames) {
             receivedPropertyNames.call(this, this._lastPropertyNames);
             return;
         }
 
+        this._lastMode = completionController.mode;
         this._lastBase = base;
         this._lastPropertyNames = null;
 
@@ -113,15 +163,15 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
                 clearTimeout(this._clearLastPropertiesTimeout);
             this._clearLastPropertiesTimeout = setTimeout(this._clearLastProperties.bind(this), WI.JavaScriptLogViewController.CachedPropertiesDuration);
 
-            this._lastPropertyNames = propertyNames || {};
+            this._lastPropertyNames = propertyNames || [];
         }
 
         function evaluated(result, wasThrown)
         {
             if (wasThrown || !result || result.type === "undefined" || (result.type === "object" && result.subtype === "null")) {
-                WI.runtimeManager.activeExecutionContext.target.RuntimeAgent.releaseObjectGroup("completion");
+                this._decrementOngoingCompletionRequests();
 
-                updateLastPropertyNames.call(this, {});
+                updateLastPropertyNames.call(this, []);
                 completionController.updateCompletions(defaultCompletions);
 
                 return;
@@ -182,7 +232,7 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
             if (result.subtype === "array")
                 result.callFunctionJSON(inspectedPage_evalResult_getArrayCompletions, undefined, receivedArrayPropertyNames.bind(this));
             else if (result.type === "object" || result.type === "function")
-                result.callFunctionJSON(inspectedPage_evalResult_getCompletions, undefined, receivedPropertyNames.bind(this));
+                result.callFunctionJSON(inspectedPage_evalResult_getCompletions, undefined, receivedObjectPropertyNames.bind(this));
             else if (result.type === "string" || result.type === "number" || result.type === "boolean" || result.type === "symbol") {
                 let options = {objectGroup: "completion", includeCommandLineAPI: false, doNotPauseOnExceptionsAndMuteConsole: true, returnByValue: true, generatePreview: false, saveResult: false};
                 WI.runtimeManager.evaluateInInspectedWindow("(" + inspectedPage_evalResult_getCompletions + ")(\"" + result.type + "\")", options, receivedPropertyNamesFromEvaluate.bind(this));
@@ -192,49 +242,102 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
 
         function receivedPropertyNamesFromEvaluate(object, wasThrown, result)
         {
-            receivedPropertyNames.call(this, result && !wasThrown ? result.value : null);
+            receivedPropertyNames.call(this, result && !wasThrown ? Object.keys(result.value) : null);
+        }
+
+        function receivedObjectPropertyNames(propertyNames)
+        {
+            receivedPropertyNames.call(this, Object.keys(propertyNames));
         }
 
         function receivedArrayPropertyNames(propertyNames)
         {
-            // FIXME: <https://webkit.org/b/143589> Web Inspector: Better handling for large collections in Object Trees
-            // If there was an array like object, we generate autocompletion up to 1000 indexes, but this should
-            // handle a list with arbitrary length.
             if (propertyNames && typeof propertyNames.length === "number") {
+                // FIXME <https://webkit.org/b/201909> Web Inspector: autocompletion of array indexes can't handle large arrays in a performant way
                 var max = Math.min(propertyNames.length, 1000);
                 for (var i = 0; i < max; ++i)
                     propertyNames[i] = true;
             }
 
-            receivedPropertyNames.call(this, propertyNames);
+            receivedObjectPropertyNames.call(this, propertyNames);
         }
 
         function receivedPropertyNames(propertyNames)
         {
-            propertyNames = propertyNames || {};
+            console.assert(!propertyNames || Array.isArray(propertyNames));
+            propertyNames = propertyNames || [];
 
             updateLastPropertyNames.call(this, propertyNames);
 
-            WI.runtimeManager.activeExecutionContext.target.RuntimeAgent.releaseObjectGroup("completion");
+            this._decrementOngoingCompletionRequests();
 
             if (!base) {
-                let commandLineAPI = WI.JavaScriptRuntimeCompletionProvider._commandLineAPI.slice(0);
-                if (WI.debuggerManager.paused) {
-                    let targetData = WI.debuggerManager.dataForTarget(WI.runtimeManager.activeExecutionContext.target);
-                    if (targetData.pauseReason === WI.DebuggerManager.PauseReason.EventListener)
-                        commandLineAPI.push("$event");
-                    else if (targetData.pauseReason === WI.DebuggerManager.PauseReason.Exception)
-                        commandLineAPI.push("$exception");
+                propertyNames.pushAll(JavaScriptRuntimeCompletionProvider._commandLineAPIKeys);
+
+                let savedResultAlias = WI.settings.consoleSavedResultAlias.value;
+                if (savedResultAlias)
+                    propertyNames.push(savedResultAlias + "_");
+
+                let target = WI.runtimeManager.activeExecutionContext.target;
+                let targetData = WI.debuggerManager.paused ? WI.debuggerManager.dataForTarget(target) : {};
+
+                function shouldExposeEvent() {
+                    switch (completionController.mode) {
+                    case WI.CodeMirrorCompletionController.Mode.FullConsoleCommandLineAPI:
+                    case WI.CodeMirrorCompletionController.Mode.EventBreakpoint:
+                        return true;
+                    case WI.CodeMirrorCompletionController.Mode.PausedConsoleCommandLineAPI:
+                        return targetData.pauseReason === WI.DebuggerManager.PauseReason.Listener || targetData.pauseReason === WI.DebuggerManager.PauseReason.EventListener;
+                    }
+                    return false;
                 }
-                for (let name of commandLineAPI)
-                    propertyNames[name] = true;
+                if (shouldExposeEvent()) {
+                    propertyNames.push("$event");
+                    if (savedResultAlias)
+                        propertyNames.push(savedResultAlias + "event");
+                }
+
+                function shouldExposeException() {
+                    switch (completionController.mode) {
+                    case WI.CodeMirrorCompletionController.Mode.FullConsoleCommandLineAPI:
+                    case WI.CodeMirrorCompletionController.Mode.ExceptionBreakpoint:
+                        return true;
+                    case WI.CodeMirrorCompletionController.Mode.PausedConsoleCommandLineAPI:
+                        return targetData.pauseReason === WI.DebuggerManager.PauseReason.Exception;
+                    }
+                    return false;
+                }
+                if (shouldExposeException()) {
+                    propertyNames.push("$exception");
+                    if (savedResultAlias)
+                        propertyNames.push(savedResultAlias + "exception");
+                }
+
+                switch (target.type) {
+                case WI.TargetType.Page:
+                    propertyNames.push("$");
+                    propertyNames.push("$$");
+                    propertyNames.push("$0");
+                    if (savedResultAlias)
+                        propertyNames.push(savedResultAlias + "0");
+                    propertyNames.push("$x");
+                    // fallthrough
+                case WI.TargetType.ServiceWorker:
+                case WI.TargetType.Worker:
+                    propertyNames.push("copy");
+                    propertyNames.push("getEventListeners");
+                    propertyNames.push("monitorEvents");
+                    propertyNames.push("unmonitorEvents");
+                    break;
+                }
 
                 // FIXME: Due to caching, sometimes old $n values show up as completion results even though they are not available. We should clear that proactively.
-                for (var i = 1; i <= WI.ConsoleCommandResultMessage.maximumSavedResultIndex; ++i)
-                    propertyNames["$" + i] = true;
+                for (var i = 1; i <= WI.ConsoleCommandResultMessage.maximumSavedResultIndex; ++i) {
+                    propertyNames.push("$" + i);
+                    if (savedResultAlias)
+                        propertyNames.push(savedResultAlias + i);
+                }
             }
-
-            propertyNames = Object.keys(propertyNames);
 
             var implicitSuffix = "";
             if (bracketNotation) {
@@ -244,7 +347,7 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
             }
 
             var completions = defaultCompletions;
-            var knownCompletions = completions.keySet();
+            let knownCompletions = new Set(completions);
 
             for (var i = 0; i < propertyNames.length; ++i) {
                 var property = propertyNames[i];
@@ -257,11 +360,11 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
                         property = quoteUsed + property.escapeCharacters(quoteUsed + "\\") + (suffix !== quoteUsed ? quoteUsed : "");
                 }
 
-                if (!property.startsWith(prefix) || property in knownCompletions)
+                if (!property.startsWith(prefix) || knownCompletions.has(property))
                     continue;
 
                 completions.push(property);
-                knownCompletions[property] = true;
+                knownCompletions.add(property);
             }
 
             function compare(a, b)
@@ -291,6 +394,23 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
 
     // Private
 
+    _incrementOngoingCompletionRequests()
+    {
+        this._ongoingCompletionRequests++;
+
+        console.assert(this._ongoingCompletionRequests <= 50, "Ongoing requests probably should not get this high. We may be missing a balancing decrement.");
+    }
+
+    _decrementOngoingCompletionRequests()
+    {
+        this._ongoingCompletionRequests--;
+
+        console.assert(this._ongoingCompletionRequests >= 0, "Unbalanced increments / decrements.");
+
+        if (this._ongoingCompletionRequests <= 0)
+            WI.runtimeManager.activeExecutionContext.target.RuntimeAgent.releaseObjectGroup("completion");
+    }
+
     _clearLastProperties()
     {
         if (this._clearLastPropertiesTimeout) {
@@ -303,26 +423,3 @@ WI.JavaScriptRuntimeCompletionProvider = class JavaScriptRuntimeCompletionProvid
         this._lastPropertyNames = null;
     }
 };
-
-WI.JavaScriptRuntimeCompletionProvider._commandLineAPI = [
-    "$",
-    "$$",
-    "$0",
-    "$_",
-    "$x",
-    "clear",
-    "copy",
-    "dir",
-    "dirxml",
-    "getEventListeners",
-    "inspect",
-    "keys",
-    "monitorEvents",
-    "profile",
-    "profileEnd",
-    "queryObjects",
-    "screenshot",
-    "table",
-    "unmonitorEvents",
-    "values",
-];

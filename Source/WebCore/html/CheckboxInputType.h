@@ -35,19 +35,25 @@
 namespace WebCore {
 
 class CheckboxInputType final : public BaseCheckableInputType {
+    template<typename DowncastedType> friend bool isInvalidInputType(const InputType&, const String&);
 public:
-    explicit CheckboxInputType(HTMLInputElement& element) : BaseCheckableInputType(element) { }
+    explicit CheckboxInputType(HTMLInputElement& element)
+        : BaseCheckableInputType(Type::Checkbox, element)
+    {
+    }
+
+    bool valueMissing(const String&) const final;
 
 private:
     const AtomString& formControlType() const final;
-    bool valueMissing(const String&) const final;
     String valueMissingText() const final;
     void handleKeyupEvent(KeyboardEvent&) final;
     void willDispatchClick(InputElementClickState&) final;
     void didDispatchClick(Event&, const InputElementClickState&) final;
-    bool isCheckbox() const final;
     bool matchesIndeterminatePseudoClass() const final;
     bool shouldAppearIndeterminate() const final;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(CheckboxInputType, Type::Checkbox)

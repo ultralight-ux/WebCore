@@ -52,12 +52,15 @@ public:
     WEBCORE_EXPORT void setMaxSize(unsigned); // number of pages to cache.
     unsigned maxSize() const { return m_maxSize; }
 
+    WEBCORE_EXPORT std::unique_ptr<CachedPage> suspendPage(Page&);
     WEBCORE_EXPORT bool addIfCacheable(HistoryItem&, Page*); // Prunes if maxSize() is exceeded.
     WEBCORE_EXPORT void remove(HistoryItem&);
     CachedPage* get(HistoryItem&, Page*);
     std::unique_ptr<CachedPage> take(HistoryItem&, Page*);
 
     void removeAllItemsForPage(Page&);
+
+    WEBCORE_EXPORT void clearEntriesForOrigins(const HashSet<RefPtr<SecurityOrigin>>&);
 
     unsigned pageCount() const { return m_items.size(); }
     WEBCORE_EXPORT unsigned frameCount() const;
@@ -74,6 +77,8 @@ private:
 
     static bool canCachePageContainingThisFrame(Frame&);
 
+    enum class ForceSuspension : bool { No, Yes };
+    std::unique_ptr<CachedPage> trySuspendPage(Page&, ForceSuspension);
     void prune(PruningReason);
     void dump() const;
 

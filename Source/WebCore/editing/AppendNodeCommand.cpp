@@ -27,6 +27,7 @@
 #include "AppendNodeCommand.h"
 
 #include "AXObjectCache.h"
+#include "CompositeEditCommand.h"
 #include "Document.h"
 #include "Editing.h"
 #include "RenderElement.h"
@@ -40,7 +41,6 @@ AppendNodeCommand::AppendNodeCommand(Ref<ContainerNode>&& parent, Ref<Node>&& no
     , m_node(WTFMove(node))
 {
     ASSERT(!m_node->parentNode());
-    ASSERT(m_parent->hasEditableStyle() || !m_parent->renderer());
 }
 
 void AppendNodeCommand::doApply()
@@ -60,7 +60,7 @@ void AppendNodeCommand::doUnapply()
 }
 
 #ifndef NDEBUG
-void AppendNodeCommand::getNodesInCommand(HashSet<Node*>& nodes)
+void AppendNodeCommand::getNodesInCommand(HashSet<Ref<Node>>& nodes)
 {
     addNodeAndDescendants(m_parent.ptr(), nodes);
     addNodeAndDescendants(m_node.ptr(), nodes);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,14 +27,18 @@
 
 #include "ImageDecoder.h"
 
+#if USE(CG)
+
 namespace WebCore {
+
+class SharedBuffer;
 
 class ImageDecoderCG final : public ImageDecoder {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    ImageDecoderCG(SharedBuffer& data, AlphaOption, GammaAndColorProfileOption);
+    ImageDecoderCG(FragmentedSharedBuffer& data, AlphaOption, GammaAndColorProfileOption);
 
-    static Ref<ImageDecoderCG> create(SharedBuffer& data, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
+    static Ref<ImageDecoderCG> create(FragmentedSharedBuffer& data, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
     {
         return adoptRef(*new ImageDecoderCG(data, alphaOption, gammaAndColorProfileOption));
     }
@@ -48,28 +52,37 @@ public:
     IntSize size() const final { return IntSize(); }
     size_t frameCount() const final;
     RepetitionCount repetitionCount() const final;
-    String uti() const final;
+    String uti() const final { return m_uti; }
     String filenameExtension() const final;
-    Optional<IntPoint> hotSpot() const final;
+    String accessibilityDescription() const final;
+    std::optional<IntPoint> hotSpot() const final;
 
     IntSize frameSizeAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default) const final;
     bool frameIsCompleteAtIndex(size_t) const final;
-    ImageOrientation frameOrientationAtIndex(size_t) const final;
+    ImageDecoder::FrameMetadata frameMetadataAtIndex(size_t) const final;
 
     Seconds frameDurationAtIndex(size_t) const final;
     bool frameHasAlphaAtIndex(size_t) const final;
     bool frameAllowSubsamplingAtIndex(size_t) const final;
     unsigned frameBytesAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default) const final;
 
-    NativeImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingOptions(DecodingMode::Synchronous)) final;
+    PlatformImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingOptions(DecodingMode::Synchronous)) final;
 
-    void setData(SharedBuffer&, bool allDataReceived) final;
+    void setData(const FragmentedSharedBuffer&, bool allDataReceived) final;
     bool isAllDataReceived() const final { return m_isAllDataReceived; }
     void clearFrameBufferCache(size_t) final { }
 
+    static String decodeUTI(CGImageSourceRef, const SharedBuffer&);
+
 private:
+    String decodeUTI(const SharedBuffer&) const;
+    
     bool m_isAllDataReceived { false };
+    mutable EncodedDataStatus m_encodedDataStatus { EncodedDataStatus::Unknown };
+    String m_uti;
     RetainPtr<CGImageSourceRef> m_nativeDecoder;
 };
 
-}
+} // namespace WebCore
+
+#endif // USE(CG)

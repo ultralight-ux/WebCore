@@ -28,7 +28,9 @@
 
 #include "SharedGDIObject.h"
 #include <pal/spi/cg/CoreGraphicsSPI.h>
+#include <pal/spi/win/CoreTextSPIWin.h>
 #include <wtf/HashMap.h>
+#include <wtf/Hasher.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
@@ -114,29 +116,36 @@ void FontPlatformData::platformDataInit(HFONT font, float size, HDC hdc, WCHAR* 
     LOGFONT logfont;
     GetObject(font, sizeof(logfont), &logfont);
     m_cgFont = adoptCF(CGFontCreateWithPlatformFont(&logfont));
+    m_ctFont = adoptCF(CTFontCreateWithGraphicsFont(m_cgFont.get(), size, nullptr, nullptr));
     if (!m_useGDI)
         m_isSystemFont = !wcscmp(faceName, L"Lucida Grande");
 }
 
-FontPlatformData::FontPlatformData(GDIObject<HFONT> hfont, CGFontRef font, float size, bool bold, bool oblique, bool useGDI)
+FontPlatformData::FontPlatformData(GDIObject<HFONT> hfont, CTFontRef ctFont, CGFontRef cgFont, float size, bool bold, bool oblique, bool useGDI)
     : m_syntheticBold(bold)
     , m_syntheticOblique(oblique)
     , m_size(size)
     , m_font(SharedGDIObject<HFONT>::create(WTFMove(hfont)))
-    , m_cgFont(font)
+    , m_cgFont(cgFont)
+    , m_ctFont(ctFont)
     , m_useGDI(useGDI)
 {
 }
 
 unsigned FontPlatformData::hash() const
 {
-    return m_font ? m_font->hash() : 0;
+    // FIXME: Hashing hashes here is unfortunate.
+    unsigned fontHash = m_font ? m_font->hash() : 0;
+    CFHashCode cgFontHash = safeCFHash(m_cgFont.get());
+    CFHashCode ctFontHash = safeCFHash(m_ctFont.get());
+    return computeHash(fontHash, cgFontHash, ctFontHash, m_useGDI);
 }
 
 bool FontPlatformData::platformIsEqual(const FontPlatformData& other) const
 {
     return m_font == other.m_font
-        && m_cgFont == other.m_cgFont
+        && safeCFEqual(m_cgFont.get(), other.m_cgFont.get())
+        && safeCFEqual(m_ctFont.get(), other.m_ctFont.get())
         && m_useGDI == other.m_useGDI;
 }
 

@@ -76,18 +76,17 @@ public:
     {
         static constexpr uint64_t parentMask = 0xffffffffffff0000ull;
         static constexpr uint64_t maskLowerWord = 0xffffull;
-        return reinterpret_cast<const void*>((reinterpret_cast<uint64_t>(parentIdentifier) & parentMask) | (childIdentifier & maskLowerWord));
+        return reinterpret_cast<const void*>((bitwise_cast<uintptr_t>(parentIdentifier) & parentMask) | (childIdentifier & maskLowerWord));
     }
 
     static const void* uniqueLogIdentifier()
     {
-        uint64_t highWord = cryptographicallyRandomNumber();
-        uint64_t lowWord = cryptographicallyRandomNumber();
-        return reinterpret_cast<const void*>((highWord << 32) + lowWord);
+        return reinterpret_cast<const void*>(cryptographicallyRandomNumber<uint64_t>());
     }
+
 #else // RELEASE_LOG_DISABLED
 
-#define LOGIDENTIFIER (WTF::nullopt)
+#define LOGIDENTIFIER (std::nullopt)
 
 #define ALWAYS_LOG(channelName, ...)  (UNUSED_PARAM(channelName))
 #define ERROR_LOG(channelName, ...)   (UNUSED_PARAM(channelName))
@@ -117,4 +116,3 @@ public:
 } // namespace WTF
 
 using WTF::LoggerHelper;
-

@@ -43,13 +43,6 @@
 #include <wtf/UniqueArray.h>
 #include <wtf/Vector.h>
 
-#if ENABLE(ACCELERATED_2D_CANVAS)
-#if USE(EGL) && USE(LIBEPOXY)
-#include "EpoxyEGL.h"
-#endif
-#include <cairo-gl.h>
-#endif
-
 #if OS(WINDOWS)
 #include <cairo-win32.h>
 #endif
@@ -83,7 +76,7 @@ void copyContextProperties(cairo_t* srcCr, cairo_t* dstCr)
 
 void setSourceRGBAFromColor(cairo_t* context, const Color& color)
 {
-    auto [r, g, b, a] = color.toSRGBALossy<float>();
+    auto [r, g, b, a] = color.toColorTypeLossy<SRGBA<float>>().resolved();
     cairo_set_source_rgba(context, r, g, b, a);
 }
 
@@ -196,7 +189,7 @@ cairo_operator_t toCairoOperator(CompositeOperator op, BlendMode blendOp)
 }
 
 void drawPatternToCairoContext(cairo_t* cr, cairo_surface_t* image, const IntSize& imageSize, const FloatRect& tileRect,
-    const AffineTransform& patternTransform, const FloatPoint& phase, cairo_operator_t op, InterpolationQuality imageInterpolationQuality, const FloatRect& destRect)
+    const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, cairo_operator_t op, InterpolationQuality imageInterpolationQuality, const FloatRect& destRect)
 {
     // Avoid NaN
     if (!std::isfinite(phase.x()) || !std::isfinite(phase.y()))
@@ -204,7 +197,7 @@ void drawPatternToCairoContext(cairo_t* cr, cairo_surface_t* image, const IntSiz
 
     cairo_save(cr);
 
-    RefPtr<cairo_surface_t> clippedImageSurface = 0;
+    RefPtr<cairo_surface_t> clippedImageSurface;
     if (tileRect.size() != imageSize) {
         IntRect imageRect = enclosingIntRect(tileRect);
         clippedImageSurface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, imageRect.width(), imageRect.height()));
@@ -212,6 +205,19 @@ void drawPatternToCairoContext(cairo_t* cr, cairo_surface_t* image, const IntSiz
         cairo_set_source_surface(clippedImageContext.get(), image, -tileRect.x(), -tileRect.y());
         cairo_paint(clippedImageContext.get());
         image = clippedImageSurface.get();
+    }
+
+    RefPtr<cairo_surface_t> imageWithSpacingSurface;
+    if (spacing.width() || spacing.height()) {
+        IntSize imageWithSpacingSize = IntSize(
+            tileRect.width() + spacing.width() / patternTransform.a(),
+            tileRect.height() + spacing.height() / patternTransform.d()
+        );
+        imageWithSpacingSurface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, imageWithSpacingSize.width(), imageWithSpacingSize.height()));
+        RefPtr<cairo_t> imageWithSpacingContext = adoptRef(cairo_create(imageWithSpacingSurface.get()));
+        cairo_set_source_surface(imageWithSpacingContext.get(), image, 0, 0);
+        cairo_paint(imageWithSpacingContext.get());
+        image = imageWithSpacingSurface.get();
     }
 
     cairo_pattern_t* pattern = cairo_pattern_create_for_surface(image);
@@ -268,8 +274,8 @@ void drawPatternToCairoContext(cairo_t* cr, cairo_surface_t* image, const IntSiz
     double phaseOffsetX = phase.x() + tileRect.x() * patternTransform.a() + dx;
     double phaseOffsetY = phase.y() + tileRect.y() * patternTransform.d() + dy;
     // this is where we perform the (x mod w, y mod h) metioned above, but with floats instead of integers.
-    phaseOffsetX -= std::trunc(phaseOffsetX / (tileRect.width() * patternTransform.a())) * tileRect.width() * patternTransform.a();
-    phaseOffsetY -= std::trunc(phaseOffsetY / (tileRect.height() * patternTransform.d())) * tileRect.height() * patternTransform.d();
+    phaseOffsetX -= std::trunc(phaseOffsetX / (tileRect.width() * patternTransform.a() + spacing.width())) * (tileRect.width() * patternTransform.a() + spacing.width());
+    phaseOffsetY -= std::trunc(phaseOffsetY / (tileRect.height() * patternTransform.d() + spacing.height())) * (tileRect.height() * patternTransform.d() + spacing.height());
     cairo_matrix_t phaseMatrix = {1, 0, 0, 1, phaseOffsetX, phaseOffsetY};
     cairo_matrix_t combined;
     cairo_matrix_multiply(&combined, &patternMatrix, &phaseMatrix);
@@ -321,10 +327,6 @@ IntSize cairoSurfaceSize(cairo_surface_t* surface)
     switch (cairo_surface_get_type(surface)) {
     case CAIRO_SURFACE_TYPE_IMAGE:
         return IntSize(cairo_image_surface_get_width(surface), cairo_image_surface_get_height(surface));
-#if ENABLE(ACCELERATED_2D_CANVAS)
-    case CAIRO_SURFACE_TYPE_GL:
-        return IntSize(cairo_gl_surface_get_width(surface), cairo_gl_surface_get_height(surface));
-#endif
 #if OS(WINDOWS)
     case CAIRO_SURFACE_TYPE_WIN32:
         surface = cairo_win32_surface_get_image(surface);
@@ -359,29 +361,6 @@ void flipImageSurfaceVertically(cairo_surface_t* surface)
         memcpy(top, bottom, stride);
         memcpy(bottom, tmp.get(), stride);
     }
-}
-
-void cairoSurfaceSetDeviceScale(cairo_surface_t* surface, double xScale, double yScale)
-{
-    // This function was added pretty much simultaneous to when 1.13 was branched.
-#if HAVE(CAIRO_SURFACE_SET_DEVICE_SCALE)
-    cairo_surface_set_device_scale(surface, xScale, yScale);
-#else
-    UNUSED_PARAM(surface);
-    ASSERT_UNUSED(xScale, 1 == xScale);
-    ASSERT_UNUSED(yScale, 1 == yScale);
-#endif
-}
-
-void cairoSurfaceGetDeviceScale(cairo_surface_t* surface, double& xScale, double& yScale)
-{
-#if HAVE(CAIRO_SURFACE_SET_DEVICE_SCALE)
-    cairo_surface_get_device_scale(surface, &xScale, &yScale);
-#else
-    UNUSED_PARAM(surface);
-    xScale = 1;
-    yScale = 1;
-#endif
 }
 
 RefPtr<cairo_region_t> toCairoRegion(const Region& region)

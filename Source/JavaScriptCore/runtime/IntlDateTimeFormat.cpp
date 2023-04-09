@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Andy VanWagoner (andy@vanwagoner.family)
- * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,34 +27,48 @@
 #include "config.h"
 #include "IntlDateTimeFormat.h"
 
+#include "IntlCache.h"
 #include "IntlObjectInlines.h"
 #include "JSBoundFunction.h"
 #include "JSCInlines.h"
+#include "JSDateMath.h"
 #include "ObjectConstructor.h"
 #include <unicode/ucal.h>
-#include <unicode/udatpg.h>
 #include <unicode/uenum.h>
+#include <wtf/Range.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/unicode/icu/ICUHelpers.h>
 
+#if HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+#include <unicode/uformattedvalue.h>
+#ifdef U_HIDE_DRAFT_API
+#undef U_HIDE_DRAFT_API
+#endif
+#endif // HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+#include <unicode/udateintervalformat.h>
+#if HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+#define U_HIDE_DRAFT_API 1
+#endif // HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+
 namespace JSC {
 
-static const double minECMAScriptTime = -8.64E15;
-
-const ClassInfo IntlDateTimeFormat::s_info = { "Object", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(IntlDateTimeFormat) };
-
-namespace IntlDateTimeFormatInternal {
+// We do not use ICUDeleter<udtitvfmt_close> because we do not want to include udateintervalformat.h in IntlDateTimeFormat.h.
+// udateintervalformat.h needs to be included with #undef U_HIDE_DRAFT_API, and we would like to minimize this effect in IntlDateTimeFormat.cpp.
+void UDateIntervalFormatDeleter::operator()(UDateIntervalFormat* formatter)
+{
+    if (formatter)
+        udtitvfmt_close(formatter);
 }
 
-void IntlDateTimeFormat::UDateFormatDeleter::operator()(UDateFormat* dateFormat) const
-{
-    if (dateFormat)
-        udat_close(dateFormat);
+const ClassInfo IntlDateTimeFormat::s_info = { "Object"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(IntlDateTimeFormat) };
+
+namespace IntlDateTimeFormatInternal {
+static constexpr bool verbose = false;
 }
 
 IntlDateTimeFormat* IntlDateTimeFormat::create(VM& vm, Structure* structure)
 {
-    IntlDateTimeFormat* format = new (NotNull, allocateCell<IntlDateTimeFormat>(vm.heap)) IntlDateTimeFormat(vm, structure);
+    IntlDateTimeFormat* format = new (NotNull, allocateCell<IntlDateTimeFormat>(vm)) IntlDateTimeFormat(vm, structure);
     format->finishCreation(vm);
     return format;
 }
@@ -72,10 +86,11 @@ IntlDateTimeFormat::IntlDateTimeFormat(VM& vm, Structure* structure)
 void IntlDateTimeFormat::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
-void IntlDateTimeFormat::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void IntlDateTimeFormat::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     IntlDateTimeFormat* thisObject = jsCast<IntlDateTimeFormat*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
@@ -85,34 +100,11 @@ void IntlDateTimeFormat::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_boundFormat);
 }
 
+DEFINE_VISIT_CHILDREN(IntlDateTimeFormat);
+
 void IntlDateTimeFormat::setBoundFormat(VM& vm, JSBoundFunction* format)
 {
     m_boundFormat.set(vm, this, format);
-}
-
-static ALWAYS_INLINE bool isUTCEquivalent(StringView timeZone)
-{
-    return timeZone == "Etc/UTC" || timeZone == "Etc/GMT";
-}
-
-// https://tc39.es/ecma402/#sec-defaulttimezone
-static String defaultTimeZone()
-{
-    String canonical;
-
-    Vector<UChar, 32> buffer;
-    auto status = callBufferProducingFunction(ucal_getDefaultTimeZone, buffer);
-    if (U_SUCCESS(status)) {
-        Vector<UChar, 32> canonicalBuffer;
-        status = callBufferProducingFunction(ucal_getCanonicalTimeZoneID, buffer.data(), buffer.size(), canonicalBuffer, nullptr);
-        if (U_SUCCESS(status))
-            canonical = String(canonicalBuffer);
-    }
-
-    if (canonical.isNull() || isUTCEquivalent(canonical))
-        return "UTC"_s;
-
-    return canonical;
 }
 
 static String canonicalizeTimeZoneName(const String& timeZoneName)
@@ -173,13 +165,11 @@ Vector<String> IntlDateTimeFormat::localeData(const String& locale, RelevantExte
             ASSERT(U_SUCCESS(status));
             String calendar = String(availableName, nameLength);
             keyLocaleData.append(calendar);
-            // Ensure aliases used in language tag are allowed.
-            if (calendar == "gregorian")
-                keyLocaleData.append("gregory"_s);
-            else if (calendar == "islamic-civil")
+            // Adding "islamicc" candidate for backward compatibility.
+            if (calendar == "islamic-civil"_s)
                 keyLocaleData.append("islamicc"_s);
-            else if (calendar == "ethiopic-amete-alem")
-                keyLocaleData.append("ethioaa"_s);
+            if (auto mapped = mapICUCalendarKeywordToBCP47(calendar))
+                keyLocaleData.append(WTFMove(mapped.value()));
         }
         uenum_close(calendars);
         break;
@@ -215,7 +205,7 @@ static JSObject* toDateTimeOptionsAnyDate(JSGlobalObject* globalObject, JSValue 
         options = constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure());
     else {
         JSObject* originalToObject = originalOptions.toObject(globalObject);
-        RETURN_IF_EXCEPTION(scope, nullptr);
+        RETURN_IF_EXCEPTION(scope, { });
         options = constructEmptyObject(globalObject, originalToObject);
     }
 
@@ -231,46 +221,64 @@ static JSObject* toDateTimeOptionsAnyDate(JSGlobalObject* globalObject, JSValue 
     // iii. ReturnIfAbrupt(value).
     // iv. If value is not undefined, then let needDefaults be false.
     JSValue weekday = options->get(globalObject, vm.propertyNames->weekday);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!weekday.isUndefined())
         needDefaults = false;
 
     JSValue year = options->get(globalObject, vm.propertyNames->year);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!year.isUndefined())
         needDefaults = false;
 
     JSValue month = options->get(globalObject, vm.propertyNames->month);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!month.isUndefined())
         needDefaults = false;
 
     JSValue day = options->get(globalObject, vm.propertyNames->day);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!day.isUndefined())
         needDefaults = false;
 
     // 6. If required is "time" or "any",
     // Always "any".
 
-    // a. For each of the property names "hour", "minute", "second":
+    // a. For each of the property names ""dayPeriod", hour", "minute", "second", "fractionalSecondDigits":
     // i. Let prop be the property name.
     // ii. Let value be Get(options, prop).
     // iii. ReturnIfAbrupt(value).
     // iv. If value is not undefined, then let needDefaults be false.
+    JSValue dayPeriod = options->get(globalObject, vm.propertyNames->dayPeriod);
+    RETURN_IF_EXCEPTION(scope, { });
+    if (!dayPeriod.isUndefined())
+        needDefaults = false;
+
     JSValue hour = options->get(globalObject, vm.propertyNames->hour);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!hour.isUndefined())
         needDefaults = false;
 
     JSValue minute = options->get(globalObject, vm.propertyNames->minute);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!minute.isUndefined())
         needDefaults = false;
 
     JSValue second = options->get(globalObject, vm.propertyNames->second);
-    RETURN_IF_EXCEPTION(scope, nullptr);
+    RETURN_IF_EXCEPTION(scope, { });
     if (!second.isUndefined())
+        needDefaults = false;
+
+    JSValue fractionalSecondDigits = options->get(globalObject, vm.propertyNames->fractionalSecondDigits);
+    RETURN_IF_EXCEPTION(scope, { });
+    if (!fractionalSecondDigits.isUndefined())
+        needDefaults = false;
+
+    JSValue dateStyle = options->get(globalObject, vm.propertyNames->dateStyle);
+    RETURN_IF_EXCEPTION(scope, { });
+    JSValue timeStyle = options->get(globalObject, vm.propertyNames->timeStyle);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    if (!dateStyle.isUndefined() || !timeStyle.isUndefined())
         needDefaults = false;
 
     // 7. If needDefaults is true and defaults is either "date" or "all", then
@@ -282,13 +290,13 @@ static JSObject* toDateTimeOptionsAnyDate(JSGlobalObject* globalObject, JSValue 
         JSString* numeric = jsNontrivialString(vm, "numeric"_s);
 
         options->putDirect(vm, vm.propertyNames->year, numeric);
-        RETURN_IF_EXCEPTION(scope, nullptr);
+        RETURN_IF_EXCEPTION(scope, { });
 
         options->putDirect(vm, vm.propertyNames->month, numeric);
-        RETURN_IF_EXCEPTION(scope, nullptr);
+        RETURN_IF_EXCEPTION(scope, { });
 
         options->putDirect(vm, vm.propertyNames->day, numeric);
-        RETURN_IF_EXCEPTION(scope, nullptr);
+        RETURN_IF_EXCEPTION(scope, { });
     }
 
     // 8. If needDefaults is true and defaults is either "time" or "all", then
@@ -298,13 +306,55 @@ static JSObject* toDateTimeOptionsAnyDate(JSGlobalObject* globalObject, JSValue 
     return options;
 }
 
-void IntlDateTimeFormat::setFormatsFromPattern(const StringView& pattern)
+template<typename Container>
+static inline unsigned skipLiteralText(const Container& container, unsigned start, unsigned length)
+{
+    // Skip literal text. We do not recognize '' single quote specially.
+    // `'ICU''s change'` is `ICU's change` literal text, but even if we split this text into two literal texts,
+    // we can anyway skip the same thing.
+    // This function returns the last character index which can be considered as a literal text.
+    ASSERT(length);
+    ASSERT(start < length);
+    ASSERT(container[start] == '\'');
+    unsigned index = start;
+    ++index;
+    if (!(index < length))
+        return length - 1;
+    for (; index < length; ++index) {
+        if (container[index] == '\'')
+            return index;
+    }
+    return length - 1;
+}
+
+void IntlDateTimeFormat::setFormatsFromPattern(StringView pattern)
 {
     // Get all symbols from the pattern, and set format fields accordingly.
     // http://unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table
+    //
+    // A date pattern is a character string consisting of two types of elements:
+    // 1. Pattern fields, which repeat a specific pattern character one or more times.
+    //    These fields are replaced with date and time data from a calendar when formatting,
+    //    or used to generate data for a calendar when parsing. Currently, A..Z and a..z are
+    //    reserved for use as pattern characters (unless they are quoted, see next item).
+    //    The pattern characters currently defined, and the meaning of different fields
+    //    lengths for then, are listed in the Date Field Symbol Table below.
+    // 2. Literal text, which is output as-is when formatting, and must closely match when
+    //    parsing. Literal text can include:
+    //      1. Any characters other than A..Z and a..z, including spaces and punctuation.
+    //      2. Any text between single vertical quotes ('xxxx'), which may include A..Z and
+    //         a..z as literal text.
+    //      3. Two adjacent single vertical quotes (''), which represent a literal single quote,
+    //         either inside or outside quoted text.
     unsigned length = pattern.length();
     for (unsigned i = 0; i < length; ++i) {
-        UChar currentCharacter = pattern[i];
+        auto currentCharacter = pattern[i];
+
+        if (currentCharacter == '\'') {
+            i = skipLiteralText(pattern, i, length);
+            continue;
+        }
+
         if (!isASCIIAlpha(currentCharacter))
             continue;
 
@@ -312,18 +362,6 @@ void IntlDateTimeFormat::setFormatsFromPattern(const StringView& pattern)
         while (i + 1 < length && pattern[i + 1] == currentCharacter) {
             ++count;
             ++i;
-        }
-
-        // If hourCycle was null, this sets it to the locale default.
-        if (m_hourCycle.isNull()) {
-            if (currentCharacter == 'h')
-                m_hourCycle = "h12"_s;
-            else if (currentCharacter == 'H')
-                m_hourCycle = "h23"_s;
-            else if (currentCharacter == 'k')
-                m_hourCycle = "h24"_s;
-            else if (currentCharacter == 'K')
-                m_hourCycle = "h11"_s;
         }
 
         switch (currentCharacter) {
@@ -370,15 +408,34 @@ void IntlDateTimeFormat::setFormatsFromPattern(const StringView& pattern)
             else if (count == 2)
                 m_day = Day::TwoDigit;
             break;
+        case 'a':
+        case 'b':
+        case 'B':
+            if (count <= 3)
+                m_dayPeriod = DayPeriod::Short;
+            else if (count == 4)
+                m_dayPeriod = DayPeriod::Long;
+            else if (count == 5)
+                m_dayPeriod = DayPeriod::Narrow;
+            break;
         case 'h':
         case 'H':
         case 'k':
-        case 'K':
+        case 'K': {
+            // Populate hourCycle from actually generated patterns. It is possible that locale or option is specifying hourCycle explicitly,
+            // but the generated pattern does not include related part since the pattern does not include hours.
+            // This is tested in test262/test/intl402/DateTimeFormat/prototype/resolvedOptions/hourCycle-dateStyle.js and our stress tests.
+            // Example:
+            //     new Intl.DateTimeFormat(`de-u-hc-h11`, {
+            //         dateStyle: "full"
+            //     }).resolvedOptions().hourCycle === undefined
+            m_hourCycle = hourCycleFromSymbol(currentCharacter);
             if (count == 1)
                 m_hour = Hour::Numeric;
             else if (count == 2)
                 m_hour = Hour::TwoDigit;
             break;
+        }
         case 'm':
             if (count == 1)
                 m_minute = Minute::Numeric;
@@ -392,12 +449,139 @@ void IntlDateTimeFormat::setFormatsFromPattern(const StringView& pattern)
                 m_second = Second::TwoDigit;
             break;
         case 'z':
-        case 'v':
-        case 'V':
             if (count == 1)
                 m_timeZoneName = TimeZoneName::Short;
             else if (count == 4)
                 m_timeZoneName = TimeZoneName::Long;
+            break;
+        case 'O':
+            if (count == 1)
+                m_timeZoneName = TimeZoneName::ShortOffset;
+            else if (count == 4)
+                m_timeZoneName = TimeZoneName::LongOffset;
+            break;
+        case 'v':
+        case 'V':
+            if (count == 1)
+                m_timeZoneName = TimeZoneName::ShortGeneric;
+            else if (count == 4)
+                m_timeZoneName = TimeZoneName::LongGeneric;
+            break;
+        case 'S':
+            m_fractionalSecondDigits = count;
+            break;
+        }
+    }
+}
+
+IntlDateTimeFormat::HourCycle IntlDateTimeFormat::parseHourCycle(const String& hourCycle)
+{
+    if (hourCycle == "h11"_s)
+        return HourCycle::H11;
+    if (hourCycle == "h12"_s)
+        return HourCycle::H12;
+    if (hourCycle == "h23"_s)
+        return HourCycle::H23;
+    if (hourCycle == "h24"_s)
+        return HourCycle::H24;
+    return HourCycle::None;
+}
+
+inline IntlDateTimeFormat::HourCycle IntlDateTimeFormat::hourCycleFromSymbol(UChar symbol)
+{
+    switch (symbol) {
+    case 'K':
+        return HourCycle::H11;
+    case 'h':
+        return HourCycle::H12;
+    case 'H':
+        return HourCycle::H23;
+    case 'k':
+        return HourCycle::H24;
+    }
+    return HourCycle::None;
+}
+
+IntlDateTimeFormat::HourCycle IntlDateTimeFormat::hourCycleFromPattern(const Vector<UChar, 32>& pattern)
+{
+    for (unsigned i = 0, length = pattern.size(); i < length; ++i) {
+        auto character = pattern[i];
+
+        if (character == '\'') {
+            i = skipLiteralText(pattern, i, length);
+            continue;
+        }
+
+        switch (character) {
+        case 'K':
+        case 'h':
+        case 'H':
+        case 'k':
+            return hourCycleFromSymbol(character);
+        }
+    }
+    return HourCycle::None;
+}
+
+inline void IntlDateTimeFormat::replaceHourCycleInSkeleton(Vector<UChar, 32>& skeleton, bool isHour12)
+{
+    UChar skeletonCharacter = 'H';
+    if (isHour12)
+        skeletonCharacter = 'h';
+    for (unsigned i = 0, length = skeleton.size(); i < length; ++i) {
+        auto& character = skeleton[i];
+
+        // ICU DateTimeFormat skeleton also has single-quoted literal text.
+        // https://github.com/unicode-org/icu/blob/main/icu4c/source/i18n/dtptngen.cpp
+        if (character == '\'') {
+            i = skipLiteralText(skeleton, i, length);
+            continue;
+        }
+
+        switch (character) {
+        case 'h':
+        case 'H':
+        case 'j':
+            character = skeletonCharacter;
+            break;
+        }
+    }
+}
+
+inline void IntlDateTimeFormat::replaceHourCycleInPattern(Vector<UChar, 32>& pattern, HourCycle hourCycle)
+{
+    UChar hourFromHourCycle = 'H';
+    switch (hourCycle) {
+    case HourCycle::H11:
+        hourFromHourCycle = 'K';
+        break;
+    case HourCycle::H12:
+        hourFromHourCycle = 'h';
+        break;
+    case HourCycle::H23:
+        hourFromHourCycle = 'H';
+        break;
+    case HourCycle::H24:
+        hourFromHourCycle = 'k';
+        break;
+    case HourCycle::None:
+        return;
+    }
+
+    for (unsigned i = 0, length = pattern.size(); i < length; ++i) {
+        auto& character = pattern[i];
+
+        if (character == '\'') {
+            i = skipLiteralText(pattern, i, length);
+            continue;
+        }
+
+        switch (character) {
+        case 'K':
+        case 'h':
+        case 'H':
+        case 'k':
+            character = hourFromHourCycle;
             break;
         }
     }
@@ -420,7 +604,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     LocaleMatcher localeMatcher = intlOption<LocaleMatcher>(globalObject, options, vm.propertyNames->localeMatcher, { { "lookup"_s, LocaleMatcher::Lookup }, { "best fit"_s, LocaleMatcher::BestFit } }, "localeMatcher must be either \"lookup\" or \"best fit\""_s, LocaleMatcher::BestFit);
     RETURN_IF_EXCEPTION(scope, void());
 
-    String calendar = intlStringOption(globalObject, options, vm.propertyNames->calendar, { }, nullptr, nullptr);
+    String calendar = intlStringOption(globalObject, options, vm.propertyNames->calendar, { }, { }, { });
     RETURN_IF_EXCEPTION(scope, void());
     if (!calendar.isNull()) {
         if (!isUnicodeLocaleIdentifierType(calendar)) {
@@ -430,7 +614,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
         localeOptions[static_cast<unsigned>(RelevantExtensionKey::Ca)] = calendar;
     }
 
-    String numberingSystem = intlStringOption(globalObject, options, vm.propertyNames->numberingSystem, { }, nullptr, nullptr);
+    String numberingSystem = intlStringOption(globalObject, options, vm.propertyNames->numberingSystem, { }, { }, { });
     RETURN_IF_EXCEPTION(scope, void());
     if (!numberingSystem.isNull()) {
         if (!isUnicodeLocaleIdentifierType(numberingSystem)) {
@@ -442,19 +626,19 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
 
     TriState hour12 = intlBooleanOption(globalObject, options, vm.propertyNames->hour12);
     RETURN_IF_EXCEPTION(scope, void());
-    bool isHour12Undefined = (hour12 == TriState::Indeterminate);
 
-    String hourCycle = intlStringOption(globalObject, options, vm.propertyNames->hourCycle, { "h11", "h12", "h23", "h24" }, "hourCycle must be \"h11\", \"h12\", \"h23\", or \"h24\"", nullptr);
+    HourCycle hourCycle = intlOption<HourCycle>(globalObject, options, vm.propertyNames->hourCycle, { { "h11"_s, HourCycle::H11 }, { "h12"_s, HourCycle::H12 }, { "h23"_s, HourCycle::H23 }, { "h24"_s, HourCycle::H24 } }, "hourCycle must be \"h11\", \"h12\", \"h23\", or \"h24\""_s, HourCycle::None);
     RETURN_IF_EXCEPTION(scope, void());
-    if (isHour12Undefined) {
-        // Set hour12 here to simplify hour logic later.
-        hour12 = triState(hourCycle == "h11" || hourCycle == "h12");
-        if (!hourCycle.isNull())
-            localeOptions[static_cast<unsigned>(RelevantExtensionKey::Hc)] = hourCycle;
-    } else
+    if (hour12 == TriState::Indeterminate) {
+        if (hourCycle != HourCycle::None)
+            localeOptions[static_cast<unsigned>(RelevantExtensionKey::Hc)] = String(hourCycleString(hourCycle));
+    } else {
+        // If there is hour12, hourCycle is ignored.
+        // We are setting null String explicitly here (localeOptions' entries are std::optional<String>). This leads us to use HourCycle::None later.
         localeOptions[static_cast<unsigned>(RelevantExtensionKey::Hc)] = String();
+    }
 
-    const HashSet<String>& availableLocales = intlDateTimeFormatAvailableLocales();
+    const auto& availableLocales = intlDateTimeFormatAvailableLocales();
     auto resolved = resolveLocale(globalObject, availableLocales, requestedLocales, localeMatcher, localeOptions, { RelevantExtensionKey::Ca, RelevantExtensionKey::Hc, RelevantExtensionKey::Nu }, localeData);
 
     m_locale = resolved.locale;
@@ -463,17 +647,18 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
         return;
     }
 
-    m_calendar = resolved.extensions[static_cast<unsigned>(RelevantExtensionKey::Ca)];
-    if (m_calendar == "gregorian")
-        m_calendar = "gregory"_s;
-    else if (m_calendar == "islamicc")
-        m_calendar = "islamic-civil"_s;
-    else if (m_calendar == "ethioaa")
-        m_calendar = "ethiopic-amete-alem"_s;
+    {
+        String calendar = resolved.extensions[static_cast<unsigned>(RelevantExtensionKey::Ca)];
+        if (auto mapped = mapICUCalendarKeywordToBCP47(calendar))
+            m_calendar = WTFMove(mapped.value());
+        else
+            m_calendar = WTFMove(calendar);
+    }
 
-    m_hourCycle = resolved.extensions[static_cast<unsigned>(RelevantExtensionKey::Hc)];
+    hourCycle = parseHourCycle(resolved.extensions[static_cast<unsigned>(RelevantExtensionKey::Hc)]);
     m_numberingSystem = resolved.extensions[static_cast<unsigned>(RelevantExtensionKey::Nu)];
-    CString dataLocaleWithExtensions = makeString(resolved.dataLocale, "-u-ca-", m_calendar, "-nu-", m_numberingSystem).utf8();
+    m_dataLocale = resolved.dataLocale;
+    CString dataLocaleWithExtensions = makeString(m_dataLocale, "-u-ca-", m_calendar, "-nu-", m_numberingSystem).utf8();
 
     JSValue tzValue = options->get(globalObject, vm.propertyNames->timeZone);
     RETURN_IF_EXCEPTION(scope, void());
@@ -487,7 +672,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
             return;
         }
     } else
-        tz = defaultTimeZone();
+        tz = vm.dateCache.defaultTimeZone();
     m_timeZone = tz;
 
     StringBuilder skeletonBuilder;
@@ -496,13 +681,13 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (weekday) {
     case Weekday::Narrow:
-        skeletonBuilder.appendLiteral("EEEEE");
+        skeletonBuilder.append("EEEEE");
         break;
     case Weekday::Short:
-        skeletonBuilder.appendLiteral("EEE");
+        skeletonBuilder.append("EEE");
         break;
     case Weekday::Long:
-        skeletonBuilder.appendLiteral("EEEE");
+        skeletonBuilder.append("EEEE");
         break;
     case Weekday::None:
         break;
@@ -512,13 +697,13 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (era) {
     case Era::Narrow:
-        skeletonBuilder.appendLiteral("GGGGG");
+        skeletonBuilder.append("GGGGG");
         break;
     case Era::Short:
-        skeletonBuilder.appendLiteral("GGG");
+        skeletonBuilder.append("GGG");
         break;
     case Era::Long:
-        skeletonBuilder.appendLiteral("GGGG");
+        skeletonBuilder.append("GGGG");
         break;
     case Era::None:
         break;
@@ -528,7 +713,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (year) {
     case Year::TwoDigit:
-        skeletonBuilder.appendLiteral("yy");
+        skeletonBuilder.append("yy");
         break;
     case Year::Numeric:
         skeletonBuilder.append('y');
@@ -541,19 +726,19 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (month) {
     case Month::TwoDigit:
-        skeletonBuilder.appendLiteral("MM");
+        skeletonBuilder.append("MM");
         break;
     case Month::Numeric:
         skeletonBuilder.append('M');
         break;
     case Month::Narrow:
-        skeletonBuilder.appendLiteral("MMMMM");
+        skeletonBuilder.append("MMMMM");
         break;
     case Month::Short:
-        skeletonBuilder.appendLiteral("MMM");
+        skeletonBuilder.append("MMM");
         break;
     case Month::Long:
-        skeletonBuilder.appendLiteral("MMMM");
+        skeletonBuilder.append("MMMM");
         break;
     case Month::None:
         break;
@@ -563,7 +748,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (day) {
     case Day::TwoDigit:
-        skeletonBuilder.appendLiteral("dd");
+        skeletonBuilder.append("dd");
         break;
     case Day::Numeric:
         skeletonBuilder.append('d');
@@ -572,27 +757,71 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
         break;
     }
 
+    DayPeriod dayPeriod = intlOption<DayPeriod>(globalObject, options, vm.propertyNames->dayPeriod, { { "narrow"_s, DayPeriod::Narrow }, { "short"_s, DayPeriod::Short }, { "long"_s, DayPeriod::Long } }, "dayPeriod must be \"narrow\", \"short\", or \"long\""_s, DayPeriod::None);
+    RETURN_IF_EXCEPTION(scope, void());
+
     Hour hour = intlOption<Hour>(globalObject, options, vm.propertyNames->hour, { { "2-digit"_s, Hour::TwoDigit }, { "numeric"_s, Hour::Numeric } }, "hour must be \"2-digit\" or \"numeric\""_s, Hour::None);
     RETURN_IF_EXCEPTION(scope, void());
-    switch (hour) {
-    case Hour::TwoDigit:
-        if (isHour12Undefined && m_hourCycle.isNull())
-            skeletonBuilder.appendLiteral("jj");
-        else if (hour12 == TriState::True)
-            skeletonBuilder.appendLiteral("hh");
-        else
-            skeletonBuilder.appendLiteral("HH");
+    {
+        // Specifically, this hour-cycle / hour12 behavior is slightly different from the spec.
+        // But the spec behavior is known to cause surprising behaviors, and the spec change is ongoing.
+        // We implement SpiderMonkey's behavior.
+        //
+        //     > No option present: "j"
+        //     > hour12 = true: "h"
+        //     > hour12 = false: "H"
+        //     > hourCycle = h11: "h", plus modifying the resolved pattern to use the hour symbol "K".
+        //     > hourCycle = h12: "h", plus modifying the resolved pattern to use the hour symbol "h".
+        //     > hourCycle = h23: "H", plus modifying the resolved pattern to use the hour symbol "H".
+        //     > hourCycle = h24: "H", plus modifying the resolved pattern to use the hour symbol "k".
+        //
+        UChar skeletonCharacter = 'j';
+        if (hour12 == TriState::Indeterminate) {
+            switch (hourCycle) {
+            case HourCycle::None:
+                break;
+            case HourCycle::H11:
+            case HourCycle::H12:
+                skeletonCharacter = 'h';
+                break;
+            case HourCycle::H23:
+            case HourCycle::H24:
+                skeletonCharacter = 'H';
+                break;
+            }
+        } else {
+            if (hour12 == TriState::True)
+                skeletonCharacter = 'h';
+            else
+                skeletonCharacter = 'H';
+        }
+
+        switch (hour) {
+        case Hour::TwoDigit:
+            skeletonBuilder.append(skeletonCharacter);
+            skeletonBuilder.append(skeletonCharacter);
+            break;
+        case Hour::Numeric:
+            skeletonBuilder.append(skeletonCharacter);
+            break;
+        case Hour::None:
+            break;
+        }
+    }
+
+    // dayPeriod must be set after setting hour.
+    // https://unicode-org.atlassian.net/browse/ICU-20731
+    switch (dayPeriod) {
+    case DayPeriod::Narrow:
+        skeletonBuilder.append("BBBBB");
         break;
-    case Hour::Numeric:
-        if (isHour12Undefined && m_hourCycle.isNull())
-            skeletonBuilder.append('j');
-        else if (hour12 == TriState::True)
-            skeletonBuilder.append('h');
-        else
-            skeletonBuilder.append('H');
+    case DayPeriod::Short:
+        skeletonBuilder.append('B');
         break;
-    case Hour::None:
-        m_hourCycle = String();
+    case DayPeriod::Long:
+        skeletonBuilder.append("BBBB");
+        break;
+    case DayPeriod::None:
         break;
     }
 
@@ -600,7 +829,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (minute) {
     case Minute::TwoDigit:
-        skeletonBuilder.appendLiteral("mm");
+        skeletonBuilder.append("mm");
         break;
     case Minute::Numeric:
         skeletonBuilder.append('m');
@@ -613,7 +842,7 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     RETURN_IF_EXCEPTION(scope, void());
     switch (second) {
     case Second::TwoDigit:
-        skeletonBuilder.appendLiteral("ss");
+        skeletonBuilder.append("ss");
         break;
     case Second::Numeric:
         skeletonBuilder.append('s');
@@ -622,68 +851,148 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
         break;
     }
 
-    TimeZoneName timeZoneName = intlOption<TimeZoneName>(globalObject, options, vm.propertyNames->timeZoneName, { { "short"_s, TimeZoneName::Short }, { "long"_s, TimeZoneName::Long } }, "timeZoneName must be \"short\" or \"long\""_s, TimeZoneName::None);
+    unsigned fractionalSecondDigits = intlNumberOption(globalObject, options, vm.propertyNames->fractionalSecondDigits, 1, 3, 0);
+    RETURN_IF_EXCEPTION(scope, void());
+    for (unsigned i = 0; i < fractionalSecondDigits; ++i)
+        skeletonBuilder.append('S');
+
+    TimeZoneName timeZoneName = intlOption<TimeZoneName>(globalObject, options, vm.propertyNames->timeZoneName, { { "short"_s, TimeZoneName::Short }, { "long"_s, TimeZoneName::Long }, { "shortOffset"_s, TimeZoneName::ShortOffset }, { "longOffset"_s, TimeZoneName::LongOffset }, { "shortGeneric"_s, TimeZoneName::ShortGeneric}, { "longGeneric"_s, TimeZoneName::LongGeneric } }, "timeZoneName must be \"short\", \"long\", \"shortOffset\", \"longOffset\", \"shortGeneric\", or \"longGeneric\""_s, TimeZoneName::None);
     RETURN_IF_EXCEPTION(scope, void());
     switch (timeZoneName) {
     case TimeZoneName::Short:
         skeletonBuilder.append('z');
         break;
     case TimeZoneName::Long:
-        skeletonBuilder.appendLiteral("zzzz");
+        skeletonBuilder.append("zzzz");
+        break;
+    case TimeZoneName::ShortOffset:
+        skeletonBuilder.append('O');
+        break;
+    case TimeZoneName::LongOffset:
+        skeletonBuilder.append("OOOO");
+        break;
+    case TimeZoneName::ShortGeneric:
+        skeletonBuilder.append('v');
+        break;
+    case TimeZoneName::LongGeneric:
+        skeletonBuilder.append("vvvv");
         break;
     case TimeZoneName::None:
         break;
     }
 
-    intlStringOption(globalObject, options, vm.propertyNames->formatMatcher, { "basic", "best fit" }, "formatMatcher must be either \"basic\" or \"best fit\"", "best fit");
+    intlStringOption(globalObject, options, vm.propertyNames->formatMatcher, { "basic"_s, "best fit"_s }, "formatMatcher must be either \"basic\" or \"best fit\""_s, "best fit"_s);
     RETURN_IF_EXCEPTION(scope, void());
 
-    // Always use ICU date format generator, rather than our own pattern list and matcher.
-    UErrorCode status = U_ZERO_ERROR;
-    UDateTimePatternGenerator* generator = udatpg_open(dataLocaleWithExtensions.data(), &status);
-    if (U_FAILURE(status)) {
-        throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
-        return;
-    }
+    m_dateStyle = intlOption<DateTimeStyle>(globalObject, options, vm.propertyNames->dateStyle, { { "full"_s, DateTimeStyle::Full }, { "long"_s, DateTimeStyle::Long }, { "medium"_s, DateTimeStyle::Medium }, { "short"_s, DateTimeStyle::Short } }, "dateStyle must be \"full\", \"long\", \"medium\", or \"short\""_s, DateTimeStyle::None);
+    RETURN_IF_EXCEPTION(scope, void());
 
-    String skeleton = skeletonBuilder.toString();
-    StringView skeletonView(skeleton);
+    m_timeStyle = intlOption<DateTimeStyle>(globalObject, options, vm.propertyNames->timeStyle, { { "full"_s, DateTimeStyle::Full }, { "long"_s, DateTimeStyle::Long }, { "medium"_s, DateTimeStyle::Medium }, { "short"_s, DateTimeStyle::Short } }, "timeStyle must be \"full\", \"long\", \"medium\", or \"short\""_s, DateTimeStyle::None);
+    RETURN_IF_EXCEPTION(scope, void());
+
     Vector<UChar, 32> patternBuffer;
-    status = callBufferProducingFunction(udatpg_getBestPatternWithOptions, generator, skeletonView.upconvertedCharacters().get(), skeletonView.length(), UDATPG_MATCH_HOUR_FIELD_LENGTH, patternBuffer);
-    udatpg_close(generator);
-    if (U_FAILURE(status)) {
-        throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
-        return;
-    }
+    if (m_dateStyle != DateTimeStyle::None || m_timeStyle != DateTimeStyle::None) {
+        // 30. For each row in Table 1, except the header row, do
+        //     i. Let prop be the name given in the Property column of the row.
+        //     ii. Let p be opt.[[<prop>]].
+        //     iii. If p is not undefined, then
+        //         1. Throw a TypeError exception.
+        if (weekday != Weekday::None || era != Era::None || year != Year::None || month != Month::None || day != Day::None || dayPeriod != DayPeriod::None || hour != Hour::None || minute != Minute::None || second != Second::None || fractionalSecondDigits != 0 || timeZoneName != TimeZoneName::None) {
+            throwTypeError(globalObject, scope, "dateStyle and timeStyle may not be used with other DateTimeFormat options"_s);
+            return;
+        }
 
-    // Enforce our hourCycle, replacing hour characters in pattern.
-    if (!m_hourCycle.isNull()) {
-        UChar hour = 'H';
-        if (m_hourCycle == "h11")
-            hour = 'K';
-        else if (m_hourCycle == "h12")
-            hour = 'h';
-        else if (m_hourCycle == "h24")
-            hour = 'k';
+        auto parseUDateFormatStyle = [](DateTimeStyle style) {
+            switch (style) {
+            case DateTimeStyle::Full:
+                return UDAT_FULL;
+            case DateTimeStyle::Long:
+                return UDAT_LONG;
+            case DateTimeStyle::Medium:
+                return UDAT_MEDIUM;
+            case DateTimeStyle::Short:
+                return UDAT_SHORT;
+            case DateTimeStyle::None:
+                return UDAT_NONE;
+            }
+            return UDAT_NONE;
+        };
 
-        bool isEscaped = false;
-        bool hasHour = false;
-        for (auto& c : patternBuffer) {
-            if (c == '\'')
-                isEscaped = !isEscaped;
-            else if (!isEscaped && (c == 'h' || c == 'H' || c == 'k' || c == 'K')) {
-                c = hour;
-                hasHour = true;
+        // We cannot use this UDateFormat directly yet because we need to enforce specified hourCycle.
+        // First, we create UDateFormat via dateStyle and timeStyle. And then convert it to pattern string.
+        // After updating this pattern string with hourCycle, we create a final UDateFormat with the updated pattern string.
+        UErrorCode status = U_ZERO_ERROR;
+        StringView timeZoneView(m_timeZone);
+        auto dateFormatFromStyle = std::unique_ptr<UDateFormat, UDateFormatDeleter>(udat_open(parseUDateFormatStyle(m_timeStyle), parseUDateFormatStyle(m_dateStyle), dataLocaleWithExtensions.data(), timeZoneView.upconvertedCharacters(), timeZoneView.length(), nullptr, -1, &status));
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
+            return;
+        }
+        constexpr bool localized = false; // Aligned with how ICU SimpleDateTimeFormat::format works. We do not need to translate this to localized pattern.
+        status = callBufferProducingFunction(udat_toPattern, dateFormatFromStyle.get(), localized, patternBuffer);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
+            return;
+        }
+
+        // It is possible that timeStyle includes dayPeriod, which is sensitive to hour-cycle.
+        // If dayPeriod is included, just replacing hour based on hourCycle / hour12 produces strange results.
+        // Let's consider about the example. The formatted result looks like "02:12:47 PM Coordinated Universal Time"
+        // If we simply replace 02 to 14, this becomes "14:12:47 PM Coordinated Universal Time", this looks strange since "PM" is unnecessary!
+        //
+        // If the generated pattern's hour12 does not match against the option's one, we retrieve skeleton from the pattern, enforcing hour-cycle,
+        // and re-generating the best pattern from the modified skeleton. ICU will look into the generated skeleton, and pick the best format for the request.
+        // We do not care about h11 vs. h12 and h23 vs. h24 difference here since this will be later adjusted by replaceHourCycleInPattern.
+        //
+        // test262/test/intl402/DateTimeFormat/prototype/format/timedatestyle-en.js includes the test for this behavior.
+        if (m_timeStyle != DateTimeStyle::None && (hourCycle != HourCycle::None || hour12 != TriState::Indeterminate)) {
+            auto isHour12 = [](HourCycle hourCycle) {
+                return hourCycle == HourCycle::H11 || hourCycle == HourCycle::H12;
+            };
+            bool specifiedHour12 = false;
+            // If hour12 is specified, we prefer it and ignore hourCycle.
+            if (hour12 != TriState::Indeterminate)
+                specifiedHour12 = hour12 == TriState::True;
+            else
+                specifiedHour12 = isHour12(hourCycle);
+            HourCycle extractedHourCycle = hourCycleFromPattern(patternBuffer);
+            if (extractedHourCycle != HourCycle::None && isHour12(extractedHourCycle) != specifiedHour12) {
+                Vector<UChar, 32> skeleton;
+                auto status = callBufferProducingFunction(udatpg_getSkeleton, nullptr, patternBuffer.data(), patternBuffer.size(), skeleton);
+                if (U_FAILURE(status)) {
+                    throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
+                    return;
+                }
+                replaceHourCycleInSkeleton(skeleton, specifiedHour12);
+                dataLogLnIf(IntlDateTimeFormatInternal::verbose, "replaced:(", StringView(skeleton.data(), skeleton.size()), ")");
+
+                patternBuffer = vm.intlCache().getBestDateTimePattern(dataLocaleWithExtensions, skeleton.data(), skeleton.size(), status);
+                if (U_FAILURE(status)) {
+                    throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
+                    return;
+                }
             }
         }
-        if (!hasHour)
-            m_hourCycle = String();
+    } else {
+        UErrorCode status = U_ZERO_ERROR;
+        String skeleton = skeletonBuilder.toString();
+        patternBuffer = vm.intlCache().getBestDateTimePattern(dataLocaleWithExtensions, StringView(skeleton).upconvertedCharacters().get(), skeleton.length(), status);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "failed to initialize DateTimeFormat"_s);
+            return;
+        }
     }
+
+    // After generating pattern from skeleton, we need to change h11 vs. h12 and h23 vs. h24 if hourCycle is specified.
+    if (hourCycle != HourCycle::None)
+        replaceHourCycleInPattern(patternBuffer, hourCycle);
 
     StringView pattern(patternBuffer.data(), patternBuffer.size());
     setFormatsFromPattern(pattern);
 
-    status = U_ZERO_ERROR;
+    dataLogLnIf(IntlDateTimeFormatInternal::verbose, "locale:(", m_locale, "),dataLocale:(", dataLocaleWithExtensions, "),pattern:(", pattern, ")");
+
+    UErrorCode status = U_ZERO_ERROR;
     StringView timeZoneView(m_timeZone);
     m_dateFormat = std::unique_ptr<UDateFormat, UDateFormatDeleter>(udat_open(UDAT_PATTERN, UDAT_PATTERN, dataLocaleWithExtensions.data(), timeZoneView.upconvertedCharacters(), timeZoneView.length(), pattern.upconvertedCharacters(), pattern.length(), &status));
     if (U_FAILURE(status)) {
@@ -697,6 +1006,25 @@ void IntlDateTimeFormat::initializeDateTimeFormat(JSGlobalObject* globalObject, 
     ucal_setGregorianChange(cal, minECMAScriptTime, &status);
 }
 
+ASCIILiteral IntlDateTimeFormat::hourCycleString(HourCycle hourCycle)
+{
+    switch (hourCycle) {
+    case HourCycle::H11:
+        return "h11"_s;
+    case HourCycle::H12:
+        return "h12"_s;
+    case HourCycle::H23:
+        return "h23"_s;
+    case HourCycle::H24:
+        return "h24"_s;
+    case HourCycle::None:
+        ASSERT_NOT_REACHED();
+        return { };
+    }
+    ASSERT_NOT_REACHED();
+    return { };
+}
+
 ASCIILiteral IntlDateTimeFormat::weekdayString(Weekday weekday)
 {
     switch (weekday) {
@@ -708,10 +1036,10 @@ ASCIILiteral IntlDateTimeFormat::weekdayString(Weekday weekday)
         return "long"_s;
     case Weekday::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::eraString(Era era)
@@ -725,10 +1053,10 @@ ASCIILiteral IntlDateTimeFormat::eraString(Era era)
         return "long"_s;
     case Era::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::yearString(Year year)
@@ -740,10 +1068,10 @@ ASCIILiteral IntlDateTimeFormat::yearString(Year year)
         return "numeric"_s;
     case Year::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::monthString(Month month)
@@ -761,10 +1089,10 @@ ASCIILiteral IntlDateTimeFormat::monthString(Month month)
         return "long"_s;
     case Month::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::dayString(Day day)
@@ -776,10 +1104,27 @@ ASCIILiteral IntlDateTimeFormat::dayString(Day day)
         return "numeric"_s;
     case Day::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
+}
+
+ASCIILiteral IntlDateTimeFormat::dayPeriodString(DayPeriod dayPeriod)
+{
+    switch (dayPeriod) {
+    case DayPeriod::Narrow:
+        return "narrow"_s;
+    case DayPeriod::Short:
+        return "short"_s;
+    case DayPeriod::Long:
+        return "long"_s;
+    case DayPeriod::None:
+        ASSERT_NOT_REACHED();
+        return { };
+    }
+    ASSERT_NOT_REACHED();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::hourString(Hour hour)
@@ -791,10 +1136,10 @@ ASCIILiteral IntlDateTimeFormat::hourString(Hour hour)
         return "numeric"_s;
     case Hour::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::minuteString(Minute minute)
@@ -806,10 +1151,10 @@ ASCIILiteral IntlDateTimeFormat::minuteString(Minute minute)
         return "numeric"_s;
     case Minute::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::secondString(Second second)
@@ -821,10 +1166,10 @@ ASCIILiteral IntlDateTimeFormat::secondString(Second second)
         return "numeric"_s;
     case Second::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
 }
 
 ASCIILiteral IntlDateTimeFormat::timeZoneNameString(TimeZoneName timeZoneName)
@@ -834,12 +1179,39 @@ ASCIILiteral IntlDateTimeFormat::timeZoneNameString(TimeZoneName timeZoneName)
         return "short"_s;
     case TimeZoneName::Long:
         return "long"_s;
+    case TimeZoneName::ShortOffset:
+        return "shortOffset"_s;
+    case TimeZoneName::LongOffset:
+        return "longOffset"_s;
+    case TimeZoneName::ShortGeneric:
+        return "shortGeneric"_s;
+    case TimeZoneName::LongGeneric:
+        return "longGeneric"_s;
     case TimeZoneName::None:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral::null();
+        return { };
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral::null();
+    return { };
+}
+
+ASCIILiteral IntlDateTimeFormat::formatStyleString(DateTimeStyle style)
+{
+    switch (style) {
+    case DateTimeStyle::Full:
+        return "full"_s;
+    case DateTimeStyle::Long:
+        return "long"_s;
+    case DateTimeStyle::Medium:
+        return "medium"_s;
+    case DateTimeStyle::Short:
+        return "short"_s;
+    case DateTimeStyle::None:
+        ASSERT_NOT_REACHED();
+        return { };
+    }
+    ASSERT_NOT_REACHED();
+    return { };
 }
 
 // https://tc39.es/ecma402/#sec-intl.datetimeformat.prototype.resolvedoptions
@@ -853,37 +1225,51 @@ JSObject* IntlDateTimeFormat::resolvedOptions(JSGlobalObject* globalObject) cons
     options->putDirect(vm, vm.propertyNames->numberingSystem, jsNontrivialString(vm, m_numberingSystem));
     options->putDirect(vm, vm.propertyNames->timeZone, jsNontrivialString(vm, m_timeZone));
 
-    if (!m_hourCycle.isNull()) {
-        options->putDirect(vm, vm.propertyNames->hourCycle, jsNontrivialString(vm, m_hourCycle));
-        options->putDirect(vm, vm.propertyNames->hour12, jsBoolean(m_hourCycle == "h11" || m_hourCycle == "h12"));
+    if (m_hourCycle != HourCycle::None) {
+        options->putDirect(vm, vm.propertyNames->hourCycle, jsNontrivialString(vm, hourCycleString(m_hourCycle)));
+        options->putDirect(vm, vm.propertyNames->hour12, jsBoolean(m_hourCycle == HourCycle::H11 || m_hourCycle == HourCycle::H12));
     }
 
-    if (m_weekday != Weekday::None)
-        options->putDirect(vm, vm.propertyNames->weekday, jsNontrivialString(vm, weekdayString(m_weekday)));
+    if (m_dateStyle == DateTimeStyle::None && m_timeStyle == DateTimeStyle::None) {
+        if (m_weekday != Weekday::None)
+            options->putDirect(vm, vm.propertyNames->weekday, jsNontrivialString(vm, weekdayString(m_weekday)));
 
-    if (m_era != Era::None)
-        options->putDirect(vm, vm.propertyNames->era, jsNontrivialString(vm, eraString(m_era)));
+        if (m_era != Era::None)
+            options->putDirect(vm, vm.propertyNames->era, jsNontrivialString(vm, eraString(m_era)));
 
-    if (m_year != Year::None)
-        options->putDirect(vm, vm.propertyNames->year, jsNontrivialString(vm, yearString(m_year)));
+        if (m_year != Year::None)
+            options->putDirect(vm, vm.propertyNames->year, jsNontrivialString(vm, yearString(m_year)));
 
-    if (m_month != Month::None)
-        options->putDirect(vm, vm.propertyNames->month, jsNontrivialString(vm, monthString(m_month)));
+        if (m_month != Month::None)
+            options->putDirect(vm, vm.propertyNames->month, jsNontrivialString(vm, monthString(m_month)));
 
-    if (m_day != Day::None)
-        options->putDirect(vm, vm.propertyNames->day, jsNontrivialString(vm, dayString(m_day)));
+        if (m_day != Day::None)
+            options->putDirect(vm, vm.propertyNames->day, jsNontrivialString(vm, dayString(m_day)));
 
-    if (m_hour != Hour::None)
-        options->putDirect(vm, vm.propertyNames->hour, jsNontrivialString(vm, hourString(m_hour)));
+        if (m_dayPeriod != DayPeriod::None)
+            options->putDirect(vm, vm.propertyNames->dayPeriod, jsNontrivialString(vm, dayPeriodString(m_dayPeriod)));
 
-    if (m_minute != Minute::None)
-        options->putDirect(vm, vm.propertyNames->minute, jsNontrivialString(vm, minuteString(m_minute)));
+        if (m_hour != Hour::None)
+            options->putDirect(vm, vm.propertyNames->hour, jsNontrivialString(vm, hourString(m_hour)));
 
-    if (m_second != Second::None)
-        options->putDirect(vm, vm.propertyNames->second, jsNontrivialString(vm, secondString(m_second)));
+        if (m_minute != Minute::None)
+            options->putDirect(vm, vm.propertyNames->minute, jsNontrivialString(vm, minuteString(m_minute)));
 
-    if (m_timeZoneName != TimeZoneName::None)
-        options->putDirect(vm, vm.propertyNames->timeZoneName, jsNontrivialString(vm, timeZoneNameString(m_timeZoneName)));
+        if (m_second != Second::None)
+            options->putDirect(vm, vm.propertyNames->second, jsNontrivialString(vm, secondString(m_second)));
+
+        if (m_fractionalSecondDigits)
+            options->putDirect(vm, vm.propertyNames->fractionalSecondDigits, jsNumber(m_fractionalSecondDigits));
+
+        if (m_timeZoneName != TimeZoneName::None)
+            options->putDirect(vm, vm.propertyNames->timeZoneName, jsNontrivialString(vm, timeZoneNameString(m_timeZoneName)));
+    } else {
+        if (m_dateStyle != DateTimeStyle::None)
+            options->putDirect(vm, vm.propertyNames->dateStyle, jsNontrivialString(vm, formatStyleString(m_dateStyle)));
+
+        if (m_timeStyle != DateTimeStyle::None)
+            options->putDirect(vm, vm.propertyNames->timeStyle, jsNontrivialString(vm, formatStyleString(m_timeStyle)));
+    }
 
     return options;
 }
@@ -904,7 +1290,7 @@ JSValue IntlDateTimeFormat::format(JSGlobalObject* globalObject, double value) c
     if (U_FAILURE(status))
         return throwTypeError(globalObject, scope, "failed to format date value"_s);
 
-    return jsString(vm, String(result));
+    return jsString(vm, String(WTFMove(result)));
 }
 
 static ASCIILiteral partTypeString(UDateFormatField field)
@@ -930,8 +1316,9 @@ static ASCIILiteral partTypeString(UDateFormatField field)
     case UDAT_MINUTE_FIELD:
         return "minute"_s;
     case UDAT_SECOND_FIELD:
-    case UDAT_FRACTIONAL_SECOND_FIELD:
         return "second"_s;
+    case UDAT_FRACTIONAL_SECOND_FIELD:
+        return "fractionalSecond"_s;
     case UDAT_DAY_OF_WEEK_FIELD:
     case UDAT_DOW_LOCAL_FIELD:
     case UDAT_STANDALONE_DAY_FIELD:
@@ -970,7 +1357,7 @@ static ASCIILiteral partTypeString(UDateFormatField field)
 }
 
 // https://tc39.es/ecma402/#sec-formatdatetimetoparts
-JSValue IntlDateTimeFormat::formatToParts(JSGlobalObject* globalObject, double value) const
+JSValue IntlDateTimeFormat::formatToParts(JSGlobalObject* globalObject, double value, JSString* sourceType) const
 {
     ASSERT(m_dateFormat);
 
@@ -994,7 +1381,7 @@ JSValue IntlDateTimeFormat::formatToParts(JSGlobalObject* globalObject, double v
     if (!parts)
         return throwOutOfMemoryError(globalObject, scope);
 
-    auto resultString = String(result);
+    StringView resultStringView(result.data(), result.size());
     auto literalString = jsNontrivialString(vm, "literal"_s);
 
     int32_t resultLength = result.size();
@@ -1007,28 +1394,444 @@ JSValue IntlDateTimeFormat::formatToParts(JSGlobalObject* globalObject, double v
             beginIndex = endIndex = resultLength;
 
         if (previousEndIndex < beginIndex) {
-            auto value = jsString(vm, resultString.substring(previousEndIndex, beginIndex - previousEndIndex));
+            auto value = jsString(vm, resultStringView.substring(previousEndIndex, beginIndex - previousEndIndex));
             JSObject* part = constructEmptyObject(globalObject);
             part->putDirect(vm, vm.propertyNames->type, literalString);
             part->putDirect(vm, vm.propertyNames->value, value);
+            if (sourceType)
+                part->putDirect(vm, vm.propertyNames->source, sourceType);
             parts->push(globalObject, part);
             RETURN_IF_EXCEPTION(scope, { });
         }
         previousEndIndex = endIndex;
 
         if (fieldType >= 0) {
-            auto type = jsString(vm, partTypeString(UDateFormatField(fieldType)));
-            auto value = jsString(vm, resultString.substring(beginIndex, endIndex - beginIndex));
+            auto type = jsNontrivialString(vm, partTypeString(UDateFormatField(fieldType)));
+            auto value = jsString(vm, resultStringView.substring(beginIndex, endIndex - beginIndex));
             JSObject* part = constructEmptyObject(globalObject);
             part->putDirect(vm, vm.propertyNames->type, type);
             part->putDirect(vm, vm.propertyNames->value, value);
+            if (sourceType)
+                part->putDirect(vm, vm.propertyNames->source, sourceType);
             parts->push(globalObject, part);
             RETURN_IF_EXCEPTION(scope, { });
         }
     }
 
-
     return parts;
 }
+
+UDateIntervalFormat* IntlDateTimeFormat::createDateIntervalFormatIfNecessary(JSGlobalObject* globalObject)
+{
+    ASSERT(m_dateFormat);
+
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (m_dateIntervalFormat)
+        return m_dateIntervalFormat.get();
+
+    Vector<UChar, 32> pattern;
+    {
+        auto status = callBufferProducingFunction(udat_toPattern, m_dateFormat.get(), false, pattern);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "failed to initialize DateIntervalFormat"_s);
+            return nullptr;
+        }
+    }
+
+    Vector<UChar, 32> skeleton;
+    {
+        auto status = callBufferProducingFunction(udatpg_getSkeleton, nullptr, pattern.data(), pattern.size(), skeleton);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "failed to initialize DateIntervalFormat"_s);
+            return nullptr;
+        }
+    }
+
+    dataLogLnIf(IntlDateTimeFormatInternal::verbose, "interval format pattern:(", String(pattern), "),skeleton:(", String(skeleton), ")");
+
+    // While the pattern is including right HourCycle patterns, UDateIntervalFormat does not follow.
+    // We need to enforce HourCycle by setting "hc" extension if it is specified.
+    StringBuilder localeBuilder;
+    localeBuilder.append(m_dataLocale, "-u-ca-", m_calendar, "-nu-", m_numberingSystem);
+    if (m_hourCycle != HourCycle::None)
+        localeBuilder.append("-hc-", hourCycleString(m_hourCycle));
+    CString dataLocaleWithExtensions = localeBuilder.toString().utf8();
+
+    UErrorCode status = U_ZERO_ERROR;
+    StringView timeZoneView(m_timeZone);
+    m_dateIntervalFormat = std::unique_ptr<UDateIntervalFormat, UDateIntervalFormatDeleter>(udtitvfmt_open(dataLocaleWithExtensions.data(), skeleton.data(), skeleton.size(), timeZoneView.upconvertedCharacters(), timeZoneView.length(), &status));
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "failed to initialize DateIntervalFormat"_s);
+        return nullptr;
+    }
+    return m_dateIntervalFormat.get();
+}
+
+#if HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+
+static std::unique_ptr<UFormattedDateInterval, ICUDeleter<udtitvfmt_closeResult>> formattedValueFromDateRange(UDateIntervalFormat& dateIntervalFormat, UDateFormat& dateFormat, double startDate, double endDate, UErrorCode& status)
+{
+    auto result = std::unique_ptr<UFormattedDateInterval, ICUDeleter<udtitvfmt_closeResult>>(udtitvfmt_openResult(&status));
+    if (U_FAILURE(status))
+        return nullptr;
+
+    // After ICU 67, udtitvfmt_formatToResult's signature is changed.
+#if U_ICU_VERSION_MAJOR_NUM >= 67
+    // If a date is after Oct 15, 1582, the configuration of gregorian calendar change date in UCalendar does not affect
+    // on the formatted string. To ensure that it is after Oct 15 in all timezones, we add one day to gregorian calendar
+    // change date in UTC, so that this check can conservatively answer whether the date is definitely after gregorian
+    // calendar change date.
+    auto definitelyAfterGregorianCalendarChangeDate = [](double millisecondsFromEpoch) {
+        constexpr double gregorianCalendarReformDateInUTC = -12219292800000.0;
+        return millisecondsFromEpoch >= (gregorianCalendarReformDateInUTC + msPerDay);
+    };
+
+    // UFormattedDateInterval does not have a way to configure gregorian calendar change date while ECMAScript requires that
+    // gregorian calendar change should not have effect (we are setting ucal_setGregorianChange(cal, minECMAScriptTime, &status) explicitly).
+    // As a result, if the input date is older than gregorian calendar change date (Oct 15, 1582), the formatted string becomes
+    // julian calendar date.
+    // udtitvfmt_formatCalendarToResult API offers the way to set calendar to each date of the input, so that we can use UDateFormat's
+    // calendar which is already configured to meet ECMAScript's requirement (effectively clearing gregorian calendar change date).
+    //
+    // If we can ensure that startDate is after gregorian calendar change date, we can just use udtitvfmt_formatToResult since gregorian
+    // calendar change date does not affect on the formatted string.
+    //
+    // https://unicode-org.atlassian.net/browse/ICU-20705
+    if (definitelyAfterGregorianCalendarChangeDate(startDate))
+        udtitvfmt_formatToResult(&dateIntervalFormat, startDate, endDate, result.get(), &status);
+    else {
+        auto createCalendarForDate = [](const UCalendar* calendar, double date, UErrorCode& status) -> std::unique_ptr<UCalendar, ICUDeleter<ucal_close>> {
+            auto result = std::unique_ptr<UCalendar, ICUDeleter<ucal_close>>(ucal_clone(calendar, &status));
+            if (U_FAILURE(status))
+                return nullptr;
+            ucal_setMillis(result.get(), date, &status);
+            if (U_FAILURE(status))
+                return nullptr;
+            return result;
+        };
+
+        auto calendar = udat_getCalendar(&dateFormat);
+
+        auto startCalendar = createCalendarForDate(calendar, startDate, status);
+        if (U_FAILURE(status))
+            return nullptr;
+
+        auto endCalendar = createCalendarForDate(calendar, endDate, status);
+        if (U_FAILURE(status))
+            return nullptr;
+
+        udtitvfmt_formatCalendarToResult(&dateIntervalFormat, startCalendar.get(), endCalendar.get(), result.get(), &status);
+    }
+#else
+    UNUSED_PARAM(dateFormat);
+    udtitvfmt_formatToResult(&dateIntervalFormat, result.get(), startDate, endDate, &status);
+#endif
+    return result;
+}
+
+static bool dateFieldsPracticallyEqual(const UFormattedValue* formattedValue, UErrorCode& status)
+{
+    auto iterator = std::unique_ptr<UConstrainedFieldPosition, ICUDeleter<ucfpos_close>>(ucfpos_open(&status));
+    if (U_FAILURE(status))
+        return false;
+
+    // We only care about UFIELD_CATEGORY_DATE_INTERVAL_SPAN category.
+    ucfpos_constrainCategory(iterator.get(), UFIELD_CATEGORY_DATE_INTERVAL_SPAN, &status);
+    if (U_FAILURE(status))
+        return false;
+
+    bool hasSpan = ufmtval_nextPosition(formattedValue, iterator.get(), &status);
+    if (U_FAILURE(status))
+        return false;
+
+    return !hasSpan;
+}
+
+#endif // HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+
+JSValue IntlDateTimeFormat::formatRange(JSGlobalObject* globalObject, double startDate, double endDate)
+{
+    ASSERT(m_dateFormat);
+
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    // http://tc39.es/proposal-intl-DateTimeFormat-formatRange/#sec-partitiondatetimerangepattern
+    startDate = timeClip(startDate);
+    endDate = timeClip(endDate);
+    if (std::isnan(startDate) || std::isnan(endDate)) {
+        throwRangeError(globalObject, scope, "Passed date is out of range"_s);
+        return { };
+    }
+
+    auto* dateIntervalFormat = createDateIntervalFormatIfNecessary(globalObject);
+    RETURN_IF_EXCEPTION(scope, { });
+
+#if HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+    UErrorCode status = U_ZERO_ERROR;
+    auto result = formattedValueFromDateRange(*dateIntervalFormat, *m_dateFormat, startDate, endDate, status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    // UFormattedValue is owned by UFormattedDateInterval. We do not need to close it.
+    auto formattedValue = udtitvfmt_resultAsValue(result.get(), &status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    // If the formatted parts of startDate and endDate are the same, it is possible that the resulted string does not look like range.
+    // For example, if the requested format only includes "year" and startDate and endDate are the same year, the result just contains one year.
+    // In that case, startDate and endDate are *practically-equal* (spec term), and we generate parts as we call `formatToParts(startDate)` with
+    // `source: "shared"` additional fields.
+    bool equal = dateFieldsPracticallyEqual(formattedValue, status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    if (equal)
+        RELEASE_AND_RETURN(scope, format(globalObject, startDate));
+
+    int32_t formattedStringLength = 0;
+    const UChar* formattedStringPointer = ufmtval_getString(formattedValue, &formattedStringLength, &status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    return jsString(vm, String(formattedStringPointer, formattedStringLength));
+#else
+    Vector<UChar, 32> buffer;
+    auto status = callBufferProducingFunction(udtitvfmt_format, dateIntervalFormat, startDate, endDate, buffer, nullptr);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    return jsString(vm, String(WTFMove(buffer)));
+#endif
+}
+
+JSValue IntlDateTimeFormat::formatRangeToParts(JSGlobalObject* globalObject, double startDate, double endDate)
+{
+    ASSERT(m_dateFormat);
+
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+#if HAVE(ICU_U_DATE_INTERVAL_FORMAT_FORMAT_RANGE_TO_PARTS)
+    // http://tc39.es/proposal-intl-DateTimeFormat-formatRange/#sec-partitiondatetimerangepattern
+    startDate = timeClip(startDate);
+    endDate = timeClip(endDate);
+    if (std::isnan(startDate) || std::isnan(endDate)) {
+        throwRangeError(globalObject, scope, "Passed date is out of range"_s);
+        return { };
+    }
+
+    auto* dateIntervalFormat = createDateIntervalFormatIfNecessary(globalObject);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    UErrorCode status = U_ZERO_ERROR;
+    auto result = formattedValueFromDateRange(*dateIntervalFormat, *m_dateFormat, startDate, endDate, status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    // UFormattedValue is owned by UFormattedDateInterval. We do not need to close it.
+    auto formattedValue = udtitvfmt_resultAsValue(result.get(), &status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    auto sharedString = jsNontrivialString(vm, "shared"_s);
+
+    // If the formatted parts of startDate and endDate are the same, it is possible that the resulted string does not look like range.
+    // For example, if the requested format only includes "year" and startDate and endDate are the same year, the result just contains one year.
+    // In that case, startDate and endDate are *practically-equal* (spec term), and we generate parts as we call `formatToParts(startDate)` with
+    // `source: "shared"` additional fields.
+    bool equal = dateFieldsPracticallyEqual(formattedValue, status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    if (equal)
+        RELEASE_AND_RETURN(scope, formatToParts(globalObject, startDate, sharedString));
+
+    // ICU produces ranges for the formatted string, and we construct parts array from that.
+    // For example, startDate = Jan 3, 2019, endDate = Jan 5, 2019 with en-US locale is,
+    //
+    // Formatted string: "1/3/2019 – 1/5/2019"
+    //                    | | |  |   | | |  |
+    //                    B C |  |   F G |  |
+    //                    |   +-D+   |   +-H+
+    //                    |      |   |      |
+    //                    +--A---+   +--E---+
+    //
+    // Ranges ICU generates:
+    //     A:    (0, 8)   UFIELD_CATEGORY_DATE_INTERVAL_SPAN startRange
+    //     B:    (0, 1)   UFIELD_CATEGORY_DATE month
+    //     C:    (2, 3)   UFIELD_CATEGORY_DATE day
+    //     D:    (4, 8)   UFIELD_CATEGORY_DATE year
+    //     E:    (11, 19) UFIELD_CATEGORY_DATE_INTERVAL_SPAN endRange
+    //     F:    (11, 12) UFIELD_CATEGORY_DATE month
+    //     G:    (13, 14) UFIELD_CATEGORY_DATE day
+    //     H:    (15, 19) UFIELD_CATEGORY_DATE year
+    //
+    //  We use UFIELD_CATEGORY_DATE_INTERVAL_SPAN range to determine each part is either "startRange", "endRange", or "shared".
+    //  It is guaranteed that UFIELD_CATEGORY_DATE_INTERVAL_SPAN comes first before any other parts including that range.
+    //  For example, in the above formatted string, " – " is "shared" part. For UFIELD_CATEGORY_DATE ranges, we generate corresponding
+    //  part object with types such as "month". And non populated parts (e.g. "/") become "literal" parts.
+    //  In the above case, expected parts are,
+    //
+    //     { type: "month", value: "1", source: "startRange" },
+    //     { type: "literal", value: "/", source: "startRange" },
+    //     { type: "day", value: "3", source: "startRange" },
+    //     { type: "literal", value: "/", source: "startRange" },
+    //     { type: "year", value: "2019", source: "startRange" },
+    //     { type: "literal", value: " - ", source: "shared" },
+    //     { type: "month", value: "1", source: "endRange" },
+    //     { type: "literal", value: "/", source: "endRange" },
+    //     { type: "day", value: "5", source: "endRange" },
+    //     { type: "literal", value: "/", source: "endRange" },
+    //     { type: "year", value: "2019", source: "endRange" },
+    //
+
+    JSArray* parts = JSArray::tryCreate(vm, globalObject->arrayStructureForIndexingTypeDuringAllocation(ArrayWithContiguous), 0);
+    if (!parts) {
+        throwOutOfMemoryError(globalObject, scope);
+        return { };
+    }
+
+    int32_t formattedStringLength = 0;
+    const UChar* formattedStringPointer = ufmtval_getString(formattedValue, &formattedStringLength, &status);
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+    StringView resultStringView(formattedStringPointer, formattedStringLength);
+
+    // We care multiple categories (UFIELD_CATEGORY_DATE and UFIELD_CATEGORY_DATE_INTERVAL_SPAN).
+    // So we do not constraint iterator.
+    auto iterator = std::unique_ptr<UConstrainedFieldPosition, ICUDeleter<ucfpos_close>>(ucfpos_open(&status));
+    if (U_FAILURE(status)) {
+        throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+        return { };
+    }
+
+    auto startRangeString = jsNontrivialString(vm, "startRange"_s);
+    auto endRangeString = jsNontrivialString(vm, "endRange"_s);
+    auto literalString = jsNontrivialString(vm, "literal"_s);
+
+    WTF::Range<int32_t> startRange { -1, -1 };
+    WTF::Range<int32_t> endRange { -1, -1 };
+
+    auto createPart = [&] (JSString* type, int32_t beginIndex, int32_t length) {
+        auto sourceType = [&](int32_t index) -> JSString* {
+            if (startRange.contains(index))
+                return startRangeString;
+            if (endRange.contains(index))
+                return endRangeString;
+            return sharedString;
+        };
+
+        auto value = jsString(vm, resultStringView.substring(beginIndex, length));
+        JSObject* part = constructEmptyObject(globalObject);
+        part->putDirect(vm, vm.propertyNames->type, type);
+        part->putDirect(vm, vm.propertyNames->value, value);
+        part->putDirect(vm, vm.propertyNames->source, sourceType(beginIndex));
+        return part;
+    };
+
+    int32_t resultLength = resultStringView.length();
+    int32_t previousEndIndex = 0;
+    while (true) {
+        bool next = ufmtval_nextPosition(formattedValue, iterator.get(), &status);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+            return { };
+        }
+        if (!next)
+            break;
+
+        int32_t category = ucfpos_getCategory(iterator.get(), &status);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+            return { };
+        }
+
+        int32_t fieldType = ucfpos_getField(iterator.get(), &status);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+            return { };
+        }
+
+        int32_t beginIndex = 0;
+        int32_t endIndex = 0;
+        ucfpos_getIndexes(iterator.get(), &beginIndex, &endIndex, &status);
+        if (U_FAILURE(status)) {
+            throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+            return { };
+        }
+
+        dataLogLnIf(IntlDateTimeFormatInternal::verbose, category, " ", fieldType, " (", beginIndex, ", ", endIndex, ")");
+
+        if (category != UFIELD_CATEGORY_DATE && category != UFIELD_CATEGORY_DATE_INTERVAL_SPAN)
+            continue;
+        if (category == UFIELD_CATEGORY_DATE && fieldType < 0)
+            continue;
+
+        if (previousEndIndex < beginIndex) {
+            JSObject* part = createPart(literalString, previousEndIndex, beginIndex - previousEndIndex);
+            parts->push(globalObject, part);
+            RETURN_IF_EXCEPTION(scope, { });
+            previousEndIndex = beginIndex;
+        }
+
+        if (category == UFIELD_CATEGORY_DATE_INTERVAL_SPAN) {
+            // > The special field category UFIELD_CATEGORY_DATE_INTERVAL_SPAN is used to indicate which datetime
+            // > primitives came from which arguments: 0 means fromCalendar, and 1 means toCalendar. The span category
+            // > will always occur before the corresponding fields in UFIELD_CATEGORY_DATE in the nextPosition() iterator.
+            // from ICU comment. So, field 0 is startRange, field 1 is endRange.
+            if (!fieldType)
+                startRange = WTF::Range<int32_t>(beginIndex, endIndex);
+            else {
+                ASSERT(fieldType == 1);
+                endRange = WTF::Range<int32_t>(beginIndex, endIndex);
+            }
+            continue;
+        }
+
+        ASSERT(category == UFIELD_CATEGORY_DATE);
+
+        auto type = jsNontrivialString(vm, partTypeString(UDateFormatField(fieldType)));
+        JSObject* part = createPart(type, beginIndex, endIndex - beginIndex);
+        parts->push(globalObject, part);
+        RETURN_IF_EXCEPTION(scope, { });
+        previousEndIndex = endIndex;
+    }
+
+    if (previousEndIndex < resultLength) {
+        JSObject* part = createPart(literalString, previousEndIndex, resultLength - previousEndIndex);
+        parts->push(globalObject, part);
+        RETURN_IF_EXCEPTION(scope, { });
+    }
+
+    return parts;
+#else
+    UNUSED_PARAM(startDate);
+    UNUSED_PARAM(endDate);
+    throwTypeError(globalObject, scope, "Failed to format date interval"_s);
+    return { };
+#endif
+}
+
 
 } // namespace JSC

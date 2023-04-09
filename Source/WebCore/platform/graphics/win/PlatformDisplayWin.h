@@ -42,12 +42,9 @@ public:
     virtual ~PlatformDisplayWin() = default;
 
 private:
-    PlatformDisplayWin()
-        : PlatformDisplay(NativeDisplayOwned::No)
-    {
-    }
-
     Type type() const override { return PlatformDisplay::Type::Windows; }
+
+    void initializeEGLDisplay() final;
 };
 
 } // namespace WebCore

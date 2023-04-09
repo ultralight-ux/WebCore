@@ -32,7 +32,7 @@ namespace WTF {
 
 #if CPU(ARM64E) && ENABLE(PTRTAG_DEBUGGING)
 
-static const char* tagForPtr(const void* ptr)
+const char* tagForPtr(const void* ptr)
 {
     PtrTagLookup* lookup = g_wtfConfig.ptrTagLookupHead;
     while (lookup) {
@@ -46,7 +46,7 @@ static const char* tagForPtr(const void* ptr)
         return "NoPtrTag";
 
 #define RETURN_NAME_IF_TAG_MATCHES(tag) \
-    if (ptr == tagCodePtrImpl<PtrTagAction::NoAssert>(removeCodePtrTag(ptr), tag)) \
+    if (ptr == tagCodePtrImpl<PtrTagAction::NoAssert, tag>(removeCodePtrTag(ptr))) \
         return #tag;
     FOR_EACH_WTF_PTRTAG(RETURN_NAME_IF_TAG_MATCHES)
 #undef RETURN_NAME_IF_TAG_MATCHES
@@ -54,7 +54,7 @@ static const char* tagForPtr(const void* ptr)
     return "<unknown PtrTag>";
 }
 
-static const char* ptrTagName(PtrTag tag)
+const char* ptrTagName(PtrTag tag)
 {
     PtrTagLookup* lookup = g_wtfConfig.ptrTagLookupHead;
     while (lookup) {

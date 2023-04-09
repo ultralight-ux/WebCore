@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,17 +23,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WAKWindow_h
-#define WAKWindow_h
+#pragma once
+
+#import <Foundation/Foundation.h>
 
 #if TARGET_OS_IPHONE
 
-#import "WAKAppKitStubs.h"
-#import "WAKResponder.h"
-#import "WAKView.h"
-#import "WKContentObservation.h"
 #import <CoreGraphics/CoreGraphics.h>
-#import <Foundation/Foundation.h>
+#import <WebCore/WAKAppKitStubs.h>
+#import <WebCore/WAKView.h>
+#import <WebCore/WKContentObservation.h>
 
 @class CALayer;
 @class WebEvent;
@@ -68,7 +67,7 @@ extern NSString * const WAKWindowVisibilityDidChangeNotification;
 
 WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 {
-    CALayer* _hostLayer;
+    CALayer *_hostLayer;
     LegacyTileCache* _tileCache;
     CGRect _frozenVisibleRect;
     CALayer *_rootLayer;
@@ -101,21 +100,21 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 
 - (CALayer*)hostLayer;
 
-- (void)setContentView:(WAKView *)aView;
+- (void)setContentView:(WAKView *)view;
 - (WAKView *)contentView;
 - (void)close;
 - (WAKView *)firstResponder;
 
-- (NSPoint)convertBaseToScreen:(NSPoint)aPoint;
-- (NSPoint)convertScreenToBase:(NSPoint)aPoint;
-- (NSRect)convertRectToScreen:(NSRect)aRect;
-- (NSRect)convertRectFromScreen:(NSRect)aRect;
+- (NSPoint)convertBaseToScreen:(NSPoint)point;
+- (NSPoint)convertScreenToBase:(NSPoint)point;
+- (NSRect)convertRectToScreen:(NSRect)rect;
+- (NSRect)convertRectFromScreen:(NSRect)rect;
 - (BOOL)isKeyWindow;
 - (void)makeKeyWindow;
 - (BOOL)isVisible;
 - (void)setVisible:(BOOL)visible;
 - (NSSelectionDirection)keyViewSelectionDirection;
-- (BOOL)makeFirstResponder:(NSResponder *)aResponder;
+- (BOOL)makeFirstResponder:(WAKResponder *)responder;
 - (WAKView *)_newFirstResponderAfterResigning NS_RETURNS_NOT_RETAINED;
 - (void)setFrame:(NSRect)frameRect display:(BOOL)flag;
 - (CGRect)frame;
@@ -128,9 +127,9 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 - (CGFloat)screenScale;
 - (void)setRootLayer:(CALayer *)layer;
 - (CALayer *)rootLayer;
-- (void)sendEvent:(WebEvent *)anEvent;
-- (void)sendEventSynchronously:(WebEvent *)anEvent;
-- (void)sendMouseMoveEvent:(WebEvent *)anEvent contentChange:(WKContentChange *)aContentChange;
+- (void)sendEvent:(WebEvent *)event;
+- (void)sendEventSynchronously:(WebEvent *)event;
+- (void)sendMouseMoveEvent:(WebEvent *)event contentChange:(WKContentChange *)change;
 
 - (void)setIsInSnapshottingPaint:(BOOL)isInSnapshottingPaint;
 - (BOOL)isInSnapshottingPaint;
@@ -161,7 +160,6 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 - (WAKWindowTilingMode)tilingMode;
 - (void)setTilingDirection:(WAKTilingDirection)tilingDirection;
 - (WAKTilingDirection)tilingDirection;
-- (BOOL)hasPendingDraw;
 - (void)displayRect:(NSRect)rect;
 - (void)setZoomedOutTileScale:(float)scale;
 - (float)zoomedOutTileScale;
@@ -169,18 +167,10 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 - (float)currentTileScale;
 - (void)setKeepsZoomedOutTiles:(BOOL)keepsZoomedOutTiles;
 - (BOOL)keepsZoomedOutTiles;
-- (LegacyTileCache *)tileCache;
-
-- (void)setTileControllerShouldUseLowScaleTiles:(BOOL)lowScaleTiles;
+- (LegacyTileCache*)tileCache;
 
 - (void)dumpTiles;
 
-- (void)setTileBordersVisible:(BOOL)visible;
-- (void)setTilePaintCountsVisible:(BOOL)visible;
-- (void)setAcceleratedDrawingEnabled:(BOOL)enabled;
-
-- (void)freezeVisibleRect;
-- (void)unfreezeVisibleRect;
 - (void)willRotate;
 - (void)didRotate;
 
@@ -192,8 +182,7 @@ WEBCORE_EXPORT @interface WAKWindow : WAKResponder
 + (WebEvent *)currentEvent;
 
 - (NSString *)recursiveDescription;
+
 @end
 
 #endif // TARGET_OS_IPHONE
-
-#endif // WAKWindow_h

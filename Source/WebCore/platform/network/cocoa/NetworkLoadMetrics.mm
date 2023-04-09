@@ -26,47 +26,100 @@
 #import "config.h"
 #import "NetworkLoadMetrics.h"
 
+#import "ResourceHandle.h"
 #import <pal/spi/cocoa/NSURLConnectionSPI.h>
 
 namespace WebCore {
 
-static double timingValue(NSDictionary *timingData, NSString *key)
+static MonotonicTime dateToMonotonicTime(NSDate *date)
 {
-    if (id object = [timingData objectForKey:key])
-        return [object doubleValue];
-    return 0.0;
+    if (auto interval = date.timeIntervalSince1970)
+        return WallTime::fromRawSeconds(interval).approximateMonotonicTime();
+    return { };
 }
-    
-Box<NetworkLoadMetrics> copyTimingData(NSDictionary *timingData)
+
+static Box<NetworkLoadMetrics> packageTimingData(MonotonicTime redirectStart, NSDate *fetchStart, NSDate *domainLookupStart, NSDate *domainLookupEnd, NSDate *connectStart, NSDate *secureConnectionStart, NSDate *connectEnd, NSDate *requestStart, NSDate *responseStart, bool reusedTLSConnection, NSString *protocol, uint16_t redirectCount, bool failsTAOCheck, bool hasCrossOriginRedirect)
 {
-    if (!timingData)
-        return nullptr;
 
-    Box<NetworkLoadMetrics> timing = Box<NetworkLoadMetrics>::create();
+    auto timing = Box<NetworkLoadMetrics>::create();
 
-    // This is not the navigationStart time in monotonic time, but the other times are relative to this time
-    // and only the differences between times are stored.
-    double referenceStart = timingValue(timingData, @"_kCFNTimingDataFetchStart");
-
-    double domainLookupStart = timingValue(timingData, @"_kCFNTimingDataDomainLookupStart");
-    double domainLookupEnd = timingValue(timingData, @"_kCFNTimingDataDomainLookupEnd");
-    double connectStart = timingValue(timingData, @"_kCFNTimingDataConnectStart");
-    double secureConnectionStart = timingValue(timingData, @"_kCFNTimingDataSecureConnectionStart");
-    double connectEnd = timingValue(timingData, @"_kCFNTimingDataConnectEnd");
-    double requestStart = timingValue(timingData, @"_kCFNTimingDataRequestStart");
-    double responseStart = timingValue(timingData, @"_kCFNTimingDataResponseStart");
-
-    timing->fetchStart = Seconds(referenceStart);
-    timing->domainLookupStart = Seconds(domainLookupStart <= 0 ? -1 : domainLookupStart - referenceStart);
-    timing->domainLookupEnd = Seconds(domainLookupEnd <= 0 ? -1 : domainLookupEnd - referenceStart);
-    timing->connectStart = Seconds(connectStart <= 0 ? -1 : connectStart - referenceStart);
-    timing->secureConnectionStart = Seconds(secureConnectionStart <= 0 ? -1 : secureConnectionStart - referenceStart);
-    timing->connectEnd = Seconds(connectEnd <= 0 ? -1 : connectEnd - referenceStart);
-    timing->requestStart = Seconds(requestStart <= 0 ? 0 : requestStart - referenceStart);
-    timing->responseStart = Seconds(responseStart <= 0 ? 0 : responseStart - referenceStart);
+    timing->redirectStart = redirectStart;
+    timing->fetchStart = dateToMonotonicTime(fetchStart);
+    timing->domainLookupStart = dateToMonotonicTime(domainLookupStart);
+    timing->domainLookupEnd = dateToMonotonicTime(domainLookupEnd);
+    timing->connectStart = dateToMonotonicTime(connectStart);
+    if (reusedTLSConnection && [protocol isEqualToString:@"https"])
+        timing->secureConnectionStart = reusedTLSConnectionSentinel;
+    else
+        timing->secureConnectionStart = dateToMonotonicTime(secureConnectionStart);
+    timing->connectEnd = dateToMonotonicTime(connectEnd);
+    timing->requestStart = dateToMonotonicTime(requestStart);
+    // Sometimes, likely because of <rdar://90997689>, responseStart is before requestStart. If this happens, use the later of the two.
+    timing->responseStart = std::max(timing->requestStart, dateToMonotonicTime(responseStart));
+    timing->redirectCount = redirectCount;
+    timing->failsTAOCheck = failsTAOCheck;
+    timing->hasCrossOriginRedirect = hasCrossOriginRedirect;
 
     // NOTE: responseEnd is not populated in this code path.
+
     return timing;
+}
+
+Box<NetworkLoadMetrics> copyTimingData(NSURLSessionTaskMetrics *incompleteMetrics, const NetworkLoadMetrics& metricsFromTask)
+{
+    NSArray<NSURLSessionTaskTransactionMetrics *> *transactionMetrics = incompleteMetrics.transactionMetrics;
+    NSURLSessionTaskTransactionMetrics *metrics = transactionMetrics.lastObject;
+    return packageTimingData(
+        dateToMonotonicTime(transactionMetrics.firstObject.fetchStartDate),
+        metrics.fetchStartDate,
+        metrics.domainLookupStartDate,
+        metrics.domainLookupEndDate,
+        metrics.connectStartDate,
+        metrics.secureConnectionStartDate,
+        metrics.connectEndDate,
+        metrics.requestStartDate,
+        metrics.responseStartDate,
+        metrics.reusedConnection,
+        metrics.response.URL.scheme,
+        incompleteMetrics.redirectCount,
+        metricsFromTask.failsTAOCheck,
+        metricsFromTask.hasCrossOriginRedirect
+    );
+}
+
+Box<NetworkLoadMetrics> copyTimingData(NSURLConnection *connection, const ResourceHandle& handle)
+{
+    NSDictionary *timingData = [connection _timingData];
+
+    auto timingValue = [&](NSString *key) -> RetainPtr<NSDate> {
+        if (NSNumber *number = [timingData objectForKey:key]) {
+            if (double doubleValue = number.doubleValue)
+                return adoptNS([[NSDate alloc] initWithTimeIntervalSinceReferenceDate:doubleValue]);
+        }
+        return { };
+    };
+
+    auto data = packageTimingData(
+        handle.startTimeBeforeRedirects(),
+        timingValue(@"_kCFNTimingDataFetchStart").get(),
+        timingValue(@"_kCFNTimingDataDomainLookupStart").get(),
+        timingValue(@"_kCFNTimingDataDomainLookupEnd").get(),
+        timingValue(@"_kCFNTimingDataConnectStart").get(),
+        timingValue(@"_kCFNTimingDataSecureConnectionStart").get(),
+        timingValue(@"_kCFNTimingDataConnectEnd").get(),
+        timingValue(@"_kCFNTimingDataRequestStart").get(),
+        timingValue(@"_kCFNTimingDataResponseStart").get(),
+        timingValue(@"_kCFNTimingDataConnectionReused").get(),
+        connection.currentRequest.URL.scheme,
+        handle.redirectCount(),
+        handle.failsTAOCheck(),
+        handle.hasCrossOriginRedirect()
+    );
+
+    if (!data->fetchStart)
+        data->fetchStart = data->redirectStart;
+
+    return data;
 }
     
 }

@@ -35,6 +35,7 @@
 #include "DOMTokenList.h"
 #include "ElementChildIterator.h"
 #include "EventHandler.h"
+#include "EventLoop.h"
 #include "EventNames.h"
 #include "Frame.h"
 #include "FullscreenManager.h"
@@ -50,6 +51,7 @@
 #include "RenderVideo.h"
 #include "RenderView.h"
 #include "Settings.h"
+#include "ShadowPseudoIds.h"
 #include "ShadowRoot.h"
 #include "StyleProperties.h"
 #include "TextTrackCueGeneric.h"
@@ -67,16 +69,15 @@ using namespace HTMLNames;
 Ref<MediaControlTextTrackContainerElement> MediaControlTextTrackContainerElement::create(Document& document, HTMLMediaElement& mediaElement)
 {
     auto element = adoptRef(*new MediaControlTextTrackContainerElement(document, mediaElement));
+    element->setPseudo(ShadowPseudoIds::webkitMediaTextTrackContainer());
     element->hide();
     return element;
 }
 
 MediaControlTextTrackContainerElement::MediaControlTextTrackContainerElement(Document& document, HTMLMediaElement& element)
     : HTMLDivElement(divTag, document)
-    , m_mediaElement(makeWeakPtr(&element))
+    , m_mediaElement(element)
 {
-    static MainThreadNeverDestroyed<const AtomString> webkitMediaTextTrackContainerName("-webkit-media-text-track-container", AtomString::ConstructFromLiteral);
-    setPseudo(webkitMediaTextTrackContainerName);
 }
 
 RenderPtr<RenderElement> MediaControlTextTrackContainerElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
@@ -163,6 +164,10 @@ void MediaControlTextTrackContainerElement::updateDisplay()
         // following substeps:
         for (auto& interval : activeCues) {
             auto cue = interval.data();
+
+            if (cue->track()->isSpoken())
+                continue;
+
             cue->setFontSize(m_fontSize, m_videoDisplaySize.size(), m_fontSizeIsImportant);
             if (is<VTTCue>(*cue))
                 processActiveVTTCue(downcast<VTTCue>(*cue));
@@ -182,25 +187,26 @@ void MediaControlTextTrackContainerElement::updateDisplay()
 
     updateTextTrackRepresentationIfNeeded();
     updateTextTrackStyle();
-    m_needsGenerateTextTrackRepresentation = true;
 }
 
 void MediaControlTextTrackContainerElement::updateTextTrackRepresentationImageIfNeeded()
 {
-    if (!m_needsGenerateTextTrackRepresentation)
+    if (!m_needsToGenerateTextTrackRepresentation)
         return;
 
-    m_needsGenerateTextTrackRepresentation = false;
+    m_needsToGenerateTextTrackRepresentation = false;
 
     // We should call m_textTrackRepresentation->update() to paint the subtree of
     // the RenderTextTrackContainerElement after the layout is clean.
-    if (m_textTrackRepresentation)
+    if (m_textTrackRepresentation) {
         m_textTrackRepresentation->update();
+        m_textTrackRepresentation->setHidden(false);
+    }
 }
 
 void MediaControlTextTrackContainerElement::processActiveVTTCue(VTTCue& cue)
 {
-    DEBUG_LOG(LOGIDENTIFIER, "adding and positioning cue: \"", cue.text(), "\", start=", cue.startTime(), ", end=", cue.endTime(), ", line=", cue.line());
+    DEBUG_LOG(LOGIDENTIFIER, "adding and positioning cue: \"", cue.text(), "\", start=", cue.startTime(), ", end=", cue.endTime());
     Ref<TextTrackCueBox> displayBox = *cue.getDisplayTree(m_videoDisplaySize.size(), m_fontSize);
 
     if (auto region = cue.track()->regions()->getRegionById(cue.regionId())) {
@@ -232,7 +238,7 @@ void MediaControlTextTrackContainerElement::updateActiveCuesFontSize()
         return;
 
     float smallestDimension = std::min(m_videoDisplaySize.size().height(), m_videoDisplaySize.size().width());
-    float fontScale = document().page()->group().captionPreferences().captionFontSizeScaleAndImportance(m_fontSizeIsImportant);
+    float fontScale = document().page()->group().ensureCaptionPreferences().captionFontSizeScaleAndImportance(m_fontSizeIsImportant);
     m_fontSize = lroundf(smallestDimension * fontScale);
 
     for (auto& activeCue : m_mediaElement->currentlyActiveCues()) {
@@ -269,7 +275,7 @@ void MediaControlTextTrackContainerElement::updateTextStrokeStyle()
     bool important;
 
     // FIXME: find a way to set this property in the stylesheet like the other user style preferences, see <https://bugs.webkit.org/show_bug.cgi?id=169874>.
-    if (document().page()->group().captionPreferences().captionStrokeWidthForFont(m_fontSize, language, strokeWidth, important))
+    if (document().page()->group().ensureCaptionPreferences().captionStrokeWidthForFont(m_fontSize, language, strokeWidth, important))
         setInlineStyleProperty(CSSPropertyStrokeWidth, strokeWidth, CSSUnitType::CSS_PX, important);
 }
 
@@ -298,7 +304,7 @@ void MediaControlTextTrackContainerElement::updateTextTrackRepresentationIfNeede
         m_mediaElement->setTextTrackRepresentation(m_textTrackRepresentation.get());
     }
 
-    m_textTrackRepresentation->setHidden(false);
+    m_needsToGenerateTextTrackRepresentation = true;
 }
 
 void MediaControlTextTrackContainerElement::clearTextTrackRepresentation()
@@ -385,8 +391,9 @@ void MediaControlTextTrackContainerElement::updateSizes(ForceUpdate force)
     for (auto& activeCue : m_mediaElement->currentlyActiveCues())
         activeCue.data()->recalculateStyles();
 
-    m_taskQueue.enqueueTask([this] () {
-        updateDisplay();
+    document().eventLoop().queueTask(TaskSource::MediaElement, [weakThis = WeakPtr { *this }] () {
+        if (weakThis)
+            weakThis->updateDisplay();
     });
 }
 
@@ -417,7 +424,7 @@ RefPtr<Image> MediaControlTextTrackContainerElement::createTextTrackRepresentati
     IntRect paintingRect = IntRect(IntPoint(), layer->size());
 
     // FIXME (149422): This buffer should not be unconditionally unaccelerated.
-    std::unique_ptr<ImageBuffer> buffer(ImageBuffer::create(paintingRect.size(), RenderingMode::Unaccelerated, deviceScaleFactor));
+    auto buffer = ImageBuffer::create(paintingRect.size(), RenderingPurpose::Unspecified, deviceScaleFactor, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
     if (!buffer)
         return nullptr;
 

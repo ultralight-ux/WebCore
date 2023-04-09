@@ -25,9 +25,9 @@
 
 WI.TextContentView = class TextContentView extends WI.ContentView
 {
-    constructor(string, mimeType)
+    constructor(string, mimeType, representedObject)
     {
-        super(string);
+        super(representedObject || string);
 
         this.element.classList.add("text");
 
@@ -73,23 +73,9 @@ WI.TextContentView = class TextContentView extends WI.ContentView
         return [this._prettyPrintButtonNavigationItem, this._showTypesButtonNavigationItem, this._codeCoverageButtonNavigationItem];
     }
 
-    revealPosition(position, textRangeToSelect, forceUnformatted)
+    revealPosition(position, options = {})
     {
-        this._textEditor.revealPosition(position, textRangeToSelect, forceUnformatted);
-    }
-
-    shown()
-    {
-        super.shown();
-
-        this._textEditor.shown();
-    }
-
-    hidden()
-    {
-        super.hidden();
-
-        this._textEditor.hidden();
+        this._textEditor.revealPosition(position, options);
     }
 
     get supportsSave()
@@ -97,10 +83,18 @@ WI.TextContentView = class TextContentView extends WI.ContentView
         return true;
     }
 
+    get saveMode()
+    {
+        return WI.FileUtilities.SaveMode.SingleFile;
+    }
+
     get saveData()
     {
-        let url = WI.FileUtilities.inspectorURLForFilename(WI.UIString("Untitled") + ".txt");
-        return {url, content: this._textEditor.string, forceSaveAs: true};
+        return {
+            content: this._textEditor.string,
+            suggestedName: WI.UIString("Untitled") + ".txt",
+            forceSaveAs: true,
+        };
     }
 
     get supportsSearch()

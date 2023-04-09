@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -73,8 +73,10 @@ private:
 public:
     static void init();
 
-    A64DOpcode()
-        : m_opcode(0)
+    A64DOpcode(uint32_t* startPC = nullptr, uint32_t* endPC = nullptr)
+        : m_startPC(startPC)
+        , m_endPC(endPC)
+        , m_opcode(0)
         , m_bufferOffset(0)
     {
         init();
@@ -116,7 +118,7 @@ protected:
 
     void appendInstructionName(const char* instructionName)
     {
-        bufferPrintf("   %-8.8s", instructionName);
+        bufferPrintf("   %-9.9s", instructionName);
     }
 
     void appendRegisterName(unsigned registerNumber, bool is64Bit = true);
@@ -139,6 +141,7 @@ protected:
     }
 
     void appendFPRegisterName(unsigned registerNumber, unsigned registerSize);
+    void appendVectorRegisterName(unsigned registerNumber);
 
     void appendSeparator()
     {
@@ -185,22 +188,56 @@ protected:
         bufferPrintf("#0x%" PRIx64, immediate);
     }
 
-    void appendPCRelativeOffset(uint32_t* pc, int32_t immediate)
-    {
-        bufferPrintf("0x%" PRIx64, reinterpret_cast<uint64_t>(pc + immediate));
-    }
+    void appendPCRelativeOffset(uint32_t* pc, int32_t immediate);
 
     void appendShiftAmount(unsigned amount)
     {
         bufferPrintf("lsl #%u", 16 * amount);
     }
+    
+    void appendSIMDLaneIndexAndType(unsigned imm6)
+    {
+        unsigned lane = 0;
+        if ((imm6 & 0b100001) == 0b000001) {
+            bufferPrintf(".8B");
+            lane = ((imm6 & 0b011110) >> 1);
+        } else if ((imm6 & 0b100001) == 0b000001) {
+            bufferPrintf(".16B");
+            lane = ((imm6 & 0b011110) >> 1);
+        } else if ((imm6 & 0b100011) == 0b000010) {
+            bufferPrintf(".H");
+            lane = ((imm6 & 0b011100) >> 2);
+        } else if ((imm6 & 0b100111) == 0b000100) {
+            bufferPrintf(".S");
+            lane = ((imm6 & 0b011000) >> 3);
+            // This is overly permissive; for some instructions (like umov), bit 6 must be 1.
+        } else if ((imm6 & 0b001111) == 0b001000) {
+            bufferPrintf(".D");
+            lane = ((imm6 & 0b010000) >> 4);
+        } else {
+            dataLogLn("Dissassembler saw invalid simd lane type ", imm6);
+            bufferPrintf(".INVALID_LANE_TYPE");
+        }
+        bufferPrintf("[#%u]", lane);
+    }
+    
+    void appendSIMDLaneType(unsigned q)
+    {
+        if (q)
+            bufferPrintf(".16B");
+        else
+            bufferPrintf(".8B");
+    }
 
-    static constexpr int bufferSize = 81;
+    static constexpr int bufferSize = 101;
 
     char m_formatBuffer[bufferSize];
+    uint32_t* m_startPC;
+    uint32_t* m_endPC;
     uint32_t* m_currentPC;
     uint32_t m_opcode;
     int m_bufferOffset;
+    uintptr_t m_builtConstant { 0 };
 
 private:
     static OpcodeGroup* opcodeTable[32];
@@ -263,7 +300,7 @@ public:
     bool isNeg() { return (op() && rn() == 31); }
     const char* negName() { return sBit() ? "negs" : "neg"; }
     unsigned shift() { return (m_opcode >> 22) & 0x3; }
-    int immediate6() { return (static_cast<int>((m_opcode >> 10) & 0x3f) << 26) >> 26; }
+    int immediate6() { return (static_cast<uint32_t>((m_opcode >> 10) & 0x3f) << 26) >> 26; }
 };
 
 class A64DOpcodeBitfield : public A64DOpcode {
@@ -409,7 +446,7 @@ public:
     unsigned opc() { return (m_opcode>>21) & 0x7; }
     unsigned op2() { return (m_opcode>>2) & 0x7; }
     unsigned ll() { return m_opcode & 0x3; }
-    int immediate16() { return (static_cast<int>((m_opcode >> 5) & 0xffff) << 16) >> 16; }
+    unsigned immediate16() { return (static_cast<unsigned>((m_opcode >> 5) & 0xffff) << 16) >> 16; }
 };
 
 class A64DOpcodeExtract : public A64DOpcode {
@@ -711,9 +748,83 @@ public:
     
 };
 
+class A64DOpcodeLoadAtomic : public A64DOpcodeLoadStore {
+private:
+    static const char* const s_opNames[64];
+
+protected:
+    const char* opName()
+    {
+        unsigned number = opNumber();
+        if (number < 64)
+            return s_opNames[number];
+        return nullptr;
+    }
+
+public:
+    static constexpr uint32_t mask    = 0b00111111'00100000'10001100'00000000U;
+    static constexpr uint32_t pattern = 0b00111000'00100000'00000000'00000000U;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeLoadAtomic, thisObj);
+
+    const char* format();
+
+    unsigned rs() { return rm(); }
+    unsigned opc() { return (m_opcode >> 12) & 0b111; }
+    unsigned ar() { return (m_opcode >> 22) & 0b11; }
+    unsigned opNumber() { return (opc() << 4) | (size() << 2) | ar(); }
+};
+
+class A64DOpcodeSwapAtomic : public A64DOpcodeLoadStore {
+private:
+    static const char* const s_opNames[16];
+
+protected:
+    const char* opName()
+    {
+        return s_opNames[opNumber()];
+    }
+
+public:
+    static constexpr uint32_t mask    = 0b00111111'00100000'11111100'00000000U;
+    static constexpr uint32_t pattern = 0b00111000'00100000'10000000'00000000U;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeSwapAtomic, thisObj);
+
+    const char* format();
+
+    unsigned rs() { return rm(); }
+    unsigned ar() { return (m_opcode >> 22) & 0b11; }
+    unsigned opNumber() { return (size() << 2) | ar(); }
+};
+
+class A64DOpcodeCAS : public A64DOpcodeLoadStore {
+private:
+    static const char* const s_opNames[16];
+
+protected:
+    const char* opName()
+    {
+        return s_opNames[opNumber()];
+    }
+
+public:
+    static constexpr uint32_t mask    = 0b00111111'10100000'01111100'00000000U;
+    static constexpr uint32_t pattern = 0b00001000'10100000'01111100'00000000U;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeCAS, thisObj);
+
+    const char* format();
+
+    unsigned rs() { return rm(); }
+    unsigned o1() { return (m_opcode >> 15) & 0x1; }
+    unsigned l() { return (m_opcode >> 22) & 0x1; }
+    unsigned opNumber() { return (size() << 2) | (l() << 1) | o1(); }
+};
+
 class A64DOpcodeLoadStoreRegisterPair : public A64DOpcodeLoadStore {
 public:
-    static constexpr uint32_t mask = 0x3a000000;
+    static constexpr uint32_t mask = 0x38000000;
     static constexpr uint32_t pattern = 0x28000000;
 
     DEFINE_STATIC_FORMAT(A64DOpcodeLoadStoreRegisterPair, thisObj);
@@ -783,7 +894,7 @@ public:
     bool isMov() { return ((opc() == 1) && (rn() == 31)); }
     unsigned opNumber() { return (opc() << 1) | nBit(); }
     unsigned shift() { return (m_opcode >> 22) & 0x3; }
-    int immediate6() { return (static_cast<int>((m_opcode >> 10) & 0x3f) << 26) >> 26; }
+    int immediate6() { return (static_cast<uint32_t>((m_opcode >> 10) & 0x3f) << 26) >> 26; }
 };
 
 class A64DOpcodeMoveWide : public A64DOpcode {
@@ -797,11 +908,24 @@ public:
     DEFINE_STATIC_FORMAT(A64DOpcodeMoveWide, thisObj);
 
     const char* format();
+    bool isValid();
 
     const char* opName() { return s_opNames[opc()]; }
     unsigned opc() { return (m_opcode >> 29) & 0x3; }
     unsigned hw() { return (m_opcode >> 21) & 0x3; }
     unsigned immediate16() { return (m_opcode >> 5) & 0xffff; }
+
+private:
+    template<typename Trait> typename Trait::ResultType parse();
+    bool handlePotentialDataPointer(void*);
+    bool handlePotentialPtrTag(uintptr_t);
+
+    // These forwarding functions are needed for MoveWideFormatTrait only.
+    const char* baseFormat() { return A64DOpcode::format(); }
+    const char* formatBuffer() { return m_formatBuffer; }
+
+    friend class MoveWideFormatTrait;
+    friend class MoveWideIsValidTrait;
 };
 
 class A64DOpcodeTestAndBranchImmediate : public A64DOpcode {
@@ -854,6 +978,42 @@ public:
     unsigned mBit() { return (m_opcode >> 10) & 1; }
     unsigned rm() { return rd(); }
 };
+
+class A64DOpcodeVectorDataProcessingLogical1Source : public A64DOpcode {
+public:
+    static constexpr uint32_t mask    = 0b101'11111'11'1'000000000000000000000;
+    static constexpr uint32_t pattern = 0b000'01110'00'0'000000000000000000000;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeVectorDataProcessingLogical1Source, thisObj);
+
+    const char* format();
+    const char* opName();
+    
+    unsigned rd() { return (m_opcode >> 0) & 0b11111; }
+    unsigned rt() { return (m_opcode >> 5) & 0b11111; }
+    unsigned op10_15() { return (m_opcode >> 10) & 0b11111; }
+    unsigned imm5() { return (m_opcode >> 16) & 0b11111; }
+    unsigned q() { return (m_opcode >> 30) & 0b1; }
+};
+
+class A64DOpcodeVectorDataProcessingLogical2Source : public A64DOpcode {
+public:
+    static constexpr uint32_t mask    = 0b101'11111'11'1'000000000000000000000;
+    static constexpr uint32_t pattern = 0b000'01110'10'1'000000000000000000000;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeVectorDataProcessingLogical2Source, thisObj);
+
+    const char* format();
+    const char* opName();
+    
+    unsigned rd() { return (m_opcode >> 0) & 0b11111; }
+    unsigned rn() { return (m_opcode >> 5) & 0b11111; }
+    unsigned op10_15() { return (m_opcode >> 10) & 0b11111; }
+    unsigned rm() { return (m_opcode >> 16) & 0b11111; }
+    unsigned q() { return (m_opcode >> 30) & 0b1; }
+};
+
+
 
 } } // namespace JSC::ARM64Disassembler
 

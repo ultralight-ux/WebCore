@@ -35,13 +35,13 @@ namespace WebCore {
 
 PluginInfoProvider::~PluginInfoProvider()
 {
-    ASSERT(m_pages.isEmpty());
+    ASSERT(m_pages.isEmptyIgnoringNullReferences());
 }
 
 void PluginInfoProvider::clearPagesPluginData()
 {
     for (auto& page : m_pages)
-        page->clearPluginData();
+        page.clearPluginData();
 }
 
 void PluginInfoProvider::refresh(bool reloadPages)
@@ -51,14 +51,17 @@ void PluginInfoProvider::refresh(bool reloadPages)
     Vector<Ref<Frame>> framesNeedingReload;
 
     for (auto& page : m_pages) {
-        page->clearPluginData();
+        page.clearPluginData();
 
         if (!reloadPages)
             continue;
 
-        for (Frame* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext()) {
-            if (frame->loader().subframeLoader().containsPlugins())
-                framesNeedingReload.append(page->mainFrame());
+        for (AbstractFrame* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
+            auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+            if (!localFrame)
+                continue;
+            if (localFrame->loader().subframeLoader().containsPlugins())
+                framesNeedingReload.append(page.mainFrame());
         }
     }
 
@@ -68,16 +71,16 @@ void PluginInfoProvider::refresh(bool reloadPages)
 
 void PluginInfoProvider::addPage(Page& page)
 {
-    ASSERT(!m_pages.contains(&page));
+    ASSERT(!m_pages.contains(page));
 
-    m_pages.add(&page);
+    m_pages.add(page);
 }
 
 void PluginInfoProvider::removePage(Page& page)
 {
-    ASSERT(m_pages.contains(&page));
+    ASSERT(m_pages.contains(page));
 
-    m_pages.remove(&page);
+    m_pages.remove(page);
 }
 
 }

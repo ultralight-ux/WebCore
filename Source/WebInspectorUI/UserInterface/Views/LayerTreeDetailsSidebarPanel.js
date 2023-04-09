@@ -36,20 +36,18 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
 
     // DetailsSidebarPanel Overrides.
 
-    shown()
+    attached()
     {
+        super.attached();
+
         WI.layerTreeManager.addEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
-
-        console.assert(this.parentSidebar);
-
-        super.shown();
     }
 
-    hidden()
+    detached()
     {
         WI.layerTreeManager.removeEventListener(WI.LayerTreeManager.Event.LayerTreeDidChange, this._layerTreeDidChange, this);
 
-        super.hidden();
+        super.detached();
     }
 
     // DOMDetailsSidebarPanel Overrides
@@ -65,8 +63,6 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
     {
         super.initialLayout();
 
-        WI.settings.showShadowDOM.addEventListener(WI.Setting.Event.Changed, this._showShadowDOMSettingChanged, this);
-
         this._buildLayerInfoSection();
         this._buildDataGridSection();
         this._buildBottomBar();
@@ -76,7 +72,7 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
     {
         super.layout();
 
-        if (!this.domNode)
+        if (!this.domNode || this.domNode.destroyed)
             return;
 
         WI.layerTreeManager.layersForNode(this.domNode, (layers) => {
@@ -100,12 +96,6 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
     _layerTreeDidChange(event)
     {
         this.needsLayout();
-    }
-
-    _showShadowDOMSettingChanged(event)
-    {
-        if (this.selected)
-            this._updateDisplayWithLayers(this._layerForNode, this._unfilteredChildLayers);
     }
 
     _buildLayerInfoSection()
@@ -232,18 +222,17 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
         var layer = dataGridNode.layer;
         if (layer.isGeneratedContent || layer.isReflection || layer.isAnonymous)
             WI.domManager.highlightRect(layer.bounds, true);
-        else
-            WI.domManager.highlightDOMNode(layer.nodeId);
+        else {
+            let domNode = WI.domManager.nodeForId(layer.nodeId);
+            if (domNode)
+                domNode.highlight();
+            else
+                WI.domManager.hideDOMNodeHighlight();
+        }
     }
 
     _updateDisplayWithLayers(layerForNode, childLayers)
     {
-        if (!WI.settings.showShadowDOM.value) {
-            childLayers = childLayers.filter(function(layer) {
-                return !layer.isInShadowTree;
-            });
-        }
-
         this._updateLayerInfoSection(layerForNode);
         this._updateDataGrid(layerForNode, childLayers);
         this._updateMetrics(layerForNode, childLayers);
@@ -400,6 +389,8 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
             addReason(WI.UIString("Element is a plug-in"));
         if (compositingReasons.iFrame)
             addReason(WI.UIString("Element is <iframe>"));
+        if (compositingReasons.model)
+            addReason(WI.UIString("Element is <model>"));
         if (compositingReasons.backfaceVisibilityHidden)
             addReason(WI.UIString("Element has \u201Cbackface-visibility: hidden\u201D style"));
         if (compositingReasons.clipsCompositingDescendants)

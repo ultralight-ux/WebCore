@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,72 +25,128 @@
 
 #pragma once
 
-#include "GraphicsContext.h"
+#if USE(CG)
 
-typedef struct CGColorSpace *CGColorSpaceRef;
+#include "ColorSpaceCG.h"
+#include "GraphicsContext.h"
 
 namespace WebCore {
 
-WEBCORE_EXPORT CGColorSpaceRef sRGBColorSpaceRef();
-WEBCORE_EXPORT CGColorSpaceRef extendedSRGBColorSpaceRef();
-WEBCORE_EXPORT CGColorSpaceRef displayP3ColorSpaceRef();
-WEBCORE_EXPORT CGColorSpaceRef linearRGBColorSpaceRef();
+class WEBCORE_EXPORT GraphicsContextCG : public GraphicsContext {
+public:
+    GraphicsContextCG(CGContextRef);
+
+#if PLATFORM(WIN)
+    GraphicsContextCG(HDC, bool hasAlpha = false); // FIXME: To be removed.
+#endif
+
+    ~GraphicsContextCG();
+
+    bool hasPlatformContext() const final;
+    CGContextRef platformContext() const final;
+
+    void save() final;
+    void restore() final;
+
+    void drawRect(const FloatRect&, float borderThickness = 1) final;
+    void drawLine(const FloatPoint&, const FloatPoint&) final;
+    void drawEllipse(const FloatRect&) final;
+
+    void applyStrokePattern() final;
+    void applyFillPattern() final;
+    void drawPath(const Path&) final;
+    void fillPath(const Path&) final;
+    void strokePath(const Path&) final;
+
+    void beginTransparencyLayer(float opacity) final;
+    void endTransparencyLayer() final;
+
+    void applyDeviceScaleFactor(float factor) final;
+
+    using GraphicsContext::fillRect;
+    void fillRect(const FloatRect&) final;
+    void fillRect(const FloatRect&, const Color&) final;
+    void fillRoundedRectImpl(const FloatRoundedRect&, const Color&) final;
+    void fillRectWithRoundedHole(const FloatRect&, const FloatRoundedRect& roundedHoleRect, const Color&) final;
+    void clearRect(const FloatRect&) final;
+    void strokeRect(const FloatRect&, float lineWidth) final;
+
+    void fillEllipse(const FloatRect& ellipse) final;
+    void strokeEllipse(const FloatRect& ellipse) final;
+
+    void setIsCALayerContext(bool) final;
+    bool isCALayerContext() const final;
+
+    void setIsAcceleratedContext(bool) final;
+    RenderingMode renderingMode() const final;
+
+    void clip(const FloatRect&) final;
+    void clipOut(const FloatRect&) final;
+
+    void clipOut(const Path&) final;
+
+    void clipPath(const Path&, WindRule = WindRule::EvenOdd) final;
+
+    IntRect clipBounds() const final;
+
+    void setLineCap(LineCap) final;
+    void setLineDash(const DashArray&, float dashOffset) final;
+    void setLineJoin(LineJoin) final;
+    void setMiterLimit(float) final;
+
+    void drawNativeImage(NativeImage&, const FloatSize& selfSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& = { }) final;
+    void drawPattern(NativeImage&, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& = { }) final;
+    bool needsCachedNativeImageInvalidationWorkaround(RenderingMode) override;
+
+    using GraphicsContext::scale;
+    void scale(const FloatSize&) final;
+    void rotate(float angleInRadians) final;
+    void translate(float x, float y) final;
+
+    void concatCTM(const AffineTransform&) final;
+    void setCTM(const AffineTransform&) override;
+
+    AffineTransform getCTM(IncludeDeviceScale = PossiblyIncludeDeviceScale) const override;
+
+    void drawFocusRing(const Path&, float outlineWidth, const Color&) final;
+    void drawFocusRing(const Vector<FloatRect>&, float outlineOffset, float outlineWidth, const Color&) final;
+
+    void drawLinesForText(const FloatPoint&, float thickness, const DashArray& widths, bool printing, bool doubleLines, StrokeStyle) final;
+
+    void drawDotsForDocumentMarker(const FloatRect&, DocumentMarkerLineStyle) final;
+
+    void setURLForRect(const URL&, const FloatRect&) final;
+
+    void setDestinationForRect(const String& name, const FloatRect&) final;
+    void addDestinationAtPoint(const String& name, const FloatPoint&) final;
+
+    bool supportsInternalLinks() const final;
+
+    void didUpdateState(GraphicsContextState&) final;
+
+    virtual bool canUseShadowBlur() const;
+
+#if OS(WINDOWS)
+    GraphicsContextPlatformPrivate* deprecatedPrivateContext() const final;
+#endif
+
+    virtual FloatRect roundToDevicePixels(const FloatRect&, RoundingMode = RoundAllSides) const;
+
+protected:
+    virtual void setCGShadow(RenderingMode, const FloatSize& offset, float blur, const Color&, bool shadowsIgnoreTransforms);
+
+private:
+    void convertToDestinationColorSpaceIfNeeded(RetainPtr<CGImageRef>&);
+
+    void clearCGShadow();
+
+    GraphicsContextPlatformPrivate* m_data { nullptr };
+};
 
 CGAffineTransform getUserToBaseCTM(CGContextRef);
 
-static inline CGColorSpaceRef cachedCGColorSpace(ColorSpace colorSpace)
-{
-    switch (colorSpace) {
-    case ColorSpace::SRGB:
-        return sRGBColorSpaceRef();
-    case ColorSpace::LinearRGB:
-        return linearRGBColorSpaceRef();
-    case ColorSpace::DisplayP3:
-        return displayP3ColorSpaceRef();
-    }
-    ASSERT_NOT_REACHED();
-    return sRGBColorSpaceRef();
-}
+} // namespace WebCore
 
-class CGContextStateSaver {
-public:
-    CGContextStateSaver(CGContextRef context, bool saveAndRestore = true)
-        : m_context(context)
-        , m_saveAndRestore(saveAndRestore)
-    {
-        if (m_saveAndRestore)
-            CGContextSaveGState(m_context);
-    }
-    
-    ~CGContextStateSaver()
-    {
-        if (m_saveAndRestore)
-            CGContextRestoreGState(m_context);
-    }
-    
-    void save()
-    {
-        ASSERT(!m_saveAndRestore);
-        CGContextSaveGState(m_context);
-        m_saveAndRestore = true;
-    }
+#include "CGContextStateSaver.h"
 
-    void restore()
-    {
-        ASSERT(m_saveAndRestore);
-        CGContextRestoreGState(m_context);
-        m_saveAndRestore = false;
-    }
-    
-    bool didSave() const
-    {
-        return m_saveAndRestore;
-    }
-    
-private:
-    CGContextRef m_context;
-    bool m_saveAndRestore;
-};
-
-}
-
+#endif // USE(CG)

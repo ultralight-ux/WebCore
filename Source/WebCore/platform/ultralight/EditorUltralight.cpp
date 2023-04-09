@@ -18,17 +18,17 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
     if (types.isEmpty())
         return nullptr;
 
-    if (types.contains("text/html;charset=utf-8") && frame.document()) {
-        String markup = pasteboard.readString("text/html;charset=utf-8");
-        return createFragmentFromMarkup(*frame.document(), markup, emptyString(), DisallowScriptingAndPluginContent);
+    if (types.contains("text/html;charset=utf-8"_s) && frame.document()) {
+        String markup = pasteboard.readString("text/html;charset=utf-8"_s);
+        return createFragmentFromMarkup(*frame.document(), markup, emptyString(), {});
     }
 
     if (!allowPlainText)
         return nullptr;
 
-    if (types.contains("text/plain;charset=utf-8")) {
+    if (types.contains("text/plain;charset=utf-8"_s)) {
         chosePlainText = true;
-        return createFragmentFromText(range, pasteboard.readString("text/plain;charset=utf-8"));
+        return createFragmentFromText(range, pasteboard.readString("text/plain;charset=utf-8"_s));
     }
 
     return nullptr;
@@ -46,8 +46,7 @@ void Editor::writeSelectionToPasteboard(Pasteboard& pasteboard)
 {
     PasteboardWebContent pasteboardContent;
     pasteboardContent.text = selectedTextForDataTransfer();
-    pasteboardContent.markup = serializePreservingVisualAppearance(m_document.selection().selection(), ResolveURLs::YesExcludingLocalFileURLsForPrivacy,
-        m_document.settings().selectionAcrossShadowBoundariesEnabled() ? SerializeComposedTree::Yes : SerializeComposedTree::No);
+    pasteboardContent.markup = serializePreservingVisualAppearance(m_document.selection().selection(), ResolveURLs::YesExcludingURLsForPrivacy, SerializeComposedTree::Yes, IgnoreUserSelectNone::Yes);
     pasteboard.write(pasteboardContent);
 }
 
@@ -70,6 +69,18 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
     if (fragment && shouldInsertFragment(*fragment, *range, EditorInsertAction::Pasted))
         pasteAsFragment(*fragment, canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
+}
+
+void Editor::platformCopyFont()
+{
+    // Ultralight TODO
+    notImplemented();
+}
+
+void Editor::platformPasteFont()
+{
+    // Ultralight TODO
+    notImplemented();
 }
 
 } // namespace WebCore

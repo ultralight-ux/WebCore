@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Andy VanWagoner (andy@vanwagoner.family)
+ * Copyright (C) 2021-2022 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +26,9 @@
 
 #pragma once
 
-#include "JSObject.h"
+#include "IntlObject.h"
+#include <unicode/ucol.h>
 #include <wtf/unicode/icu/ICUHelpers.h>
-
-struct UCollator;
 
 namespace JSC {
 
@@ -48,7 +48,7 @@ public:
     }
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.intlCollatorSpace<mode>();
     }
@@ -59,7 +59,7 @@ public:
     DECLARE_INFO;
 
     void initializeCollator(JSGlobalObject*, JSValue locales, JSValue optionsValue);
-    JSValue compareStrings(JSGlobalObject*, StringView, StringView) const;
+    UCollationResult compareStrings(JSGlobalObject*, StringView, StringView) const;
     JSObject* resolvedOptions(JSGlobalObject*) const;
 
     JSBoundFunction* boundCompare() const { return m_boundCompare.get(); }
@@ -73,15 +73,15 @@ public:
     }
 
 #if ASSERT_ENABLED
-    static void checkICULocaleInvariants(const HashSet<String>&);
+    static void checkICULocaleInvariants(const LocaleSet&);
 #else
-    static inline void checkICULocaleInvariants(const HashSet<String>&) { }
+    static inline void checkICULocaleInvariants(const LocaleSet&) { }
 #endif
 
 private:
     IntlCollator(VM&, Structure*);
     void finishCreation(VM&);
-    static void visitChildren(JSCell*, SlotVisitor&);
+    DECLARE_VISIT_CHILDREN;
 
     bool updateCanDoASCIIUCADUCETComparison() const;
 
@@ -92,9 +92,7 @@ private:
     enum class Sensitivity : uint8_t { Base, Accent, Case, Variant };
     enum class CaseFirst : uint8_t { Upper, Lower, False };
 
-    struct UCollatorDeleter {
-        void operator()(UCollator*) const;
-    };
+    using UCollatorDeleter = ICUDeleter<ucol_close>;
 
     static ASCIILiteral usageString(Usage);
     static ASCIILiteral sensitivityString(Sensitivity);

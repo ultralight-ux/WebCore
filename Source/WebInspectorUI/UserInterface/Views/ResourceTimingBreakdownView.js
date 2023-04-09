@@ -141,7 +141,7 @@ WI.ResourceTimingBreakdownView = class ResourceTimingBreakdownView extends WI.Vi
         let serverTiming = this._resource.serverTiming;
 
         this._tableElement = this.element.appendChild(document.createElement("table"));
-        this._tableElement.className = "waterfall";
+        this._tableElement.className = "waterfall network";
 
         this._graphStartTime = startTime;
         this._graphEndTime = responseEnd;
@@ -178,7 +178,7 @@ WI.ResourceTimingBreakdownView = class ResourceTimingBreakdownView extends WI.Vi
         this._appendHeaderRow(WI.UIString("Start to Finish"), Number.secondsToMillisecondsString(responseEnd - startTime), "total-row");
 
         if (serverTiming.length > 0) {
-            this._appendDividerRow()
+            this._appendDividerRow();
             this._appendHeaderRow(WI.UIString("Server Timing:"));
 
             let maxDuration = serverTiming.reduce((max, {duration = 0}) => Math.max(max, duration), 0);

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 Igalia S.L.
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -54,12 +55,42 @@ void JSAPIWrapperGlobalObjectHandleOwner::finalize(JSC::Handle<JSC::Unknown> han
 
 namespace JSC {
 
-template <> const ClassInfo JSCallbackObject<JSAPIWrapperGlobalObject>::s_info = { "JSAPIWrapperGlobalObject", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
+static JSC_DECLARE_HOST_FUNCTION(callJSAPIWrapperGlobalObjectCallbackObject);
+static JSC_DECLARE_HOST_FUNCTION(constructJSAPIWrapperGlobalObjectCallbackObject);
+static JSC_DECLARE_CUSTOM_GETTER(callbackGetterJSAPIWrapperGlobalObjectCallbackObject);
+static JSC_DECLARE_CUSTOM_GETTER(staticFunctionGetterJSAPIWrapperGlobalObjectCallbackObject);
 
+DEFINE_VISIT_CHILDREN_WITH_MODIFIER(template<>, JSCallbackObject<JSAPIWrapperGlobalObject>);
+
+template <> const ClassInfo JSCallbackObject<JSAPIWrapperGlobalObject>::s_info = { "JSAPIWrapperGlobalObject"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
 template<> const bool JSCallbackObject<JSAPIWrapperGlobalObject>::needsDestruction = true;
 
 template <>
-IsoSubspace* JSCallbackObject<JSAPIWrapperGlobalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
+NativeFunction::Ptr JSCallbackObject<JSAPIWrapperGlobalObject>::getCallFunction()
+{
+    return callJSAPIWrapperGlobalObjectCallbackObject;
+}
+
+template <>
+NativeFunction::Ptr JSCallbackObject<JSAPIWrapperGlobalObject>::getConstructFunction()
+{
+    return constructJSAPIWrapperGlobalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSAPIWrapperGlobalObject>::getCallbackGetter()
+{
+    return callbackGetterJSAPIWrapperGlobalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSAPIWrapperGlobalObject>::getStaticFunctionGetter()
+{
+    return staticFunctionGetterJSAPIWrapperGlobalObjectCallbackObject;
+}
+
+template <>
+GCClient::IsoSubspace* JSCallbackObject<JSAPIWrapperGlobalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
 {
     switch (mode) {
     case SubspaceAccess::OnMainThread:
@@ -80,9 +111,29 @@ Structure* JSCallbackObject<JSAPIWrapperGlobalObject>::createStructure(VM& vm, J
 template<>
 JSCallbackObject<JSAPIWrapperGlobalObject>* JSCallbackObject<JSAPIWrapperGlobalObject>::create(VM& vm, JSClassRef classRef, Structure* structure)
 {
-    JSCallbackObject<JSAPIWrapperGlobalObject>* callbackObject = new (NotNull, allocateCell<JSCallbackObject<JSAPIWrapperGlobalObject>>(vm.heap)) JSCallbackObject(vm, classRef, structure);
+    JSCallbackObject<JSAPIWrapperGlobalObject>* callbackObject = new (NotNull, allocateCell<JSCallbackObject<JSAPIWrapperGlobalObject>>(vm)) JSCallbackObject(vm, classRef, structure);
     callbackObject->finishCreation(vm);
     return callbackObject;
+}
+
+JSC_DEFINE_HOST_FUNCTION(callJSAPIWrapperGlobalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSAPIWrapperGlobalObject>::callImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_HOST_FUNCTION(constructJSAPIWrapperGlobalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSAPIWrapperGlobalObject>::constructImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(callbackGetterJSAPIWrapperGlobalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSAPIWrapperGlobalObject>::callbackGetterImpl(globalObject, thisValue, propertyName);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(staticFunctionGetterJSAPIWrapperGlobalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSAPIWrapperGlobalObject>::staticFunctionGetterImpl(globalObject, thisValue, propertyName);
 }
 
 JSAPIWrapperGlobalObject::JSAPIWrapperGlobalObject(VM& vm, Structure* structure)
@@ -94,11 +145,6 @@ void JSAPIWrapperGlobalObject::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
     WeakSet::allocate(this, jsAPIWrapperGlobalObjectHandleOwner(), 0); // Balanced in JSAPIWrapperGlobalObjectHandleOwner::finalize.
-}
-
-void JSAPIWrapperGlobalObject::visitChildren(JSCell* cell, JSC::SlotVisitor& visitor)
-{
-    Base::visitChildren(cell, visitor);
 }
 
 } // namespace JSC

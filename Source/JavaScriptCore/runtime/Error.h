@@ -49,12 +49,12 @@ JSObject* createTypeError(JSGlobalObject*, const String&, ErrorInstance::SourceA
 JSObject* createNotEnoughArgumentsError(JSGlobalObject*, ErrorInstance::SourceAppender);
 JSObject* createURIError(JSGlobalObject*, const String&, ErrorInstance::SourceAppender);
 
-
 JS_EXPORT_PRIVATE JSObject* createError(JSGlobalObject*, const String&);
 JS_EXPORT_PRIVATE JSObject* createEvalError(JSGlobalObject*, const String&);
 JS_EXPORT_PRIVATE JSObject* createRangeError(JSGlobalObject*, const String&);
 JS_EXPORT_PRIVATE JSObject* createReferenceError(JSGlobalObject*, const String&);
 JS_EXPORT_PRIVATE JSObject* createSyntaxError(JSGlobalObject*, const String&);
+JS_EXPORT_PRIVATE JSObject* createSyntaxError(JSGlobalObject*);
 JS_EXPORT_PRIVATE JSObject* createTypeError(JSGlobalObject*);
 JS_EXPORT_PRIVATE JSObject* createTypeError(JSGlobalObject*, const String&);
 JS_EXPORT_PRIVATE JSObject* createNotEnoughArgumentsError(JSGlobalObject*);
@@ -65,14 +65,20 @@ JS_EXPORT_PRIVATE JSObject* createOutOfMemoryError(JSGlobalObject*, const String
 JS_EXPORT_PRIVATE JSObject* createError(JSGlobalObject*, ErrorType, const String&);
 JS_EXPORT_PRIVATE JSObject* createError(JSGlobalObject*, ErrorTypeWithExtension, const String&);
 
-JSObject* createGetterTypeError(JSGlobalObject*, const String&);
-
 std::unique_ptr<Vector<StackFrame>> getStackTrace(JSGlobalObject*, VM&, JSObject*, bool useCurrentFrame);
-void getBytecodeIndex(VM&, CallFrame*, Vector<StackFrame>*, CallFrame*&, BytecodeIndex&);
-bool getLineColumnAndSource(Vector<StackFrame>* stackTrace, unsigned& line, unsigned& column, String& sourceURL);
+std::tuple<CodeBlock*, BytecodeIndex> getBytecodeIndex(VM&, CallFrame*);
+bool getLineColumnAndSource(VM&, Vector<StackFrame>* stackTrace, unsigned& line, unsigned& column, String& sourceURL);
 bool addErrorInfo(VM&, Vector<StackFrame>*, JSObject*);
 JS_EXPORT_PRIVATE void addErrorInfo(JSGlobalObject*, JSObject*, bool);
 JSObject* addErrorInfo(VM&, JSObject* error, int line, const SourceCode&);
+
+// https://github.com/tc39/proposal-shadowrealm/pull/382
+//
+// When an crosses the ShadowRealm barrier, it is converted to a TypeError,
+// without invoking any observable operations. It attempts to maintain the
+// error message of the original error, if possible, and may include additional
+// information.
+JSObject* createTypeErrorCopy(JSGlobalObject*, JSValue error);
 
 // Methods to throw Errors.
 
@@ -85,18 +91,21 @@ JS_EXPORT_PRIVATE Exception* throwSyntaxError(JSGlobalObject*, ThrowScope&);
 JS_EXPORT_PRIVATE Exception* throwSyntaxError(JSGlobalObject*, ThrowScope&, const String& errorMessage);
 inline Exception* throwRangeError(JSGlobalObject* globalObject, ThrowScope& scope, const String& errorMessage) { return throwException(globalObject, scope, createRangeError(globalObject, errorMessage)); }
 
-JS_EXPORT_PRIVATE Exception* throwGetterTypeError(JSGlobalObject*, ThrowScope&, const String& errorMessage);
+JS_EXPORT_PRIVATE String makeDOMAttributeGetterTypeErrorMessage(const char* interfaceName, const String& attributeName);
+JS_EXPORT_PRIVATE String makeDOMAttributeSetterTypeErrorMessage(const char* interfaceName, const String& attributeName);
+
 JS_EXPORT_PRIVATE JSValue throwDOMAttributeGetterTypeError(JSGlobalObject*, ThrowScope&, const ClassInfo*, PropertyName);
+JS_EXPORT_PRIVATE JSValue throwDOMAttributeSetterTypeError(JSGlobalObject*, ThrowScope&, const ClassInfo*, PropertyName);
 
 // Convenience wrappers, wrap result as an EncodedJSValue.
 inline void throwVMError(JSGlobalObject* globalObject, ThrowScope& scope, Exception* exception) { throwException(globalObject, scope, exception); }
 inline EncodedJSValue throwVMError(JSGlobalObject* globalObject, ThrowScope& scope, JSValue error) { return JSValue::encode(throwException(globalObject, scope, error)); }
-inline EncodedJSValue throwVMError(JSGlobalObject* globalObject, ThrowScope& scope, const char* errorMessage) { return JSValue::encode(throwException(globalObject, scope, createError(globalObject, errorMessage))); }
+inline EncodedJSValue throwVMError(JSGlobalObject* globalObject, ThrowScope& scope, const String& errorMessage) { return JSValue::encode(throwException(globalObject, scope, createError(globalObject, errorMessage))); }
 inline EncodedJSValue throwVMTypeError(JSGlobalObject* globalObject, ThrowScope& scope) { return JSValue::encode(throwTypeError(globalObject, scope)); }
 inline EncodedJSValue throwVMTypeError(JSGlobalObject* globalObject, ThrowScope& scope, ASCIILiteral errorMessage) { return JSValue::encode(throwTypeError(globalObject, scope, errorMessage)); }
 inline EncodedJSValue throwVMTypeError(JSGlobalObject* globalObject, ThrowScope& scope, const String& errorMessage) { return JSValue::encode(throwTypeError(globalObject, scope, errorMessage)); }
 inline EncodedJSValue throwVMRangeError(JSGlobalObject* globalObject, ThrowScope& scope, const String& errorMessage) { return JSValue::encode(throwRangeError(globalObject, scope, errorMessage)); }
-inline EncodedJSValue throwVMGetterTypeError(JSGlobalObject* globalObject, ThrowScope& scope, const String& errorMessage) { return JSValue::encode(throwGetterTypeError(globalObject, scope, errorMessage)); }
 inline EncodedJSValue throwVMDOMAttributeGetterTypeError(JSGlobalObject* globalObject, ThrowScope& scope, const ClassInfo* classInfo, PropertyName propertyName) { return JSValue::encode(throwDOMAttributeGetterTypeError(globalObject, scope, classInfo, propertyName)); }
+inline EncodedJSValue throwVMDOMAttributeSetterTypeError(JSGlobalObject* globalObject, ThrowScope& scope, const ClassInfo* classInfo, PropertyName propertyName) { return JSValue::encode(throwDOMAttributeSetterTypeError(globalObject, scope, classInfo, propertyName)); }
 
 } // namespace JSC

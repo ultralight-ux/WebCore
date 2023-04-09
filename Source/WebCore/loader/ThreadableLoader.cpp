@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,14 +32,16 @@
 #include "config.h"
 #include "ThreadableLoader.h"
 
-#include "CachedResourceRequestInitiators.h"
+#include "CachedResourceRequestInitiatorTypes.h"
 #include "Document.h"
+#include "DocumentLoader.h"
 #include "DocumentThreadableLoader.h"
 #include "ResourceError.h"
 #include "ScriptExecutionContext.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerRunLoop.h"
 #include "WorkerThreadableLoader.h"
+#include "WorkletGlobalScope.h"
 
 namespace WebCore {
 
@@ -54,10 +57,10 @@ ThreadableLoaderOptions::ThreadableLoaderOptions(FetchOptions&& baseOptions)
 {
 }
 
-ThreadableLoaderOptions::ThreadableLoaderOptions(const ResourceLoaderOptions& baseOptions, ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement, String&& initiator, ResponseFilteringPolicy filteringPolicy)
+ThreadableLoaderOptions::ThreadableLoaderOptions(const ResourceLoaderOptions& baseOptions, ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement, String&& initiatorType, ResponseFilteringPolicy filteringPolicy)
     : ResourceLoaderOptions(baseOptions)
     , contentSecurityPolicyEnforcement(contentSecurityPolicyEnforcement)
-    , initiator(WTFMove(initiator))
+    , initiatorType(WTFMove(initiatorType))
     , filteringPolicy(filteringPolicy)
 {
 }
@@ -74,10 +77,14 @@ ThreadableLoaderOptions ThreadableLoaderOptions::isolatedCopy() const
     copy.redirect = this->redirect;
     copy.referrerPolicy = this->referrerPolicy;
     copy.integrity = this->integrity.isolatedCopy();
+    copy.keepAlive = this->keepAlive;
+    copy.clientIdentifier = this->clientIdentifier;
+    copy.resultingClientIdentifier = this->resultingClientIdentifier;
 
     // ResourceLoaderOptions
     copy.sendLoadCallbacks = this->sendLoadCallbacks;
     copy.sniffContent = this->sniffContent;
+    copy.contentEncodingSniffingPolicy = this->contentEncodingSniffingPolicy;
     copy.dataBufferingPolicy = this->dataBufferingPolicy;
     copy.storedCredentialsPolicy = this->storedCredentialsPolicy;
     copy.securityCheck = this->securityCheck;
@@ -87,25 +94,36 @@ ThreadableLoaderOptions ThreadableLoaderOptions::isolatedCopy() const
     copy.cachingPolicy = this->cachingPolicy;
     copy.sameOriginDataURLFlag = this->sameOriginDataURLFlag;
     copy.initiatorContext = this->initiatorContext;
+    copy.initiator = this->initiator;
     copy.clientCredentialPolicy = this->clientCredentialPolicy;
     copy.maxRedirectCount = this->maxRedirectCount;
     copy.preflightPolicy = this->preflightPolicy;
+    copy.navigationPreloadIdentifier = this->navigationPreloadIdentifier;
 
     // ThreadableLoaderOptions
     copy.contentSecurityPolicyEnforcement = this->contentSecurityPolicyEnforcement;
-    copy.initiator = this->initiator.isolatedCopy();
+    copy.initiatorType = this->initiatorType.isolatedCopy();
     copy.filteringPolicy = this->filteringPolicy;
 
     return copy;
 }
 
 
-RefPtr<ThreadableLoader> ThreadableLoader::create(ScriptExecutionContext& context, ThreadableLoaderClient& client, ResourceRequest&& request, const ThreadableLoaderOptions& options, String&& referrer)
+RefPtr<ThreadableLoader> ThreadableLoader::create(ScriptExecutionContext& context, ThreadableLoaderClient& client, ResourceRequest&& request, const ThreadableLoaderOptions& options, String&& referrer, String&& taskMode)
 {
-    if (is<WorkerGlobalScope>(context))
-        return WorkerThreadableLoader::create(downcast<WorkerGlobalScope>(context), client, WorkerRunLoop::defaultMode(), WTFMove(request), options, WTFMove(referrer));
+    Document* document = nullptr;
+    if (is<WorkletGlobalScope>(context))
+        document = downcast<WorkletGlobalScope>(context).responsibleDocument();
+    else if (is<Document>(context))
+        document = &downcast<Document>(context);
 
-    return DocumentThreadableLoader::create(downcast<Document>(context), client, WTFMove(request), options, WTFMove(referrer));
+    if (auto* documentLoader = document ? document->loader() : nullptr)
+        request.setIsAppInitiated(documentLoader->lastNavigationWasAppInitiated());
+    
+    if (is<WorkerGlobalScope>(context) || (is<WorkletGlobalScope>(context) && downcast<WorkletGlobalScope>(context).workerOrWorkletThread()))
+        return WorkerThreadableLoader::create(static_cast<WorkerOrWorkletGlobalScope&>(context), client, WTFMove(taskMode), WTFMove(request), options, WTFMove(referrer));
+
+    return DocumentThreadableLoader::create(*document, client, WTFMove(request), options, WTFMove(referrer));
 }
 
 void ThreadableLoader::loadResourceSynchronously(ScriptExecutionContext& context, ResourceRequest&& request, ThreadableLoaderClient& client, const ThreadableLoaderOptions& options)
@@ -118,7 +136,7 @@ void ThreadableLoader::loadResourceSynchronously(ScriptExecutionContext& context
     context.didLoadResourceSynchronously(resourceURL);
 }
 
-void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceError& error, const String& initiator)
+void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceError& error, const String& initiatorType)
 {
     if (error.isCancellation())
         return;
@@ -133,11 +151,11 @@ void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceE
         return;
 
     const char* messageStart;
-    if (initiator == cachedResourceRequestInitiators().eventsource)
+    if (initiatorType == cachedResourceRequestInitiatorTypes().eventsource)
         messageStart = "EventSource cannot load ";
-    else if (initiator == cachedResourceRequestInitiators().fetch)
+    else if (initiatorType == cachedResourceRequestInitiatorTypes().fetch)
         messageStart = "Fetch API cannot load ";
-    else if (initiator == cachedResourceRequestInitiators().xmlhttprequest)
+    else if (initiatorType == cachedResourceRequestInitiatorTypes().xmlhttprequest)
         messageStart = "XMLHttpRequest cannot load ";
     else
         messageStart = "Cannot load ";

@@ -8,9 +8,8 @@
 #include "AffineTransform.h"
 #include "FloatRect.h"
 #include "GraphicsContext.h"
-#include "GraphicsContextImpl.h"
+#include "NullGraphicsContext.h"
 #include "RefPtrUltralight.h"
-#include "StrokeStyleApplier.h"
 #include <Ultralight/private/Path.h>
 #include <math.h>
 #include <wtf/MathExtras.h>
@@ -309,18 +308,19 @@ void Path::closeSubpath()
 //    return FloatRect(aabb.x(), aabb.y(), aabb.width(), aabb.height());
 //}
 
-FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
+FloatRect Path::strokeBoundingRect(const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
     // Should this be isEmpty() or can an empty path have a non-zero origin?
     if (isNull())
         return FloatRect();
 
-    if (!applier)
-        return FloatRect();
+    // Set up a temporary GraphicsContext to get the stroke thickness.
+    NullGraphicsContext gc;
+    if (strokeStyleApplier)
+        strokeStyleApplier(gc);
 
-    GraphicsContext gc;
-    applier->strokeStyle(&gc);
     float stroke_width = gc.strokeThickness();
+
     FloatRect stroked_bounds = boundingRect();
     stroked_bounds.inflate(stroke_width);
     return stroked_bounds;
@@ -335,15 +335,20 @@ bool Path::contains(const FloatPoint& point, WindRule rule) const
     return path->IsPointFilled({ point.x(), point.y() }, fill_rule);
 }
 
-bool Path::strokeContains(StrokeStyleApplier& applier, const FloatPoint& point) const
+bool Path::strokeContains(const FloatPoint& point, const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
     if (isNull())
         return false;
 
     auto path = platformPath();
-    GraphicsContext gc;
-    applier.strokeStyle(&gc);
+
+    // Set up a temporary GraphicsContext to get the stroke thickness.
+    NullGraphicsContext gc;
+    if (strokeStyleApplier)
+        strokeStyleApplier(gc);
+
     float stroke_width = gc.strokeThickness();
+
     float dist = path->GetDistanceToPoint({ point.x(), point.y() });
     return dist < stroke_width;
 }

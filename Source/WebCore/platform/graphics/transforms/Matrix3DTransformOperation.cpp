@@ -26,25 +26,37 @@
 #include "config.h"
 #include "Matrix3DTransformOperation.h"
 
+#include "AnimationUtilities.h"
 #include <algorithm>
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
+
+Ref<Matrix3DTransformOperation> Matrix3DTransformOperation::create(const TransformationMatrix& matrix)
+{
+    return adoptRef(*new Matrix3DTransformOperation(matrix));
+}
+
+Matrix3DTransformOperation::Matrix3DTransformOperation(const TransformationMatrix& mat)
+    : TransformOperation(TransformOperation::Type::Matrix3D)
+    , m_matrix(mat)
+{
+}
 
 bool Matrix3DTransformOperation::operator==(const TransformOperation& other) const
 {
     return isSameType(other) && m_matrix == downcast<Matrix3DTransformOperation>(other).m_matrix;
 }
 
-static Ref<TransformOperation> createOperation(TransformationMatrix& to, TransformationMatrix& from, double progress)
+static Ref<TransformOperation> createOperation(TransformationMatrix& to, TransformationMatrix& from, const BlendingContext& context)
 {
-    to.blend(from, progress);
+    to.blend(from, context.progress, context.compositeOperation);
     return Matrix3DTransformOperation::create(to);
 }
 
-Ref<TransformOperation> Matrix3DTransformOperation::blend(const TransformOperation* from, double progress, bool blendToIdentity)
+Ref<TransformOperation> Matrix3DTransformOperation::blend(const TransformOperation* from, const BlendingContext& context, bool blendToIdentity)
 {
-    if (from && !from->isSameType(*this))
+    if (!sharedPrimitiveType(from))
         return *this;
 
     // Convert the TransformOperations into matrices
@@ -57,8 +69,8 @@ Ref<TransformOperation> Matrix3DTransformOperation::blend(const TransformOperati
     apply(toT, size);
 
     if (blendToIdentity)
-        return createOperation(fromT, toT, progress);
-    return createOperation(toT, fromT, progress);
+        return createOperation(fromT, toT, context);
+    return createOperation(toT, fromT, context);
 }
 
 bool Matrix3DTransformOperation::isRepresentableIn2D() const

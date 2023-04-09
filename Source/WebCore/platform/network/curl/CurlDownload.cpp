@@ -34,13 +34,10 @@
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
+#include "SynchronousLoaderClient.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
-#include "SynchronousLoaderClient.h"
-
-#if USE(ULTRALIGHT)
-#include <Ultralight/private/tracy/Tracy.hpp>
-#endif
+#include "SecurityOrigin.h"
 
 namespace WebCore {
 
@@ -59,7 +56,6 @@ void CurlDownload::init(CurlDownloadListener& listener, uint32_t id, const URL& 
 
 void CurlDownload::init(CurlDownloadListener& listener, uint32_t id, ResourceHandle* handle, const ResourceRequest& request, const ResourceResponse& response)
 {
-    m_id = id;
     m_listener = &listener;
     m_request = request.isolatedCopy();
 
@@ -88,7 +84,7 @@ bool CurlDownload::cancel()
 {
     m_isCancelled = true;
 
-    if (!m_curlRequest)
+    if (m_curlRequest)
         m_curlRequest->cancel();
 
     return true;
@@ -96,6 +92,7 @@ bool CurlDownload::cancel()
 
 Ref<CurlRequest> CurlDownload::createCurlRequest(ResourceRequest& request)
 {
+    // FIXME: Use a correct sessionID.
     auto curlRequest = CurlRequest::create(request, *this);
     return curlRequest;
 }
@@ -118,6 +115,23 @@ void CurlDownload::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& r
         m_listener->didReceiveResponse(m_id, m_response);
 
     request.completeDidReceiveResponse();
+}
+
+
+void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
+{
+    ASSERT(isMainThread());
+
+    if (m_isCancelled)
+        return;
+
+    if (m_listener) {
+        RefPtr<SharedBuffer> buffer;
+        while (queue.try_dequeue(buffer)) {
+            if (buffer->size() && !m_isCancelled)
+                m_listener->didReceiveData(m_id, WTFMove(buffer));
+        }
+    }
 }
 
 void CurlDownload::curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&)
@@ -150,28 +164,9 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
         m_listener->didFail(m_id);
 }
 
-void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
-{
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
-    ASSERT(isMainThread());
-
-    if (m_isCancelled)
-        return;
-
-    if (m_listener) {
-        RefPtr<SharedBuffer> buffer;
-        while (queue.try_dequeue(buffer)) {
-            if (buffer->size() && !m_isCancelled)
-                m_listener->didReceiveData(m_id, WTFMove(buffer));
-        }
-    }
-}
-
 bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
 {
-    if ((request.httpMethod() == "GET") || (request.httpMethod() == "HEAD"))
+    if ((request.httpMethod() == "GET"_s) || (request.httpMethod() == "HEAD"_s))
         return false;
 
     if (!request.url().protocolIsInHTTPFamily())
@@ -180,10 +175,10 @@ bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool cros
     if (m_response.isSeeOther())
         return true;
 
-    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"))
+    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"_s))
         return true;
 
-    if (crossOrigin && (request.httpMethod() == "DELETE"))
+    if (crossOrigin && (request.httpMethod() == "DELETE"_s))
         return true;
 
     return false;
@@ -209,14 +204,14 @@ void CurlDownload::willSendRequest()
     newRequest.setURL(newURL);
 
     if (shouldRedirectAsGET(newRequest, crossOrigin)) {
-        newRequest.setHTTPMethod("GET");
+        newRequest.setHTTPMethod("GET"_s);
         newRequest.setHTTPBody(nullptr);
         newRequest.clearHTTPContentType();
     }
 
     if (crossOrigin) {
         // If the network layer carries over authentication headers from the original request
-        // in a cross-origin redirect, we want to clear those headers here.
+        // in a cross-origin redirect, we want to clear those headers here. 
         newRequest.clearHTTPAuthorization();
         newRequest.clearHTTPOrigin();
     }

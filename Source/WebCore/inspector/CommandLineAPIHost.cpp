@@ -39,11 +39,11 @@
 #include "JSCommandLineAPIHost.h"
 #include "JSDOMGlobalObject.h"
 #include "JSEventListener.h"
+#include "PagePasteboardContext.h"
 #include "Pasteboard.h"
 #include "Storage.h"
 #include "WebConsoleAgent.h"
 #include <JavaScriptCore/InspectorAgent.h>
-#include <JavaScriptCore/ConsoleMessage.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/ScriptValue.h>
@@ -74,7 +74,7 @@ void CommandLineAPIHost::disconnect()
     m_instrumentingAgents = nullptr;
 }
 
-void CommandLineAPIHost::inspect(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue valueToInspect, JSC::JSValue hintsValue)
+void CommandLineAPIHost::inspect(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue object, JSC::JSValue hints)
 {
     if (!m_instrumentingAgents)
         return;
@@ -83,12 +83,20 @@ void CommandLineAPIHost::inspect(JSC::JSGlobalObject& lexicalGlobalObject, JSC::
     if (!inspectorAgent)
         return;
 
-    RefPtr<JSON::Object> hintsObject;
-    if (!Inspector::toInspectorValue(&lexicalGlobalObject, hintsValue)->asObject(hintsObject))
+    auto objectValue = Inspector::toInspectorValue(&lexicalGlobalObject, object);
+    if (!objectValue)
         return;
 
-    auto remoteObject = BindingTraits<Inspector::Protocol::Runtime::RemoteObject>::runtimeCast(Inspector::toInspectorValue(&lexicalGlobalObject, valueToInspect));
-    inspectorAgent->inspect(WTFMove(remoteObject), WTFMove(hintsObject));
+    auto hintsValue = Inspector::toInspectorValue(&lexicalGlobalObject, hints);
+    if (!hintsValue)
+        return;
+
+    auto hintsObject = hintsValue->asObject();
+    if (!hintsObject)
+        return;
+
+    auto remoteObject = Protocol::BindingTraits<Protocol::Runtime::RemoteObject>::runtimeCast(objectValue.releaseNonNull());
+    inspectorAgent->inspect(WTFMove(remoteObject), hintsObject.releaseNonNull());
 }
 
 CommandLineAPIHost::EventListenersRecord CommandLineAPIHost::getEventListeners(JSGlobalObject& lexicalGlobalObject, EventTarget& target)
@@ -137,13 +145,12 @@ void CommandLineAPIHost::clearConsoleMessages()
     if (!consoleAgent)
         return;
 
-    ErrorString ignored;
-    consoleAgent->clearMessages(ignored);
+    consoleAgent->clearMessages();
 }
 
 void CommandLineAPIHost::copyText(const String& text)
 {
-    Pasteboard::createForCopyAndPaste()->writePlainText(text, Pasteboard::CannotSmartReplace);
+    Pasteboard::createForCopyAndPaste({ })->writePlainText(text, Pasteboard::CannotSmartReplace);
 }
 
 JSC::JSValue CommandLineAPIHost::InspectableObject::get(JSC::JSGlobalObject&)
@@ -188,7 +195,7 @@ JSValue CommandLineAPIHost::wrapper(JSGlobalObject* exec, JSDOMGlobalObject* glo
 
     JSObject* prototype = JSCommandLineAPIHost::createPrototype(exec->vm(), *globalObject);
     Structure* structure = JSCommandLineAPIHost::createStructure(exec->vm(), globalObject, prototype);
-    JSCommandLineAPIHost* commandLineAPIHost = JSCommandLineAPIHost::create(structure, globalObject, makeRef(*this));
+    JSCommandLineAPIHost* commandLineAPIHost = JSCommandLineAPIHost::create(structure, globalObject, Ref { *this });
     m_wrappers.addWrapper(globalObject, commandLineAPIHost);
 
     return commandLineAPIHost;

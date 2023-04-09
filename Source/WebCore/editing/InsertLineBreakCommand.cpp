@@ -60,7 +60,7 @@ bool InsertLineBreakCommand::shouldUseBreakElement(const Position& position)
     // the input element, and in that case we need to check the input element's
     // parent's renderer.
     auto* node = position.parentAnchoredEquivalent().deprecatedNode();
-    return node->renderer() && !node->renderer()->style().preserveNewline();
+    return node && node->renderer() && !node->renderer()->style().preserveNewline();
 }
 
 void InsertLineBreakCommand::doApply()
@@ -81,17 +81,20 @@ void InsertLineBreakCommand::doApply()
     position = positionAvoidingSpecialElementBoundary(position);
     position = positionOutsideTabSpan(position);
 
+    if (!isEditablePosition(position))
+        return;
+
     RefPtr<Node> nodeToInsert;
     if (shouldUseBreakElement(position))
         nodeToInsert = HTMLBRElement::create(document());
     else
-        nodeToInsert = document().createTextNode("\n");
+        nodeToInsert = document().createTextNode("\n"_s);
     
     // FIXME: Need to merge text nodes when inserting just after or before text.
-    
+    document().updateLayoutIgnorePendingStylesheets();
     if (isEndOfParagraph(caret) && !lineBreakExistsAtVisiblePosition(caret)) {
         bool needExtraLineBreak = !is<HTMLHRElement>(*position.deprecatedNode()) && !is<HTMLTableElement>(*position.deprecatedNode());
-        
+
         insertNodeAt(*nodeToInsert, position);
         
         if (needExtraLineBreak)
@@ -106,12 +109,12 @@ void InsertLineBreakCommand::doApply()
         if (!isStartOfParagraph(positionBeforeNode(nodeToInsert.get())))
             insertNodeBefore(nodeToInsert->cloneNode(false), *nodeToInsert);
         
-        setEndingSelection(VisibleSelection(positionInParentAfterNode(nodeToInsert.get()), DOWNSTREAM, endingSelection().isDirectional()));
+        setEndingSelection(VisibleSelection(positionInParentAfterNode(nodeToInsert.get()), Affinity::Downstream, endingSelection().isDirectional()));
     // If we're inserting after all of the rendered text in a text node, or into a non-text node,
     // a simple insertion is sufficient.
     } else if (position.deprecatedEditingOffset() >= caretMaxOffset(*position.deprecatedNode()) || !is<Text>(*position.deprecatedNode())) {
         insertNodeAt(*nodeToInsert, position);
-        setEndingSelection(VisibleSelection(positionInParentAfterNode(nodeToInsert.get()), DOWNSTREAM, endingSelection().isDirectional()));
+        setEndingSelection(VisibleSelection(positionInParentAfterNode(nodeToInsert.get()), Affinity::Downstream, endingSelection().isDirectional()));
     } else if (is<Text>(*position.deprecatedNode())) {
         // Split a text node
         Text& textNode = downcast<Text>(*position.deprecatedNode());
@@ -130,14 +133,14 @@ void InsertLineBreakCommand::doApply()
             if (textNode.isConnected())
                 insertTextIntoNode(textNode, 0, nonBreakingSpaceString());
             else {
-                auto nbspNode = document().createTextNode(nonBreakingSpaceString());
+                auto nbspNode = document().createTextNode(String { nonBreakingSpaceString() });
                 auto* nbspNodePtr = nbspNode.ptr();
                 insertNodeAt(WTFMove(nbspNode), positionBeforeTextNode);
                 endingPosition = firstPositionInNode(nbspNodePtr);
             }
         }
         
-        setEndingSelection(VisibleSelection(endingPosition, DOWNSTREAM, endingSelection().isDirectional()));
+        setEndingSelection(VisibleSelection(endingPosition, Affinity::Downstream, endingSelection().isDirectional()));
     }
 
     // Handle the case where there is a typing style.

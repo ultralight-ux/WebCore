@@ -25,11 +25,12 @@
 
 [
     GenerateIsReachable=ImplElementRoot,
-    OverrideBuiltins,
+    LegacyOverrideBuiltIns,
     SkipVTableValidation,
+    Exposed=Window
 ] interface DOMStringMap {
-    getter DOMString (DOMString name);
-    [CEReactions, MayThrowException] setter void (DOMString name, DOMString value);
-    [CEReactions] deleter void (DOMString name);
+    getter DOMString ([AtomString] DOMString name);
+    [CEReactions] setter undefined (DOMString name, [AtomString] DOMString value);
+    [CEReactions] deleter undefined (DOMString name);
 };
 

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "Position.h"
+#include "TextIteratorBehavior.h"
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
 #include <wtf/unicode/CharacterNames.h>
@@ -118,16 +119,11 @@ Position previousCandidate(const Position&);
 Position nextVisuallyDistinctCandidate(const Position&);
 Position previousVisuallyDistinctCandidate(const Position&);
 
-Position positionBeforeContainingSpecialElement(const Position&, HTMLElement** containingSpecialElement = nullptr);
-Position positionAfterContainingSpecialElement(const Position&, HTMLElement** containingSpecialElement = nullptr);
-
 Position firstPositionInOrBeforeNode(Node*);
 Position lastPositionInOrAfterNode(Node*);
 
 Position firstEditablePositionAfterPositionInRoot(const Position&, ContainerNode* root);
 Position lastEditablePositionBeforePositionInRoot(const Position&, ContainerNode* root);
-
-WEBCORE_EXPORT int comparePositions(const Position&, const Position&);
 
 WEBCORE_EXPORT bool isEditablePosition(const Position&, EditableType = ContentIsEditable);
 bool isRichlyEditablePosition(const Position&);
@@ -148,12 +144,10 @@ VisiblePosition visiblePositionAfterNode(Node&);
 
 bool lineBreakExistsAtVisiblePosition(const VisiblePosition&);
 
-WEBCORE_EXPORT int comparePositions(const VisiblePosition&, const VisiblePosition&);
-
 WEBCORE_EXPORT int indexForVisiblePosition(const VisiblePosition&, RefPtr<ContainerNode>& scope);
-int indexForVisiblePosition(Node&, const VisiblePosition&, bool forSelectionPreservation);
+int indexForVisiblePosition(Node&, const VisiblePosition&, TextIteratorBehaviors);
 WEBCORE_EXPORT VisiblePosition visiblePositionForPositionWithOffset(const VisiblePosition&, int offset);
-WEBCORE_EXPORT VisiblePosition visiblePositionForIndex(int index, ContainerNode* scope);
+WEBCORE_EXPORT VisiblePosition visiblePositionForIndex(int index, Node* scope, TextIteratorBehaviors = TextIteratorBehavior::EmitsCharactersBetweenAllVisiblePositions);
 VisiblePosition visiblePositionForIndexUsingCharacterIterator(Node&, int index); // FIXME: Why do we need this version?
 
 WEBCORE_EXPORT VisiblePosition closestEditablePositionInElementForAbsolutePoint(const Element&, const IntPoint&);
@@ -175,7 +169,7 @@ Node* enclosingListChild(Node*);
 // -------------------------------------------------------------------------
 
 Ref<Element> createTabSpanElement(Document&);
-Ref<Element> createTabSpanElement(Document&, const String& tabText);
+Ref<Element> createTabSpanElement(Document&, String&& tabText);
 Ref<Element> createBlockPlaceholderElement(Document&);
 
 Element* editableRootForPosition(const Position&, EditableType = ContentIsEditable);
@@ -200,7 +194,7 @@ bool deprecatedIsCollapsibleWhitespace(UChar);
 
 bool isAmbiguousBoundaryCharacter(UChar);
 
-String stringWithRebalancedWhitespace(const String&, bool startIsStartOfParagraph, bool endIsEndOfParagraph);
+String stringWithRebalancedWhitespace(const String&, bool startIsStartOfParagraph, bool shouldEmitNBSPbeforeEnd);
 const String& nonBreakingSpaceString();
 
 // Miscellaneous functions for caret rendering.

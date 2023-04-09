@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,25 +33,26 @@
 #import "IntRect.h"
 #import "Logging.h"
 #import "MediaConstraints.h"
-#import "MediaSampleAVFObjC.h"
 #import "PlatformLayer.h"
 #import "RealtimeMediaSourceCenter.h"
 #import "RealtimeMediaSourceSettings.h"
 #import "RealtimeVideoSource.h"
 #import "RealtimeVideoUtilities.h"
+#import "VideoFrameCV.h"
 #import <AVFoundation/AVCaptureDevice.h>
 #import <AVFoundation/AVCaptureInput.h>
 #import <AVFoundation/AVCaptureOutput.h>
 #import <AVFoundation/AVCaptureSession.h>
 #import <AVFoundation/AVError.h>
 #import <objc/runtime.h>
+#import <pal/avfoundation/MediaTimeAVFoundation.h>
+#import <pal/spi/cocoa/AVFoundationSPI.h>
 
 #import "CoreVideoSoftLink.h"
 #import <pal/cocoa/AVFoundationSoftLink.h>
 #import <pal/cf/CoreMediaSoftLink.h>
 
 using namespace WebCore;
-using namespace PAL;
 
 @interface WebCoreAVVideoCaptureSourceObserver : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate> {
     AVVideoCaptureSource* m_callback;
@@ -108,13 +109,13 @@ public:
     RetainPtr<AVCaptureDeviceFormat> format;
 };
 
-CaptureSourceOrError AVVideoCaptureSource::create(String&& id, String&& hashSalt, const MediaConstraints* constraints)
+CaptureSourceOrError AVVideoCaptureSource::create(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier pageIdentifier)
 {
-    AVCaptureDevice *device = [PAL::getAVCaptureDeviceClass() deviceWithUniqueID:id];
-    if (!device)
+    auto *avDevice = [PAL::getAVCaptureDeviceClass() deviceWithUniqueID:device.persistentId()];
+    if (!avDevice)
         return { "No AVVideoCaptureSource device"_s };
 
-    auto source = adoptRef(*new AVVideoCaptureSource(device, WTFMove(id), WTFMove(hashSalt)));
+    auto source = adoptRef(*new AVVideoCaptureSource(avDevice, device, WTFMove(hashSalts), pageIdentifier));
     if (constraints) {
         auto result = source->applyConstraints(*constraints);
         if (result)
@@ -124,20 +125,19 @@ CaptureSourceOrError AVVideoCaptureSource::create(String&& id, String&& hashSalt
     return CaptureSourceOrError(RealtimeVideoSource::create(WTFMove(source)));
 }
 
-AVVideoCaptureSource::AVVideoCaptureSource(AVCaptureDevice* device, String&& id, String&& hashSalt)
-    : RealtimeVideoCaptureSource(device.localizedName, WTFMove(id), WTFMove(hashSalt))
+AVVideoCaptureSource::AVVideoCaptureSource(AVCaptureDevice* avDevice, const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, PageIdentifier pageIdentifier)
+    : RealtimeVideoCaptureSource(device, WTFMove(hashSalts), pageIdentifier)
     , m_objcObserver(adoptNS([[WebCoreAVVideoCaptureSourceObserver alloc] initWithCallback:this]))
-    , m_device(device)
+    , m_device(avDevice)
     , m_verifyCapturingTimer(*this, &AVVideoCaptureSource::verifyIsCapturing)
 {
-    [m_device.get() addObserver:m_objcObserver.get() forKeyPath:@"suspended" options:NSKeyValueObservingOptionNew context:(void *)nil];
+    [m_device addObserver:m_objcObserver.get() forKeyPath:@"suspended" options:NSKeyValueObservingOptionNew context:(void *)nil];
 }
 
 AVVideoCaptureSource::~AVVideoCaptureSource()
 {
-#if PLATFORM(IOS_FAMILY)
-    RealtimeMediaSourceCenter::singleton().videoCaptureFactory().unsetActiveSource(*this);
-#endif
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
+
     [m_objcObserver disconnect];
     [m_device removeObserver:m_objcObserver.get() forKeyPath:@"suspended"];
 
@@ -164,7 +164,7 @@ void AVVideoCaptureSource::verifyIsCapturing()
 
 void AVVideoCaptureSource::updateVerifyCapturingTimer()
 {
-    if (!m_isRunning) {
+    if (!m_isRunning || m_interrupted) {
         m_verifyCapturingTimer.stop();
         return;
     }
@@ -192,10 +192,11 @@ void AVVideoCaptureSource::startProducingData()
             return;
     }
 
-    if ([m_session isRunning])
+    bool isRunning = !![m_session isRunning];
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, isRunning);
+    if (isRunning)
         return;
 
-    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
     [m_objcObserver addNotificationObservers];
     [m_session startRunning];
 }
@@ -205,11 +206,9 @@ void AVVideoCaptureSource::stopProducingData()
     if (!m_session)
         return;
 
-    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, !![m_session isRunning]);
     [m_objcObserver removeNotificationObservers];
-
-    if ([m_session isRunning])
-        [m_session stopRunning];
+    [m_session stopRunning];
 
     m_interrupted = false;
 
@@ -232,7 +231,7 @@ void AVVideoCaptureSource::commitConfiguration()
 
 void AVVideoCaptureSource::settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>)
 {
-    m_currentSettings = WTF::nullopt;
+    m_currentSettings = std::nullopt;
 }
 
 const RealtimeMediaSourceSettings& AVVideoCaptureSource::settings()
@@ -252,7 +251,7 @@ const RealtimeMediaSourceSettings& AVVideoCaptureSource::settings()
     settings.setFrameRate(frameRate());
 
     auto size = this->size();
-    if (m_sampleRotation == MediaSample::VideoRotation::Left || m_sampleRotation == MediaSample::VideoRotation::Right)
+    if (m_videoFrameRotation == VideoFrame::Rotation::Left || m_videoFrameRotation == VideoFrame::Rotation::Right)
         size = size.transposedSize();
     
     settings.setWidth(size.width());
@@ -295,6 +294,38 @@ const RealtimeMediaSourceCapabilities& AVVideoCaptureSource::capabilities()
     return *m_capabilities;
 }
 
+double AVVideoCaptureSource::facingModeFitnessDistanceAdjustment() const
+{
+    ASSERT(isMainThread());
+
+    if ([device() position] != AVCaptureDevicePositionBack)
+        return 0;
+
+    static NSMutableArray *devicePriorities;
+    if (!devicePriorities) {
+        devicePriorities = [[NSMutableArray alloc] init];
+
+        if (PAL::canLoad_AVFoundation_AVCaptureDeviceTypeBuiltInTripleCamera())
+            [devicePriorities addObject:AVCaptureDeviceTypeBuiltInTripleCamera];
+        if (PAL::canLoad_AVFoundation_AVCaptureDeviceTypeBuiltInDualWideCamera())
+            [devicePriorities addObject:AVCaptureDeviceTypeBuiltInDualWideCamera];
+        [devicePriorities addObject:AVCaptureDeviceTypeBuiltInUltraWideCamera];
+        [devicePriorities addObject:AVCaptureDeviceTypeBuiltInDualCamera];
+        [devicePriorities addObject:AVCaptureDeviceTypeBuiltInWideAngleCamera];
+        [devicePriorities addObject:AVCaptureDeviceTypeBuiltInTelephotoCamera];
+        if (PAL::canLoad_AVFoundation_AVCaptureDeviceTypeDeskViewCamera())
+            [devicePriorities addObject:AVCaptureDeviceTypeDeskViewCamera];
+    }
+
+    auto relativePriority = [devicePriorities indexOfObject:[device() deviceType]];
+    if (relativePriority == NSNotFound)
+        relativePriority = devicePriorities.count;
+
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, captureDevice().label(), " has priority ", relativePriority);
+
+    return relativePriority;
+}
+
 bool AVVideoCaptureSource::prefersPreset(VideoPreset& preset)
 {
 #if PLATFORM(IOS_FAMILY)
@@ -326,13 +357,20 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
 
     ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, SizeAndFrameRate { m_currentPreset->size.width(), m_currentPreset->size.height(), m_currentFrameRate });
 
+    auto* frameRateRange = frameDurationForFrameRate(m_currentFrameRate);
+    ASSERT(frameRateRange);
+
+    if (m_appliedPreset && m_appliedPreset->format.get() == m_currentPreset->format.get() && m_appliedFrameRateRange.get() == frameRateRange) {
+        ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, " settings already match");
+        return;
+    }
+
     ASSERT(avPreset->format);
 
     NSError *error = nil;
     [m_session beginConfiguration];
     @try {
         if ([device() lockForConfiguration:&error]) {
-            ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "setting preset to ", m_currentSize);
             [device() setActiveFormat:avPreset->format.get()];
 
 #if PLATFORM(MAC)
@@ -345,15 +383,13 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
             [m_videoOutput setVideoSettings:settingsDictionary];
 #endif
 
-            auto* frameRateRange = frameDurationForFrameRate(m_currentFrameRate);
-            ASSERT(frameRateRange);
             if (frameRateRange) {
                 m_currentFrameRate = clampTo(m_currentFrameRate, frameRateRange.minFrameRate, frameRateRange.maxFrameRate);
 
-                auto frameDuration = CMTimeMake(1, m_currentFrameRate);
-                if (CMTimeCompare(frameDuration, frameRateRange.minFrameDuration) < 0)
+                auto frameDuration = PAL::CMTimeMake(1, m_currentFrameRate);
+                if (PAL::CMTimeCompare(frameDuration, frameRateRange.minFrameDuration) < 0)
                     frameDuration = frameRateRange.minFrameDuration;
-                else if (CMTimeCompare(frameDuration, frameRateRange.maxFrameDuration) > 0)
+                else if (PAL::CMTimeCompare(frameDuration, frameRateRange.maxFrameDuration) > 0)
                     frameDuration = frameRateRange.maxFrameDuration;
 
                 ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "setting frame rate to ", m_currentFrameRate, ", duration ", PAL::toMediaTime(frameDuration));
@@ -364,6 +400,8 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
                 ERROR_LOG_IF(loggerPtr(), LOGIDENTIFIER, "cannot find proper frame rate range for the selected preset\n");
 
             [device() unlockForConfiguration];
+            m_appliedFrameRateRange = frameRateRange;
+            m_appliedPreset = m_currentPreset;
         }
     } @catch(NSException *exception) {
         ERROR_LOG_IF(loggerPtr(), LOGIDENTIFIER, "error configuring device ", [[exception name] UTF8String], ", reason : ", [[exception reason] UTF8String]);
@@ -415,9 +453,25 @@ bool AVVideoCaptureSource::setupSession()
 
     ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
 
-    m_session = adoptNS([PAL::allocAVCaptureSessionInstance() init]);
+#if ENABLE(APP_PRIVACY_REPORT)
+    auto identity = RealtimeMediaSourceCenter::singleton().identity();
+    ERROR_LOG_IF(loggerPtr() && !identity, LOGIDENTIFIER, "RealtimeMediaSourceCenter::identity() returned null!");
+
+    if (identity && [PAL::getAVCaptureSessionClass() instancesRespondToSelector:@selector(initWithAssumedIdentity:)])
+        m_session = adoptNS([PAL::allocAVCaptureSessionInstance() initWithAssumedIdentity:identity.get()]);
+
+    if (!m_session)
+#endif
+        m_session = adoptNS([PAL::allocAVCaptureSessionInstance() init]);
+
+    if (!m_session) {
+        ERROR_LOG_IF(loggerPtr(), LOGIDENTIFIER, "failed to allocate AVCaptureSession");
+        captureFailed();
+        return false;
+    }
+
 #if PLATFORM(IOS_FAMILY)
-    AVCaptureSessionSetAuthorizedToUseCameraInMultipleForegroundAppLayout(m_session.get());
+    PAL::AVCaptureSessionSetAuthorizedToUseCameraInMultipleForegroundAppLayout(m_session.get());
 #endif
     [m_session addObserver:m_objcObserver.get() forKeyPath:@"running" options:NSKeyValueObservingOptionNew context:(void *)nil];
 
@@ -433,6 +487,8 @@ bool AVVideoCaptureSource::setupSession()
 
 AVFrameRateRange* AVVideoCaptureSource::frameDurationForFrameRate(double rate)
 {
+    using namespace PAL; // For CMTIME_COMPARE_INLINE
+
     AVFrameRateRange *bestFrameRateRange = nil;
     for (AVFrameRateRange *frameRateRange in [[device() activeFormat] videoSupportedFrameRateRanges]) {
         if (frameRateRangeIncludesRate({ [frameRateRange minFrameRate], [frameRateRange maxFrameRate] }, rate)) {
@@ -450,10 +506,6 @@ AVFrameRateRange* AVVideoCaptureSource::frameDurationForFrameRate(double rate)
 bool AVVideoCaptureSource::setupCaptureSession()
 {
     ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
-
-#if PLATFORM(IOS_FAMILY)
-    RealtimeMediaSourceCenter::singleton().videoCaptureFactory().setActiveSource(*this);
-#endif
 
     NSError *error = nil;
     RetainPtr<AVCaptureDeviceInput> videoIn = adoptNS([PAL::allocAVCaptureDeviceInputInstance() initWithDevice:device() error:&error]);
@@ -484,13 +536,14 @@ bool AVVideoCaptureSource::setupCaptureSession()
     setSessionSizeAndFrameRate();
 
     m_sensorOrientation = sensorOrientationFromVideoOutput(m_videoOutput.get());
-    computeSampleRotation();
+    computeVideoFrameRotation();
 
     return true;
 }
 
 void AVVideoCaptureSource::shutdownCaptureSession()
 {
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
     m_buffer = nullptr;
 }
 
@@ -508,37 +561,38 @@ void AVVideoCaptureSource::orientationChanged(int orientation)
 {
     ASSERT(orientation == 0 || orientation == 90 || orientation == -90 || orientation == 180);
     m_deviceOrientation = orientation;
-    computeSampleRotation();
+    computeVideoFrameRotation();
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "rotation = ", m_videoFrameRotation, ", orientation = ", m_deviceOrientation);
 }
 
-void AVVideoCaptureSource::computeSampleRotation()
+void AVVideoCaptureSource::computeVideoFrameRotation()
 {
     bool frontCamera = [device() position] == AVCaptureDevicePositionFront;
-    MediaSample::VideoRotation sampleRotation;
+    VideoFrame::Rotation videoFrameRotation;
     switch (m_sensorOrientation - m_deviceOrientation) {
     case 0:
-        sampleRotation = MediaSample::VideoRotation::None;
+        videoFrameRotation = VideoFrame::Rotation::None;
         break;
     case 180:
     case -180:
-        sampleRotation = MediaSample::VideoRotation::UpsideDown;
+        videoFrameRotation = VideoFrame::Rotation::UpsideDown;
         break;
     case 90:
     case -270:
-        sampleRotation = frontCamera ? MediaSample::VideoRotation::Left : MediaSample::VideoRotation::Right;
+        videoFrameRotation = frontCamera ? VideoFrame::Rotation::Left : VideoFrame::Rotation::Right;
         break;
     case -90:
     case 270:
-        sampleRotation = frontCamera ? MediaSample::VideoRotation::Right : MediaSample::VideoRotation::Left;
+        videoFrameRotation = frontCamera ? VideoFrame::Rotation::Right : VideoFrame::Rotation::Left;
         break;
     default:
         ASSERT_NOT_REACHED();
-        sampleRotation = MediaSample::VideoRotation::None;
+        videoFrameRotation = VideoFrame::Rotation::None;
     }
-    if (sampleRotation == m_sampleRotation)
+    if (videoFrameRotation == m_videoFrameRotation)
         return;
 
-    m_sampleRotation = sampleRotation;
+    m_videoFrameRotation = videoFrameRotation;
     notifySettingsDidChangeObservers({ RealtimeMediaSourceSettings::Flag::Width, RealtimeMediaSourceSettings::Flag::Height });
 }
 
@@ -547,10 +601,12 @@ void AVVideoCaptureSource::captureOutputDidOutputSampleBufferFromConnection(AVCa
     if (++m_framesCount <= framesToDropWhenStarting)
         return;
 
-    auto sample = MediaSampleAVFObjC::create(sampleBuffer, m_sampleRotation, [captureConnection isVideoMirrored]);
-    m_buffer = &sample.get();
-    setIntrinsicSize(expandedIntSize(sample->presentationSize()));
-    dispatchMediaSampleToObservers(WTFMove(sample));
+    auto videoFrame = VideoFrameCV::create(sampleBuffer, [captureConnection isVideoMirrored], m_videoFrameRotation);
+    m_buffer = &videoFrame.get();
+    setIntrinsicSize(expandedIntSize(videoFrame->presentationSize()));
+    VideoFrameTimeMetadata metadata;
+    metadata.captureTime = MonotonicTime::now().secondsSinceEpoch();
+    dispatchVideoFrameToObservers(WTFMove(videoFrame), metadata);
 }
 
 void AVVideoCaptureSource::captureSessionIsRunningDidChange(bool state)
@@ -570,13 +626,14 @@ void AVVideoCaptureSource::captureSessionIsRunningDidChange(bool state)
 void AVVideoCaptureSource::captureDeviceSuspendedDidChange()
 {
 #if !PLATFORM(IOS_FAMILY)
-    scheduleDeferredTask([this] {
-        auto isSuspended = [m_device isSuspended];
-        ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, !!isSuspended);
-        if (isSuspended == muted())
-            return;
+    scheduleDeferredTask([this, logIdentifier = LOGIDENTIFIER] {
+        m_interrupted = [m_device isSuspended];
+        ALWAYS_LOG_IF(loggerPtr(), logIdentifier, !!m_interrupted);
 
-        notifyMutedChange(isSuspended);
+        updateVerifyCapturingTimer();
+
+        if (m_interrupted != muted())
+            notifyMutedChange(m_interrupted);
     });
 #endif
 }
@@ -594,9 +651,9 @@ void AVVideoCaptureSource::generatePresets()
     Vector<Ref<VideoPreset>> presets;
     for (AVCaptureDeviceFormat* format in [device() formats]) {
 
-        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+        CMVideoDimensions dimensions = PAL::CMVideoFormatDescriptionGetDimensions(format.formatDescription);
         IntSize size = { dimensions.width, dimensions.height };
-        auto index = presets.findMatching([&size](auto& preset) {
+        auto index = presets.findIf([&size](auto& preset) {
             return size == preset->size;
         });
         if (index != notFound)
@@ -715,7 +772,7 @@ void AVVideoCaptureSource::deviceDisconnected(RetainPtr<NSNotification> notifica
     if (m_callback->loggerPtr()) {
         auto identifier = Logger::LogSiteIdentifier("AVVideoCaptureSource", "observeValueForKeyPath", m_callback->logIdentifier());
         RetainPtr<NSString> valueString = adoptNS([[NSString alloc] initWithFormat:@"%@", newValue]);
-        m_callback->logger().logAlways(m_callback->logChannel(), identifier, willChange ? "will" : "did", " change '", [keyPath UTF8String], "' to ", [valueString.get() UTF8String]);
+        m_callback->logger().logAlways(m_callback->logChannel(), identifier, willChange ? "will" : "did", " change '", [keyPath UTF8String], "' to ", [valueString UTF8String]);
     }
 #endif
 

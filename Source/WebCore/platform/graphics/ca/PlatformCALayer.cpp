@@ -42,19 +42,13 @@
 
 namespace WebCore {
 
-static GraphicsLayer::PlatformLayerID generateLayerID()
-{
-    static GraphicsLayer::PlatformLayerID layerID;
-    return ++layerID;
-}
-
 #if COMPILER(MSVC)
 const float PlatformCALayer::webLayerWastedSpaceThreshold = 0.75f;
 #endif
 
 PlatformCALayer::PlatformCALayer(LayerType layerType, PlatformCALayerClient* owner)
     : m_layerType(layerType)
-    , m_layerID(generateLayerID())
+    , m_layerID(GraphicsLayer::PlatformLayerID::generate())
     , m_owner(owner)
 {
 }
@@ -87,13 +81,12 @@ void PlatformCALayer::drawRepaintIndicator(GraphicsContext& graphicsContext, Pla
     constexpr auto backgroundColor = SRGBA<uint8_t> { 128, 64, 255 };
     constexpr auto acceleratedContextLabelColor = Color::red;
     constexpr auto unacceleratedContextLabelColor = Color::white;
-    constexpr auto linearGlyphMaskOutlineColor = Color::black.colorWithAlphaByte(192);
     constexpr auto displayListBorderColor = Color::black.colorWithAlphaByte(166);
 
     TextRun textRun(String::number(repaintCount));
 
     FontCascadeDescription fontDescription;
-    fontDescription.setOneFamily("Helvetica");
+    fontDescription.setOneFamily("Helvetica"_s);
     fontDescription.setSpecifiedSize(fontSize);
     fontDescription.setComputedSize(fontSize);
 
@@ -129,12 +122,6 @@ void PlatformCALayer::drawRepaintIndicator(GraphicsContext& graphicsContext, Pla
         graphicsContext.strokeRect(indicatorBox, 2);
     }
 
-    if (!platformCALayer->isOpaque() && platformCALayer->supportsSubpixelAntialiasedText() && platformCALayer->acceleratesDrawing()) {
-        graphicsContext.setStrokeColor(linearGlyphMaskOutlineColor);
-        graphicsContext.setStrokeThickness(4.5);
-        graphicsContext.setTextDrawingMode(TextDrawingModeFlags { TextDrawingMode::Fill, TextDrawingMode::Stroke });
-    }
-
     graphicsContext.setFillColor(platformCALayer->acceleratesDrawing() ? acceleratedContextLabelColor : unacceleratedContextLabelColor);
 
     graphicsContext.drawText(cascade, textRun, FloatPoint(indicatorBox.x() + horizontalMargin, indicatorBox.y() + fontSize));
@@ -159,14 +146,15 @@ void PlatformCALayer::drawTextAtPoint(CGContextRef context, CGFloat x, CGFloat y
         kCTStrokeWidthAttributeName,
         kCTStrokeColorAttributeName,
     };
+    auto strokeCGColor = cachedCGColor(strokeColor);
     CFTypeRef values[] = {
         font.get(),
         kCFBooleanTrue,
         strokeWidthNumber.get(),
-        cachedCGColor(strokeColor),
+        strokeCGColor.get(),
     };
 
-    auto attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, keys, values, WTF_ARRAY_LENGTH(keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    auto attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, keys, values, std::size(keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
     auto string = adoptCF(CFStringCreateWithBytesNoCopy(kCFAllocatorDefault, reinterpret_cast<const UInt8*>(text), length, kCFStringEncodingUTF8, false, kCFAllocatorNull));
     auto attributedString = adoptCF(CFAttributedStringCreate(kCFAllocatorDefault, string.get(), attributes.get()));
     auto line = adoptCF(CTLineCreateWithAttributedString(attributedString.get()));
@@ -198,6 +186,15 @@ LayerPool& PlatformCALayer::layerPool()
     return *sharedPool;
 }
 
+void PlatformCALayer::clearContents()
+{
+    setContents(nullptr);
+}
+
+void PlatformCALayer::dumpAdditionalProperties(TextStream&, OptionSet<PlatformLayerTreeAsTextFlags>)
+{
+}
+
 TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
 {
     switch (layerType) {
@@ -221,9 +218,6 @@ TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
     case PlatformCALayer::LayerTypeRootLayer:
         ts << "root-layer";
         break;
-    case PlatformCALayer::LayerTypeEditableImageLayer:
-        ts << "editable-image";
-        break;
     case PlatformCALayer::LayerTypeBackdropLayer:
         ts << "backdrop-layer";
         break;
@@ -242,12 +236,11 @@ TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
     case PlatformCALayer::LayerTypeCustom:
         ts << "custom-layer";
         break;
-    case PlatformCALayer::LayerTypeLightSystemBackdropLayer:
-        ts << "light-system-backdrop-layer";
+#if ENABLE(MODEL_ELEMENT)
+    case PlatformCALayer::LayerTypeModelLayer:
+        ts << "model-layer";
         break;
-    case PlatformCALayer::LayerTypeDarkSystemBackdropLayer:
-        ts << "dark-system-backdrop-layer";
-        break;
+#endif
     }
     return ts;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2021 Apple Inc. All rights reserved.
  * Copyright (C) 2010, 2011, 2012 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -23,49 +23,42 @@
 
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
-#include <wtf/ListHashSet.h>
-#include <wtf/Vector.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-class FormKeyGenerator;
-class HTMLFormControlElementWithState;
+class Document;
+class FormListedElement;
 class HTMLFormElement;
-class SavedFormState;
+class ValidatedFormListedElement;
 
-using FormControlState = Vector<String>;
+using FormControlState = Vector<AtomString>;
 
 class FormController {
     WTF_MAKE_FAST_ALLOCATED;
+
 public:
     FormController();
     ~FormController();
 
-    void registerFormElementWithState(HTMLFormControlElementWithState&);
-    void unregisterFormElementWithState(HTMLFormControlElementWithState&);
-
-    unsigned formElementsCharacterCount() const;
-
-    Vector<String> formElementsState() const;
-    void setStateForNewFormElements(const Vector<String>&);
+    Vector<AtomString> formElementsState(const Document&) const;
+    void setStateForNewFormElements(const Vector<AtomString>& stateVector);
 
     void willDeleteForm(HTMLFormElement&);
-    void restoreControlStateFor(HTMLFormControlElementWithState&);
+    void restoreControlStateFor(ValidatedFormListedElement&);
     void restoreControlStateIn(HTMLFormElement&);
     bool hasFormStateToRestore() const;
 
-    WEBCORE_EXPORT static Vector<String> referencedFilePaths(const Vector<String>& stateVector);
+    WEBCORE_EXPORT static Vector<String> referencedFilePaths(const Vector<AtomString>& stateVector);
+    static HTMLFormElement* ownerForm(const FormListedElement&);
 
 private:
-    typedef ListHashSet<RefPtr<HTMLFormControlElementWithState>> FormElementListHashSet;
-    typedef HashMap<RefPtr<AtomStringImpl>, std::unique_ptr<SavedFormState>> SavedFormStateMap;
+    class FormKeyGenerator;
+    class SavedFormState;
+    using SavedFormStateMap = HashMap<String, SavedFormState>;
 
-    static std::unique_ptr<SavedFormStateMap> createSavedFormStateMap(const FormElementListHashSet&);
-    FormControlState takeStateForFormElement(const HTMLFormControlElementWithState&);
-    static void formStatesFromStateVector(const Vector<String>&, SavedFormStateMap&);
+    FormControlState takeStateForFormElement(const ValidatedFormListedElement&);
+    static SavedFormStateMap parseStateVector(const Vector<AtomString>&);
 
-    FormElementListHashSet m_formElementsWithState;
     SavedFormStateMap m_savedFormStateMap;
     std::unique_ptr<FormKeyGenerator> m_formKeyGenerator;
 };

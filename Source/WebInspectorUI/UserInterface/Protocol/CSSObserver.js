@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.CSSObserver = class CSSObserver
+WI.CSSObserver = class CSSObserver extends InspectorBackend.Dispatcher
 {
     // Events defined by the "CSS" domain.
 
@@ -47,28 +47,14 @@ WI.CSSObserver = class CSSObserver
         WI.cssManager.styleSheetRemoved(id);
     }
 
-    namedFlowCreated(namedFlow)
+    nodeLayoutFlagsChanged(nodeId, layoutFlags)
     {
-        // COMPATIBILITY (iOS 10): Removed after iOS 10. Ignore for iOS 10 and earlier.
+        WI.domManager.nodeLayoutFlagsChanged(nodeId, layoutFlags);
     }
 
-    namedFlowRemoved(documentNodeId, flowName)
+    nodeLayoutContextTypeChanged(nodeId, layoutContextType)
     {
-        // COMPATIBILITY (iOS 10): Removed after iOS 10. Ignore for iOS 10 and earlier.
-    }
-
-    regionOversetChanged(namedFlow)
-    {
-        // COMPATIBILITY (iOS 10): Removed after iOS 10. Ignore for iOS 10 and earlier.
-    }
-
-    registeredNamedFlowContentElement(documentNodeId, flowName, contentNodeId, nextContentElementNodeId)
-    {
-        // COMPATIBILITY (iOS 10): Removed after iOS 10. Ignore for iOS 10 and earlier.
-    }
-
-    unregisteredNamedFlowContentElement(documentNodeId, flowName, contentNodeId)
-    {
-        // COMPATIBILITY (iOS 10): Removed after iOS 10. Ignore for iOS 10 and earlier.
+        // COMPATIBILITY (macOS 13.0, iOS 16.0): CSS.nodeLayoutContextTypeChanged was renamed/expanded to CSS.nodeLayoutFlagsChanged.
+        WI.domManager.nodeLayoutFlagsChanged(nodeId, [WI.DOMNode.LayoutFlag.Rendered, layoutContextType]);
     }
 };

@@ -25,15 +25,13 @@
 
 WI.TimelineDataGridNode = class TimelineDataGridNode extends WI.DataGridNode
 {
-    constructor(records, options = {})
+    constructor(records, {hasChildren, includesGraph, graphDataSource} = {})
     {
-        super({}, options.hasChildren);
-
-        this.copyable = false;
+        super({}, {hasChildren, copyable: false});
 
         this._records = records;
-        this._includesGraph = options.includesGraph || false;
-        this._graphDataSource = options.graphDataSource || null;
+        this._includesGraph = includesGraph || false;
+        this._graphDataSource = graphDataSource || null;
         this._cachedData = null;
 
         if (this._graphDataSource) {
@@ -115,8 +113,7 @@ WI.TimelineDataGridNode = class TimelineDataGridNode extends WI.DataGridNode
 
         if (value instanceof WI.SourceCodeLocation) {
             if (value.sourceCode instanceof WI.Resource) {
-                cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName);
-                cell.classList.add(value.sourceCode.type);
+                cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName, ...WI.Resource.classNamesForResource(value.sourceCode));
             } else if (value.sourceCode instanceof WI.Script) {
                 if (value.sourceCode.url) {
                     cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName);
@@ -153,7 +150,11 @@ WI.TimelineDataGridNode = class TimelineDataGridNode extends WI.DataGridNode
 
             var fragment = document.createDocumentFragment();
 
-            if (callFrame.sourceCodeLocation && callFrame.sourceCodeLocation.sourceCode) {
+            let iconElement = document.createElement("div");
+            iconElement.classList.add("icon");
+
+            let sourceCode = callFrame.sourceCodeLocation?.sourceCode;
+            if (sourceCode) {
                 // Give the whole cell a tooltip and keep it up to date.
                 callFrame.sourceCodeLocation.populateLiveDisplayLocationTooltip(cell);
 
@@ -161,11 +162,12 @@ WI.TimelineDataGridNode = class TimelineDataGridNode extends WI.DataGridNode
 
                 if (isAnonymousFunction) {
                     // For anonymous functions we show the resource or script icon and name.
-                    if (callFrame.sourceCodeLocation.sourceCode instanceof WI.Resource) {
-                        cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName);
-                        cell.classList.add(callFrame.sourceCodeLocation.sourceCode.type);
-                    } else if (callFrame.sourceCodeLocation.sourceCode instanceof WI.Script) {
-                        if (callFrame.sourceCodeLocation.sourceCode.url) {
+                    if (sourceCode instanceof WI.Resource) {
+                        cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName, ...WI.Resource.classNamesForResource(sourceCode));
+                        if (sourceCode.responseSource === WI.Resource.ResponseSource.InspectorOverride)
+                            iconElement.title = WI.UIString("This resource was loaded from a local override");
+                    } else if (sourceCode instanceof WI.Script) {
+                        if (sourceCode.url) {
                             cell.classList.add(WI.ResourceTreeElement.ResourceIconStyleClassName);
                             cell.classList.add(WI.Resource.Type.Script);
                         } else
@@ -193,15 +195,27 @@ WI.TimelineDataGridNode = class TimelineDataGridNode extends WI.DataGridNode
                 return fragment;
             }
 
-            var icon = document.createElement("div");
-            icon.classList.add("icon");
-
-            fragment.append(icon, functionName);
+            fragment.append(iconElement, functionName);
 
             return fragment;
         }
 
+        if (value instanceof WI.DOMNode) {
+            cell.classList.add(WI.DOMTreeElementPathComponent.iconClassNameForNode(value));
+            return WI.linkifyNodeReference(value);
+        }
+
         return super.createCellContent(columnIdentifier, cell);
+    }
+
+    generateIconTitle(columnIdentifier)
+    {
+        let value = this.data[columnIdentifier];
+
+        if (value instanceof WI.SourceCodeLocation && value.sourceCode instanceof WI.Resource && value.sourceCode.responseSource === WI.Resource.ResponseSource.InspectorOverride)
+            return WI.UIString("This resource was loaded from a local override");
+
+        return super.generateIconTitle(columnIdentifier);
     }
 
     refresh()

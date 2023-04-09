@@ -49,7 +49,8 @@ class WebPlaybackSessionChangeObserver;
 
 class WEBCORE_EXPORT PlaybackSessionInterfaceAVKit
     : public PlaybackSessionModelClient
-    , public RefCounted<PlaybackSessionInterfaceAVKit> {
+    , public RefCounted<PlaybackSessionInterfaceAVKit>
+    , public CanMakeWeakPtr<PlaybackSessionInterfaceAVKit> {
 
 public:
     static Ref<PlaybackSessionInterfaceAVKit> create(PlaybackSessionModel& model)
@@ -63,7 +64,7 @@ public:
     void durationChanged(double) override;
     void currentTimeChanged(double currentTime, double anchorTime) override;
     void bufferedTimeChanged(double) override;
-    void rateChanged(bool isPlaying, float playbackRate) override;
+    void rateChanged(OptionSet<PlaybackSessionModel::PlaybackState>, double playbackRate, double defaultPlaybackRate) override;
     void seekableRangesChanged(const TimeRanges&, double lastModifiedTime, double liveUpdateInterval) override;
     void canPlayFastReverseChanged(bool) override;
     void audioMediaSelectionOptionsChanged(const Vector<MediaSelectionOption>& options, uint64_t selectedIndex) override;

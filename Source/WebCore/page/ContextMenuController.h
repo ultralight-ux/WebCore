@@ -29,12 +29,15 @@
 
 #include "ContextMenuContext.h"
 #include "ContextMenuItem.h"
+#include "HitTestRequest.h"
+#include <wtf/OptionSet.h>
 
 namespace WebCore {
 
 class ContextMenuClient;
 class ContextMenuProvider;
 class Event;
+class HitTestResult;
 class Page;
 
 class ContextMenuController {
@@ -53,8 +56,9 @@ public:
     void showContextMenu(Event&, ContextMenuProvider&);
 
     void populate();
+    WEBCORE_EXPORT void didDismissContextMenu();
     WEBCORE_EXPORT void contextMenuItemSelected(ContextMenuAction, const String& title);
-    void addInspectElementItem();
+    void addDebuggingItems();
 
     WEBCORE_EXPORT void checkOrEnableIfNeeded(ContextMenuItem&) const;
 
@@ -65,13 +69,13 @@ public:
 #if USE(ACCESSIBILITY_CONTEXT_MENUS)
     void showContextMenuAt(Frame&, const IntPoint& clickPoint);
 #endif
-
+    
 #if ENABLE(SERVICE_CONTROLS)
     void showImageControlsMenu(Event&);
 #endif
 
 private:
-    std::unique_ptr<ContextMenu> maybeCreateContextMenu(Event&);
+    std::unique_ptr<ContextMenu> maybeCreateContextMenu(Event&, OptionSet<HitTestRequest::Type> hitType, ContextMenuContext::Type);
     void showContextMenu(Event&);
     
     void appendItem(ContextMenuItem&, ContextMenu* parentMenu);
@@ -86,6 +90,10 @@ private:
     void createAndAppendTransformationsSubMenu(ContextMenuItem&);
 #if PLATFORM(GTK)
     void createAndAppendUnicodeSubMenu(ContextMenuItem&);
+#endif
+
+#if ENABLE(PDFJS)
+    void performPDFJSAction(Frame&, const String& action);
 #endif
 
     Page& m_page;

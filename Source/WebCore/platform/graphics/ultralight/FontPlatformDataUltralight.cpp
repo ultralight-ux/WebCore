@@ -6,7 +6,6 @@
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/private/FontCache.h>
-#include "FontRenderer.h"
 #include "Glyph.h"
 #include "FloatRect.h"
 #include "ft2build.h"
@@ -114,7 +113,7 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
   if (FT_Load_Sfnt_Table(freeTypeFace, tag, 0, 0, &tableSize))
     return nullptr;
 
-  Vector<char> data(tableSize);
+  Vector<uint8_t> data(tableSize);
   FT_ULong expectedTableSize = tableSize;
   FT_Error error = FT_Load_Sfnt_Table(freeTypeFace, tag, 0, reinterpret_cast<FT_Byte*>(data.data()), &tableSize);
   if (error || tableSize != expectedTableSize)
@@ -141,7 +140,16 @@ unsigned FontPlatformData::hash() const
 
   uintptr_t font_hash = m_face->font_file()->hash();
   uintptr_t hashCodes[] = { font_hash, flags, (FT_UInt)m_size };
-  return StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
+  return StringHasher::computeHash<char>((char*)hashCodes, sizeof(hashCodes));
+}
+
+String FontPlatformData::familyName() const
+{
+  FT_Face freeTypeFace = face();
+  if (!freeTypeFace)
+    return String();
+  
+  return String(ASCIILiteral::fromLiteralUnsafe(freeTypeFace->family_name));
 }
 
 #if USE(HARFBUZZ) && !ENABLE(OPENTYPE_MATH)

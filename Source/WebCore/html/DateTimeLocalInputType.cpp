@@ -33,10 +33,14 @@
 
 #if ENABLE(INPUT_TYPE_DATETIMELOCAL)
 
+#include "DateComponents.h"
+#include "DateTimeFieldsState.h"
 #include "Decimal.h"
+#include "ElementInlines.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "InputTypeNames.h"
+#include "PlatformLocale.h"
 #include "StepRange.h"
 
 namespace WebCore {
@@ -53,18 +57,18 @@ const AtomString& DateTimeLocalInputType::formControlType() const
     return InputTypeNames::datetimelocal();
 }
 
-DateComponents::Type DateTimeLocalInputType::dateType() const
+DateComponentsType DateTimeLocalInputType::dateType() const
 {
-    return DateComponents::DateTimeLocal;
+    return DateComponentsType::DateTimeLocal;
 }
 
-double DateTimeLocalInputType::valueAsDate() const
+WallTime DateTimeLocalInputType::valueAsDate() const
 {
     // valueAsDate doesn't work for the datetime-local type according to the standard.
-    return DateComponents::invalidMilliseconds();
+    return WallTime::nan();
 }
 
-ExceptionOr<void> DateTimeLocalInputType::setValueAsDate(double value) const
+ExceptionOr<void> DateTimeLocalInputType::setValueAsDate(WallTime value) const
 {
     // valueAsDate doesn't work for the datetime-local type according to the standard.
     return InputType::setValueAsDate(value);
@@ -80,19 +84,58 @@ StepRange DateTimeLocalInputType::createStepRange(AnyStepHandling anyStepHandlin
     return StepRange(stepBase, RangeLimitations::Valid, minimum, maximum, step, dateTimeLocalStepDescription);
 }
 
-Optional<DateComponents> DateTimeLocalInputType::parseToDateComponents(const StringView& source) const
+std::optional<DateComponents> DateTimeLocalInputType::parseToDateComponents(StringView source) const
 {
     return DateComponents::fromParsingDateTimeLocal(source);
 }
 
-Optional<DateComponents> DateTimeLocalInputType::setMillisecondToDateComponents(double value) const
+std::optional<DateComponents> DateTimeLocalInputType::setMillisecondToDateComponents(double value) const
 {
     return DateComponents::fromMillisecondsSinceEpochForDateTimeLocal(value);
 }
 
-bool DateTimeLocalInputType::isDateTimeLocalField() const
+bool DateTimeLocalInputType::isValidFormat(OptionSet<DateTimeFormatValidationResults> results) const
 {
-    return true;
+    return results.containsAll({ DateTimeFormatValidationResults::HasYear, DateTimeFormatValidationResults::HasMonth, DateTimeFormatValidationResults::HasDay, DateTimeFormatValidationResults::HasHour, DateTimeFormatValidationResults::HasMinute, DateTimeFormatValidationResults::HasMeridiem });
+}
+
+String DateTimeLocalInputType::sanitizeValue(const String& proposedValue) const
+{
+    if (proposedValue.isEmpty())
+        return proposedValue;
+
+    auto components = DateComponents::fromParsingDateTimeLocal(proposedValue);
+    return components ? components->toString() : emptyString();
+}
+
+String DateTimeLocalInputType::formatDateTimeFieldsState(const DateTimeFieldsState& state) const
+{
+    if (!state.year || !state.month || !state.dayOfMonth || !state.hour || !state.minute || !state.meridiem)
+        return emptyString();
+
+    auto dateString = makeString(pad('0', 4, *state.year), '-', pad('0', 2, *state.month), '-', pad('0', 2, *state.dayOfMonth));
+    auto hourMinuteString = makeString(pad('0', 2, *state.hour23()), ':', pad('0', 2, *state.minute));
+
+    if (state.millisecond)
+        return makeString(dateString, 'T', hourMinuteString, ':', pad('0', 2, state.second ? *state.second : 0), '.', pad('0', 3, *state.millisecond));
+
+    if (state.second)
+        return makeString(dateString, 'T', hourMinuteString, ':', pad('0', 2, *state.second));
+
+    return makeString(dateString, 'T', hourMinuteString);
+}
+
+void DateTimeLocalInputType::setupLayoutParameters(DateTimeEditElement::LayoutParameters& layoutParameters, const DateComponents& date) const
+{
+    layoutParameters.shouldHaveMillisecondField = shouldHaveMillisecondField(date);
+
+    if (layoutParameters.shouldHaveMillisecondField || shouldHaveSecondField(date)) {
+        layoutParameters.dateTimeFormat = layoutParameters.locale.dateTimeFormatWithSeconds();
+        layoutParameters.fallbackDateTimeFormat = "yyyy-MM-dd'T'HH:mm:ss"_s;
+    } else {
+        layoutParameters.dateTimeFormat = layoutParameters.locale.dateTimeFormatWithoutSeconds();
+        layoutParameters.fallbackDateTimeFormat = "yyyy-MM-dd'T'HH:mm"_s;
+    }
 }
 
 } // namespace WebCore

@@ -29,20 +29,22 @@
 #if ENABLE(APPLE_PAY)
 
 #import <JavaScriptCore/JSONObject.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
+
 #import <pal/cocoa/PassKitSoftLink.h>
 
 namespace WebCore {
 
-Optional<PaymentMerchantSession> PaymentMerchantSession::fromJS(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value, String&)
+std::optional<PaymentMerchantSession> PaymentMerchantSession::fromJS(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value, String&)
 {
     // FIXME: Don't round-trip using NSString.
     auto jsonString = JSONStringify(&lexicalGlobalObject, value, 0);
     if (!jsonString)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto dictionary = dynamic_objc_cast<NSDictionary>([NSJSONSerialization JSONObjectWithData:[(NSString *)jsonString dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil]);
     if (!dictionary || ![dictionary isKindOfClass:[NSDictionary class]])
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto pkPaymentMerchantSession = adoptNS([PAL::allocPKPaymentMerchantSessionInstance() initWithDictionary:dictionary]);
 

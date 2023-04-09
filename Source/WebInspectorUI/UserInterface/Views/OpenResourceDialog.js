@@ -57,27 +57,50 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
 
         this.element.appendChild(this._treeOutline.element);
 
+        this._updateFilterThrottler = new Throttler(() => {
+            this._updateFilter();
+        }, 250);
+
         this._queryController = new WI.ResourceQueryController;
         this._filteredResults = [];
     }
 
     // Protected
 
+    representedObjectIsValid(value)
+    {
+        if (value instanceof WI.Script && value.anonymous)
+            return false;
+
+        if (value instanceof WI.CSSStyleSheet && value.anonymous)
+            return false;
+
+        return super.representedObjectIsValid(value);
+    }
+
     _populateResourceTreeOutline()
     {
-        function createHighlightedTitleFragment(title, highlightTextRanges)
+        function createHighlightedTitleFragment(title, searchString, highlightTextRanges)
         {
+            let shift = searchString.indexOf(title.toLowerCase());
+            console.assert(shift >= 0);
+
             let titleFragment = document.createDocumentFragment();
             let lastIndex = 0;
             for (let textRange of highlightTextRanges) {
-                if (textRange.startColumn > lastIndex)
-                    titleFragment.append(title.substring(lastIndex, textRange.startColumn));
+                let end = textRange.endColumn - shift;
+                if (end >= 0) {
+                    let start = textRange.startColumn - shift;
+                    if (start > lastIndex)
+                        titleFragment.append(title.substring(lastIndex, start));
 
-                let highlightSpan = document.createElement("span");
-                highlightSpan.classList.add("highlighted");
-                highlightSpan.append(title.substring(textRange.startColumn, textRange.endColumn));
-                titleFragment.append(highlightSpan);
-                lastIndex = textRange.endColumn;
+                    let highlightSpan = document.createElement("span");
+                    highlightSpan.classList.add("highlighted");
+                    highlightSpan.append(title.substring(start, end));
+                    titleFragment.append(highlightSpan);
+                }
+
+                lastIndex = end;
             }
 
             if (lastIndex < title.length)
@@ -96,6 +119,8 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
                 treeElement = new WI.ResourceTreeElement(representedObject);
             else if (representedObject instanceof WI.Script)
                 treeElement = new WI.ScriptTreeElement(representedObject);
+            else if (representedObject instanceof WI.CSSStyleSheet)
+                treeElement = new WI.CSSStyleSheetTreeElement(representedObject);
 
             return treeElement;
         }
@@ -109,7 +134,10 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
             if (!treeElement)
                 continue;
 
-            treeElement.mainTitle = createHighlightedTitleFragment(resource.displayName, result.matchingTextRanges);
+            treeElement.mainTitle = createHighlightedTitleFragment(resource.displayName, result.searchString, result.matchingTextRanges);
+
+            if (resource instanceof WI.LocalResource && resource.localResourceOverride)
+                treeElement.subtitle = WI.UIString("Local Override");
 
             let path = resource.urlComponents.path;
             let lastPathComponent = resource.urlComponents.lastPathComponent;
@@ -131,18 +159,31 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
     {
         WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
         WI.Frame.removeEventListener(WI.Frame.Event.ResourceWasAdded, this._resourceWasAdded, this);
+        WI.Frame.removeEventListener(WI.Frame.Event.ResourceWasRemoved, this._resourceWasRemoved, this);
         WI.Target.removeEventListener(WI.Target.Event.ResourceAdded, this._resourceWasAdded, this);
         WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ScriptAdded, this._scriptAdded, this);
+        WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ScriptRemoved, this._scriptRemoved, this);
+        WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetAdded, this._handleStyleSheetAdded, this);
+        WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._handleStyleSheetRemoved, this);
+        WI.consoleManager.removeEventListener(WI.ConsoleManager.Event.SnippetAdded, this._handleConsoleSnippetAdded, this);
+        WI.consoleManager.removeEventListener(WI.ConsoleManager.Event.SnippetRemoved, this._handleConsoleSnippetRemoved, this);
 
         this._queryController.reset();
+        this._updateFilterThrottler.cancel();
     }
 
     didPresentDialog()
     {
         WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
         WI.Frame.addEventListener(WI.Frame.Event.ResourceWasAdded, this._resourceWasAdded, this);
+        WI.Frame.addEventListener(WI.Frame.Event.ResourceWasRemoved, this._resourceWasRemoved, this);
         WI.Target.addEventListener(WI.Target.Event.ResourceAdded, this._resourceWasAdded, this);
         WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ScriptAdded, this._scriptAdded, this);
+        WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ScriptRemoved, this._scriptRemoved, this);
+        WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetAdded, this._handleStyleSheetAdded, this);
+        WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._handleStyleSheetRemoved, this);
+        WI.consoleManager.addEventListener(WI.ConsoleManager.Event.SnippetAdded, this._handleConsoleSnippetAdded, this);
+        WI.consoleManager.addEventListener(WI.ConsoleManager.Event.SnippetRemoved, this._handleConsoleSnippetRemoved, this);
 
         if (WI.networkManager.mainFrame)
             this._addResourcesForFrame(WI.networkManager.mainFrame);
@@ -154,7 +195,25 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
                 this._addResourcesForTarget(target);
         }
 
-        this._updateFilter();
+        this._addLocalResourceOverrides();
+
+        if (WI.NetworkManager.supportsBootstrapScript()) {
+            let bootstrapScript = WI.networkManager.bootstrapScript;
+            if (bootstrapScript) {
+                const suppressFilterUpdate = true;
+                this._addResource(bootstrapScript, suppressFilterUpdate);
+            }
+        }
+
+        for (let styleSheet of WI.cssManager.styleSheets) {
+            if (styleSheet.origin !== WI.CSSStyleSheet.Type.Author && !styleSheet.anonymous)
+                this._addResource(styleSheet);
+        }
+
+        for (let consoleSnippet of WI.consoleManager.snippets)
+            this._addResource(consoleSnippet);
+
+        this._updateFilterThrottler.force();
 
         this._inputElement.focus();
         this._clear();
@@ -213,7 +272,10 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         if (event.keyCode === WI.KeyboardShortcut.Key.Up.keyCode || event.keyCode === WI.KeyboardShortcut.Key.Down.keyCode)
             return;
 
-        this._updateFilter();
+        if (this._inputElement.value)
+            this._updateFilterThrottler.fire();
+        else
+            this._updateFilterThrottler.force();
     }
 
     _handleBlurEvent(event)
@@ -242,7 +304,8 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
     _clear()
     {
         this._inputElement.value = "";
-        this._updateFilter();
+
+        this._updateFilterThrottler.force();
     }
 
     _updateFilter()
@@ -287,7 +350,17 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         if (suppressFilterUpdate)
             return;
 
-        this._updateFilter();
+        this._updateFilterThrottler.fire();
+    }
+
+    _removeResource(resource)
+    {
+        if (!this.representedObjectIsValid(resource))
+            return;
+
+        this._queryController.removeResource(resource);
+
+        this._updateFilterThrottler.force();
     }
 
     _addResourcesForFrame(frame)
@@ -301,7 +374,7 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
             for (let resource of currentFrame.resourceCollection)
                 this._addResource(resource, suppressFilterUpdate);
 
-            frames.push(...currentFrame.childFrameCollection);
+            frames.pushAll(currentFrame.childFrameCollection);
         }
     }
 
@@ -323,14 +396,31 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
 
         let targetData = WI.debuggerManager.dataForTarget(target);
         for (let script of targetData.scripts) {
-            if (script.resource)
+            if (script.anonymous || script.resource || script.dynamicallyAddedScriptElement)
                 continue;
-            if (script.dynamicallyAddedScriptElement)
+            if (!WI.settings.debugShowConsoleEvaluations.value && isWebInspectorConsoleEvaluationScript(script.sourceURL))
                 continue;
-            if (isWebKitInternalScript(script.sourceURL) || isWebInspectorConsoleEvaluationScript(script.sourceURL))
+            if (!WI.settings.engineeringShowInternalScripts.value && isWebKitInternalScript(script.sourceURL))
                 continue;
             this._addResource(script, suppressFilterUpdate);
         }
+
+        for (let script of target.extraScriptCollection) {
+            if (script.resource)
+                continue;
+            this._addResource(script, suppressFilterUpdate);
+        }
+    }
+
+    _addLocalResourceOverrides()
+    {
+        if (!WI.NetworkManager.supportsOverridingResponses())
+            return;
+
+        const suppressFilterUpdate = true;
+
+        for (let localResourceOverride of WI.networkManager.localResourceOverrides)
+            this._addResource(localResourceOverride.localResource, suppressFilterUpdate);
     }
 
     _mainResourceDidChange(event)
@@ -346,16 +436,55 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         this._addResource(event.data.resource);
     }
 
+    _resourceWasRemoved(event)
+    {
+        this._removeResource(event.data.resource);
+    }
+
     _scriptAdded(event)
     {
-        let script = event.data.script;
-        if (script.resource)
-            return;
-
-        if (script.target === WI.mainTarget)
+        let {script} = event.data;
+        if (script.resource || script.target === WI.mainTarget)
             return;
 
         this._addResource(script);
+    }
+
+    _scriptRemoved(event)
+    {
+        let {script} = event.data;
+        if (script.resource || script.target === WI.mainTarget)
+            return;
+
+        this._removeResource(script);
+    }
+
+    _handleStyleSheetAdded(event)
+    {
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.anonymous)
+            return;
+
+        this._addResource(styleSheet);
+    }
+
+    _handleStyleSheetRemoved(event)
+    {
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.anonymous)
+            return;
+
+        this._removeResource(styleSheet);
+    }
+
+    _handleConsoleSnippetAdded(event)
+    {
+        this._addResource(event.data.snippet);
+    }
+
+    _handleConsoleSnippetRemoved(event)
+    {
+        this._removeResource(event.data.snippet);
     }
 };
 

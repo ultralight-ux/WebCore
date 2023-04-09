@@ -182,6 +182,17 @@ void JSDisableGCTimer(void)
     GCActivityCallback::s_shouldCreateGCTimer = false;
 }
 
+#if !OS(DARWIN) && !OS(WINDOWS)
+bool JSConfigureSignalForGC(int signal)
+{
+    if (g_wtfConfig.isThreadSuspendResumeSignalConfigured)
+        return false;
+    g_wtfConfig.sigThreadSuspendResume = signal;
+    g_wtfConfig.isUserSpecifiedThreadSuspendResumeSignalConfigured = true;
+    return true;
+}
+#endif
+
 JSObjectRef JSGetMemoryUsageStatistics(JSContextRef ctx)
 {
     if (!ctx) {
@@ -193,31 +204,20 @@ JSObjectRef JSGetMemoryUsageStatistics(JSContextRef ctx)
     VM& vm = globalObject->vm();
     JSLockHolder locker(vm);
 
+    auto typeCounts = vm.heap.objectTypeCounts();
+    JSObject* objectTypeCounts = constructEmptyObject(globalObject);
+    for (auto& it : *typeCounts)
+        objectTypeCounts->putDirect(vm, Identifier::fromLatin1(vm, it.key), jsNumber(it.value));
+
     JSObject* object = constructEmptyObject(globalObject);
-    object->putDirect(vm, Identifier::fromString(vm, "heapSize"), jsNumber(vm.heap.size()));
-    object->putDirect(vm, Identifier::fromString(vm, "heapCapacity"), jsNumber(vm.heap.capacity()));
-    object->putDirect(vm, Identifier::fromString(vm, "extraMemorySize"), jsNumber(vm.heap.extraMemorySize()));
-    object->putDirect(vm, Identifier::fromString(vm, "objectCount"), jsNumber(vm.heap.objectCount()));
-    object->putDirect(vm, Identifier::fromString(vm, "protectedObjectCount"), jsNumber(vm.heap.protectedObjectCount()));
-    object->putDirect(vm, Identifier::fromString(vm, "globalObjectCount"), jsNumber(vm.heap.globalObjectCount()));
-    object->putDirect(vm, Identifier::fromString(vm, "protectedGlobalObjectCount"), jsNumber(vm.heap.protectedGlobalObjectCount()));
+    object->putDirect(vm, Identifier::fromString(vm, "heapSize"_s), jsNumber(vm.heap.size()));
+    object->putDirect(vm, Identifier::fromString(vm, "heapCapacity"_s), jsNumber(vm.heap.capacity()));
+    object->putDirect(vm, Identifier::fromString(vm, "extraMemorySize"_s), jsNumber(vm.heap.extraMemorySize()));
+    object->putDirect(vm, Identifier::fromString(vm, "objectCount"_s), jsNumber(vm.heap.objectCount()));
+    object->putDirect(vm, Identifier::fromString(vm, "protectedObjectCount"_s), jsNumber(vm.heap.protectedObjectCount()));
+    object->putDirect(vm, Identifier::fromString(vm, "globalObjectCount"_s), jsNumber(vm.heap.globalObjectCount()));
+    object->putDirect(vm, Identifier::fromString(vm, "protectedGlobalObjectCount"_s), jsNumber(vm.heap.protectedGlobalObjectCount()));
+    object->putDirect(vm, Identifier::fromString(vm, "objectTypeCounts"_s), objectTypeCounts);
 
     return toRef(object);
 }
-
-#if PLATFORM(IOS_FAMILY) && TARGET_OS_IOS
-// FIXME: Expose symbols to tell dyld where to find JavaScriptCore on older versions of
-// iOS (< 7.0). We should remove these symbols once we no longer need to support such
-// versions of iOS. See <rdar://problem/13696872> for more details.
-JS_EXPORT extern const char iosInstallName43 __asm("$ld$install_name$os4.3$/System/Library/PrivateFrameworks/JavaScriptCore.framework/JavaScriptCore");
-JS_EXPORT extern const char iosInstallName50 __asm("$ld$install_name$os5.0$/System/Library/PrivateFrameworks/JavaScriptCore.framework/JavaScriptCore");
-JS_EXPORT extern const char iosInstallName51 __asm("$ld$install_name$os5.1$/System/Library/PrivateFrameworks/JavaScriptCore.framework/JavaScriptCore");
-JS_EXPORT extern const char iosInstallName60 __asm("$ld$install_name$os6.0$/System/Library/PrivateFrameworks/JavaScriptCore.framework/JavaScriptCore");
-JS_EXPORT extern const char iosInstallName61 __asm("$ld$install_name$os6.1$/System/Library/PrivateFrameworks/JavaScriptCore.framework/JavaScriptCore");
-
-const char iosInstallName43 = 0;
-const char iosInstallName50 = 0;
-const char iosInstallName51 = 0;
-const char iosInstallName60 = 0;
-const char iosInstallName61 = 0;
-#endif

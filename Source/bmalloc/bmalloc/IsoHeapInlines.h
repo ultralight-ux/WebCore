@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "BPlatform.h"
 #include "DeferredDecommitInlines.h"
 #include "DeferredTriggerInlines.h"
 #include "EligibilityResultInlines.h"
@@ -52,6 +53,8 @@ IsoHeap<Type>::IsoHeap(const char* heapClass)
         malloc_set_zone_name(m_zone, heapClass);
 }
 #endif
+
+#if !BUSE(LIBPAS)
 
 template<typename Type>
 void* IsoHeap<Type>::allocate()
@@ -109,6 +112,8 @@ auto IsoHeap<Type>::impl() -> IsoHeapImpl<Config>&
     return *m_impl;
 }
 
+#endif // !BUSE(LIBPAS)
+
 // This is most appropraite for template classes.
 #define MAKE_BISO_MALLOCED_INLINE(isoType) \
 public: \
@@ -134,9 +139,15 @@ public: \
     \
     void* operator new[](size_t size) = delete; \
     void operator delete[](void* p) = delete; \
-using webkitFastMalloced = int; \
+    \
+    static void freeAfterDestruction(void* p) \
+    { \
+        bisoHeap().deallocate(p); \
+    } \
+    \
+    using webkitFastMalloced = int; \
 private: \
-using __makeBisoMallocedInlineMacroSemicolonifier = int
+    using __makeBisoMallocedInlineMacroSemicolonifier BUNUSED_TYPE_ALIAS = int
 
 #define MAKE_BISO_MALLOCED_IMPL(isoType) \
 ::bmalloc::api::IsoHeap<isoType>& isoType::bisoHeap() \
@@ -152,6 +163,11 @@ void* isoType::operator new(size_t size) \
 } \
 \
 void isoType::operator delete(void* p) \
+{ \
+    bisoHeap().deallocate(p); \
+} \
+\
+void isoType::freeAfterDestruction(void* p) \
 { \
     bisoHeap().deallocate(p); \
 } \
@@ -175,6 +191,12 @@ void* isoType::operator new(size_t size) \
 \
 template<> \
 void isoType::operator delete(void* p) \
+{ \
+    bisoHeap().deallocate(p); \
+} \
+\
+template<> \
+void isoType::freeAfterDestruction(void* p) \
 { \
     bisoHeap().deallocate(p); \
 } \

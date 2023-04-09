@@ -26,13 +26,14 @@
 
 #include "config.h"
 
-#if ENABLE(GRAPHICS_CONTEXT_GL)
+#if ENABLE(WEBGL)
 
 #include "BitmapImage.h"
 #include "GraphicsContextCG.h"
-#include "GraphicsContextGLOpenGL.h"
+#include "GraphicsContextGLImageExtractor.h"
 #include "Image.h"
 #include "ImageBufferUtilitiesCG.h"
+#include "PixelBuffer.h"
 
 #if HAVE(ARM_NEON_INTRINSICS)
 #include "GraphicsContextGLNEON.h"
@@ -317,28 +318,31 @@ void convert16BitFormatToRGBA8(GraphicsContextGL::DataFormat srcFormat, const ui
 
 }
 
-GraphicsContextGLOpenGL::ImageExtractor::~ImageExtractor() = default;
+GraphicsContextGLImageExtractor::~GraphicsContextGLImageExtractor() = default;
 
-bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha, bool ignoreGammaAndColorProfile, bool ignoreNativeImageAlphaPremultiplication)
+bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool ignoreGammaAndColorProfile, bool ignoreNativeImageAlphaPremultiplication)
 {
     if (!m_image)
         return false;
+
+    RefPtr<NativeImage> decodedImage;
     bool hasAlpha = !m_image->currentFrameKnownToBeOpaque();
+
     if ((ignoreGammaAndColorProfile || (hasAlpha && !premultiplyAlpha)) && m_image->data()) {
         auto source = ImageSource::create(nullptr, AlphaOption::NotPremultiplied, ignoreGammaAndColorProfile ? GammaAndColorProfileOption::Ignored : GammaAndColorProfileOption::Applied);
         source->setData(m_image->data(), true);
         if (!source->frameCount())
             return false;
 
-        m_decodedImage = source->createFrameImageAtIndex(0);
-        m_cgImage = m_decodedImage;
+        decodedImage = source->createFrameImageAtIndex(0);
     } else
-        m_cgImage = m_image->nativeImageForCurrentFrame();
-    if (!m_cgImage)
+        decodedImage = m_image->nativeImageForCurrentFrame();
+
+    if (!decodedImage)
         return false;
 
-    m_imageWidth = CGImageGetWidth(m_cgImage.get());
-    m_imageHeight = CGImageGetHeight(m_cgImage.get());
+    m_imageWidth = CGImageGetWidth(decodedImage->platformImage().get());
+    m_imageHeight = CGImageGetHeight(decodedImage->platformImage().get());
     if (!m_imageWidth || !m_imageHeight)
         return false;
 
@@ -346,7 +350,7 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
     // so, re-render it into an RGB color space. The image re-packing
     // code requires color data, not color table indices, for the
     // image data.
-    CGColorSpaceRef colorSpace = CGImageGetColorSpace(m_cgImage.get());
+    CGColorSpaceRef colorSpace = CGImageGetColorSpace(decodedImage->platformImage().get());
     CGColorSpaceModel model = CGColorSpaceGetModel(colorSpace);
     if (model == kCGColorSpaceModelIndexed) {
         RetainPtr<CGContextRef> bitmapContext;
@@ -355,28 +359,30 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
         // alpha channel. Creation of a bitmap context with an alpha channel
         // doesn't seem to work unless it's premultiplied.
         bitmapContext = adoptCF(CGBitmapContextCreate(0, m_imageWidth, m_imageHeight, 8, m_imageWidth * 4,
-            sRGBColorSpaceRef(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
+            sRGBColorSpaceRef(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host)));
         if (!bitmapContext)
             return false;
 
         CGContextSetBlendMode(bitmapContext.get(), kCGBlendModeCopy);
         CGContextSetInterpolationQuality(bitmapContext.get(), kCGInterpolationNone);
-        CGContextDrawImage(bitmapContext.get(), CGRectMake(0, 0, m_imageWidth, m_imageHeight), m_cgImage.get());
+        CGContextDrawImage(bitmapContext.get(), CGRectMake(0, 0, m_imageWidth, m_imageHeight), decodedImage->platformImage().get());
 
         // Now discard the original CG image and replace it with a copy from the bitmap context.
-        m_decodedImage = adoptCF(CGBitmapContextCreateImage(bitmapContext.get()));
-        m_cgImage = m_decodedImage.get();
+        decodedImage = NativeImage::create(adoptCF(CGBitmapContextCreateImage(bitmapContext.get())));
     }
 
-    size_t bitsPerComponent = CGImageGetBitsPerComponent(m_cgImage.get());
-    size_t bitsPerPixel = CGImageGetBitsPerPixel(m_cgImage.get());
+    if (!decodedImage)
+        return false;
+
+    size_t bitsPerComponent = CGImageGetBitsPerComponent(decodedImage->platformImage().get());
+    size_t bitsPerPixel = CGImageGetBitsPerPixel(decodedImage->platformImage().get());
     if (bitsPerComponent != 8 && bitsPerComponent != 16)
         return false;
     if (bitsPerPixel % bitsPerComponent)
         return false;
     size_t componentsPerPixel = bitsPerPixel / bitsPerComponent;
 
-    CGBitmapInfo bitInfo = CGImageGetBitmapInfo(m_cgImage.get());
+    CGBitmapInfo bitInfo = CGImageGetBitmapInfo(decodedImage->platformImage().get());
     bool bigEndianSource = false;
     // These could technically be combined into one large switch
     // statement, but we prefer not to so that we fail fast if we
@@ -418,7 +424,7 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
 
     m_alphaOp = AlphaOp::DoNothing;
     AlphaFormat alphaFormat = AlphaFormatNone;
-    switch (CGImageGetAlphaInfo(m_cgImage.get())) {
+    switch (CGImageGetAlphaInfo(decodedImage->platformImage().get())) {
     case kCGImageAlphaPremultipliedFirst:
         if (!premultiplyAlpha)
             m_alphaOp = AlphaOp::DoUnmultiply;
@@ -462,14 +468,14 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
     if (m_imageSourceFormat == DataFormat::NumFormats)
         return false;
 
-    m_pixelData = adoptCF(CGDataProviderCopyData(CGImageGetDataProvider(m_cgImage.get())));
+    m_pixelData = adoptCF(CGDataProviderCopyData(CGImageGetDataProvider(decodedImage->platformImage().get())));
     if (!m_pixelData)
         return false;
 
     m_imagePixelData = reinterpret_cast<const void*>(CFDataGetBytePtr(m_pixelData.get()));
 
     unsigned srcUnpackAlignment = 0;
-    size_t bytesPerRow = CGImageGetBytesPerRow(m_cgImage.get());
+    size_t bytesPerRow = CGImageGetBytesPerRow(decodedImage->platformImage().get());
     unsigned padding = bytesPerRow - bitsPerPixel / 8 * m_imageWidth;
     if (padding) {
         srcUnpackAlignment = padding + 1;
@@ -482,7 +488,7 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
     // but it would premultiply the alpha channel as a side effect.
     // Prefer to mannually Convert 16bit per-component formats to RGBA8 formats instead.
     if (bitsPerComponent == 16) {
-        m_formalizedRGBA8Data = makeUniqueArray<uint8_t>((Checked<size_t>(m_imageWidth) * m_imageHeight * 4U).unsafeGet());
+        m_formalizedRGBA8Data = makeUniqueArray<uint8_t>(Checked<size_t>(m_imageWidth) * m_imageHeight * 4U);
         const uint16_t* source = reinterpret_cast<const uint16_t*>(m_imagePixelData);
         uint8_t* destination = m_formalizedRGBA8Data.get();
         const ptrdiff_t srcStrideInElements = bytesPerRow / sizeof(uint16_t);
@@ -499,37 +505,33 @@ bool GraphicsContextGLOpenGL::ImageExtractor::extractImage(bool premultiplyAlpha
     return true;
 }
 
-static void releaseImageData(void*, const void* data, size_t)
+void GraphicsContextGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, Ref<PixelBuffer>&& pixelBuffer, const IntSize& canvasSize, GraphicsContext& context)
 {
-    fastFree(const_cast<void*>(data));
-}
-
-void GraphicsContextGLOpenGL::paintToCanvas(const unsigned char* imagePixels, const IntSize& imageSize, const IntSize& canvasSize, GraphicsContext& context)
-{
-    if (!imagePixels || imageSize.isEmpty() || canvasSize.isEmpty())
+    ASSERT(!pixelBuffer->size().isEmpty());
+    if (canvasSize.isEmpty())
         return;
-    int rowBytes = imageSize.width() * 4;
-    RetainPtr<CGDataProviderRef> dataProvider;
+    // Input is GL_RGBA == kCGBitmapByteOrder32Big | kCGImageAlpha*Last.
+    // GL_BGRA would be kCGBitmapByteOrder32Little | kCGImageAlpha*First.
+    CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Big;
+    if (!sourceContextAttributes.alpha)
+        bitmapInfo |= kCGImageAlphaNoneSkipLast;
+    else if (sourceContextAttributes.premultipliedAlpha)
+        bitmapInfo |= kCGImageAlphaPremultipliedLast;
+    else
+        bitmapInfo |= kCGImageAlphaLast;
 
-    if (context.isAcceleratedContext()) {
-        unsigned char* copiedPixels;
+    Ref protectedPixelBuffer = pixelBuffer;
+    auto dataSize = pixelBuffer->sizeInBytes();
+    auto data = pixelBuffer->bytes();
 
-        if (!tryFastCalloc(imageSize.height(), rowBytes).getValue(copiedPixels))
-            return;
+    verifyImageBufferIsBigEnough(data, dataSize);
 
-        memcpy(copiedPixels, imagePixels, rowBytes * imageSize.height());
+    auto dataProvider = adoptCF(CGDataProviderCreateWithData(&protectedPixelBuffer.leakRef(), data, dataSize, [] (void* context, const void*, size_t) {
+        static_cast<PixelBuffer*>(context)->deref();
+    }));
 
-        size_t dataSize = rowBytes * imageSize.height();
-        verifyImageBufferIsBigEnough(copiedPixels, dataSize);
-        dataProvider = adoptCF(CGDataProviderCreateWithData(0, copiedPixels, dataSize, releaseImageData));
-    } else {
-        size_t dataSize = rowBytes * imageSize.height();
-        verifyImageBufferIsBigEnough(imagePixels, dataSize);
-        dataProvider = adoptCF(CGDataProviderCreateWithData(0, imagePixels, dataSize, 0));
-    }
-
-    RetainPtr<CGImageRef> cgImage = adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, rowBytes, sRGBColorSpaceRef(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host,
-        dataProvider.get(), 0, false, kCGRenderingIntentDefault));
+    auto imageSize = pixelBuffer->size();
+    auto image = NativeImage::create(adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, 4 * imageSize.width(), pixelBuffer->format().colorSpace.platformColorSpace(), bitmapInfo, dataProvider.get(), 0, false, kCGRenderingIntentDefault)));
 
     // CSS styling may cause the canvas's content to be resized on
     // the page. Go back to the Canvas to figure out the correct
@@ -542,9 +544,9 @@ void GraphicsContextGLOpenGL::paintToCanvas(const unsigned char* imagePixels, co
     context.scale(FloatSize(1, -1));
     context.translate(0, -imageSize.height());
     context.setImageInterpolationQuality(InterpolationQuality::DoNotInterpolate);
-    context.drawNativeImage(cgImage, imageSize, canvasRect, FloatRect(FloatPoint(), imageSize), { CompositeOperator::Copy });
+    context.drawNativeImage(*image, imageSize, canvasRect, FloatRect(FloatPoint(), imageSize), { CompositeOperator::Copy });
 }
 
 } // namespace WebCore
 
-#endif // ENABLE(GRAPHICS_CONTEXT_GL)
+#endif // ENABLE(WEBGL)

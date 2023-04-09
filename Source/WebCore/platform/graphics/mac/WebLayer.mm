@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WebLayer.h"
 
-#import "GraphicsContext.h"
+#import "GraphicsContextCG.h"
 #import "GraphicsLayerCA.h"
 #import "PlatformCALayer.h"
 #import <QuartzCore/QuartzCore.h>
@@ -51,7 +51,7 @@
 {
     auto layer = WebCore::PlatformCALayer::platformCALayerForLayer((__bridge void*)self);
     if (layer) {
-        WebCore::GraphicsContext graphicsContext(context);
+        WebCore::GraphicsContextCG graphicsContext(context);
         WebCore::PlatformCALayer::RepaintRectList rectsToPaint = WebCore::PlatformCALayer::collectRectsToPaint(graphicsContext, layer.get());
         WebCore::PlatformCALayer::drawLayerContents(graphicsContext, layer.get(), rectsToPaint, self.isRenderingInContext ? WebCore::GraphicsLayerPaintSnapshotting : WebCore::GraphicsLayerPaintNormal);
     }
@@ -65,7 +65,7 @@
 
 - (void)renderInContext:(CGContextRef)context
 {
-    SetForScope<BOOL> change(_isRenderingInContext, YES);
+    SetForScope change(_isRenderingInContext, YES);
     [super renderInContext:context];
 }
 
@@ -81,8 +81,11 @@
 - (void)setNeedsDisplay
 {
     auto layer = WebCore::PlatformCALayer::platformCALayerForLayer((__bridge void*)self);
-    if (layer && layer->owner() && layer->owner()->platformCALayerDrawsContent())
-        [super setNeedsDisplay];
+    if (!layer || !layer->owner())
+        return;
+    if (!layer->owner()->platformCALayerDrawsContent() && !layer->owner()->platformCALayerDelegatesDisplay(layer.get()))
+        return;
+    [super setNeedsDisplay];
 }
 
 - (void)setNeedsDisplayInRect:(CGRect)dirtyRect
@@ -94,7 +97,7 @@
     }
 
     if (WebCore::PlatformCALayerClient* layerOwner = platformLayer->owner()) {
-        if (layerOwner->platformCALayerDrawsContent()) {
+        if (layerOwner->platformCALayerDrawsContent() || layerOwner->platformCALayerDelegatesDisplay(platformLayer.get())) {
             [super setNeedsDisplayInRect:dirtyRect];
 
             if (layerOwner->platformCALayerShowRepaintCounter(platformLayer.get())) {
@@ -113,10 +116,14 @@
         WebThreadLock();
 #endif
     ASSERT(isMainThread());
-    [super display];
     auto layer = WebCore::PlatformCALayer::platformCALayerForLayer((__bridge void*)self);
-    if (layer && layer->owner())
-        layer->owner()->platformCALayerLayerDidDisplay(layer.get());
+    WebCore::PlatformCALayerClient* owner = layer ? layer->owner() : nullptr;
+    if (owner && owner->platformCALayerDelegatesDisplay(layer.get()))
+        owner->platformCALayerLayerDisplay(layer.get());
+    else
+        [super display];
+    if (owner)
+        owner->platformCALayerLayerDidDisplay(layer.get());
 }
 
 - (void)drawInContext:(CGContextRef)context
@@ -128,7 +135,7 @@
     ASSERT(isMainThread());
     auto layer = WebCore::PlatformCALayer::platformCALayerForLayer((__bridge void*)self);
     if (layer && layer->owner()) {
-        WebCore::GraphicsContext graphicsContext(context);
+        WebCore::GraphicsContextCG graphicsContext(context);
         graphicsContext.setIsCALayerContext(true);
         graphicsContext.setIsAcceleratedContext(layer->acceleratesDrawing());
 

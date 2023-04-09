@@ -61,9 +61,6 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
             timeline.addEventListener(WI.Timeline.Event.TimesUpdated, this._timelineTimesUpdated, this);
         }
 
-        // For legacy backends, we compute the elapsed time of records relative to this timestamp.
-        this._legacyFirstRecordedTimestamp = NaN;
-
         this.reset(true);
     }
 
@@ -72,12 +69,12 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
     static sourceCodeTimelinesSupported()
     {
         // FIXME: Support Network Timeline in ServiceWorker.
-        return WI.sharedApp.debuggableType === WI.DebuggableType.Web;
+        return WI.sharedApp.isWebDebuggable();
     }
 
     // Import / Export
 
-    static import(identifier, json, displayName)
+    static async import(identifier, json, displayName)
     {
         let {startTime, endTime, discontinuities, instrumentTypes, records, markers, memoryPressureEvents, sampleStackTraces, sampleDurations} = json;
         let importedDisplayName = WI.UIString("Imported - %s").format(displayName);
@@ -93,7 +90,7 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
         recording.initializeCallingContextTrees(sampleStackTraces, sampleDurations);
 
         for (let recordJSON of records) {
-            let record = WI.TimelineRecord.fromJSON(recordJSON);
+            let record = await WI.TimelineRecord.fromJSON(recordJSON);
             if (record) {
                 recording.addRecord(record);
 
@@ -247,7 +244,7 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
         this._firstRecordOfTypeAfterDiscontinuity.clear();
 
         this._exportDataRecords = [];
-        this._exportDataMarkers = []
+        this._exportDataMarkers = [];
         this._exportDataMemoryPressureEvents = [];
         this._exportDataSampleStackTraces = [];
         this._exportDataSampleDurations = [];
@@ -272,7 +269,7 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
     {
         let timelines = [];
         for (let timelinesForSourceCode of this._sourceCodeTimelinesMap.values())
-            timelines = timelines.concat(Array.from(timelinesForSourceCode.values()));
+            timelines.pushAll(timelinesForSourceCode.values());
         return timelines;
     }
 
@@ -342,7 +339,8 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
             || record.type === WI.TimelineRecord.Type.RenderingFrame
             || record.type === WI.TimelineRecord.Type.CPU
             || record.type === WI.TimelineRecord.Type.Memory
-            || record.type === WI.TimelineRecord.Type.HeapAllocations)
+            || record.type === WI.TimelineRecord.Type.HeapAllocations
+            || record.type === WI.TimelineRecord.Type.Screenshots)
             return;
 
         if (!WI.TimelineRecording.sourceCodeTimelinesSupported())
@@ -414,36 +412,7 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
     {
         if (!timestamp || isNaN(timestamp))
             return NaN;
-
-        // COMPATIBILITY (iOS 8): old backends send timestamps (seconds or milliseconds since the epoch),
-        // rather than seconds elapsed since timeline capturing started. We approximate the latter by
-        // subtracting the start timestamp, as old versions did not use monotonic times.
-        if (WI.TimelineRecording.isLegacy === undefined)
-            WI.TimelineRecording.isLegacy = timestamp > WI.TimelineRecording.TimestampThresholdForLegacyRecordConversion;
-
-        if (!WI.TimelineRecording.isLegacy)
-            return timestamp;
-
-        // If the record's start time is large, but not really large, then it is seconds since epoch
-        // not millseconds since epoch, so convert it to milliseconds.
-        if (timestamp < WI.TimelineRecording.TimestampThresholdForLegacyAssumedMilliseconds)
-            timestamp *= 1000;
-
-        if (isNaN(this._legacyFirstRecordedTimestamp))
-            this._legacyFirstRecordedTimestamp = timestamp;
-
-        // Return seconds since the first recorded value.
-        return (timestamp - this._legacyFirstRecordedTimestamp) / 1000.0;
-    }
-
-    setLegacyBaseTimestamp(timestamp)
-    {
-        console.assert(isNaN(this._legacyFirstRecordedTimestamp));
-
-        if (timestamp < WI.TimelineRecording.TimestampThresholdForLegacyAssumedMilliseconds)
-            timestamp *= 1000;
-
-        this._legacyFirstRecordedTimestamp = timestamp;
+        return timestamp;
     }
 
     initializeTimeBoundsIfNecessary(timestamp)
@@ -460,8 +429,8 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
 
     initializeCallingContextTrees(stackTraces, sampleDurations)
     {
-        this._exportDataSampleStackTraces = this._exportDataSampleStackTraces.concat(stackTraces);
-        this._exportDataSampleDurations = this._exportDataSampleDurations.concat(sampleDurations);
+        this._exportDataSampleStackTraces.pushAll(stackTraces);
+        this._exportDataSampleDurations.pushAll(sampleDurations);
 
         for (let i = 0; i < stackTraces.length; i++) {
             this._topDownCallingContextTree.updateTreeWithStackTrace(stackTraces[i], sampleDurations[i]);
@@ -471,8 +440,16 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
         }
     }
 
+    get exportMode()
+    {
+        return WI.FileUtilities.SaveMode.SingleFile;
+    }
+
     canExport()
     {
+        if (!WI.FileUtilities.canSave(this.exportMode))
+            return false;
+
         if (this._capturing)
             return false;
 
@@ -533,9 +510,5 @@ WI.TimelineRecording.Event = {
     TimesUpdated: "timeline-recording-times-updated",
     MarkerAdded: "timeline-recording-marker-added",
 };
-
-WI.TimelineRecording.isLegacy = undefined;
-WI.TimelineRecording.TimestampThresholdForLegacyRecordConversion = 10000000; // Some value not near zero.
-WI.TimelineRecording.TimestampThresholdForLegacyAssumedMilliseconds = 1420099200000; // Date.parse("Jan 1, 2015"). Milliseconds since epoch.
 
 WI.TimelineRecording.SerializationVersion = 1;

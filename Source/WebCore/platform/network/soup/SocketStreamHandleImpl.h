@@ -47,7 +47,7 @@ class StorageSessionProvider;
 
 class SocketStreamHandleImpl final : public SocketStreamHandle {
 public:
-    static Ref<SocketStreamHandleImpl> create(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String&, SourceApplicationAuditToken&&, const StorageSessionProvider*)
+    static Ref<SocketStreamHandleImpl> create(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String&, SourceApplicationAuditToken&&, const StorageSessionProvider*, bool)
     {
         RELEASE_ASSERT_NOT_REACHED();
     }
@@ -57,7 +57,7 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
     }
 
-    void platformSendHandshake(const uint8_t*, size_t, const Optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final
+    void platformSendHandshake(const uint8_t*, size_t, const std::optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final
     {
         RELEASE_ASSERT_NOT_REACHED();
     }

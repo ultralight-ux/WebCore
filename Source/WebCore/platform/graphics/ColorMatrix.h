@@ -30,30 +30,75 @@
 
 namespace WebCore {
 
-template<typename> struct ColorComponents;
+template<typename, size_t> struct ColorComponents;
 
-template<size_t Columns, size_t Rows>
+template<size_t ColumnCount, size_t RowCount>
 class ColorMatrix {
 public:
     template<typename ...Ts>
     explicit constexpr ColorMatrix(Ts ...input)
         : m_matrix {{ input ... }}
     {
-        static_assert(sizeof...(Ts) == Rows * Columns);
+        static_assert(sizeof...(Ts) == RowCount * ColumnCount);
     }
 
-    constexpr ColorComponents<float> transformedColorComponents(const ColorComponents<float>&) const;
+    template<size_t NumberOfComponents>
+    constexpr ColorComponents<float, NumberOfComponents> transformedColorComponents(const ColorComponents<float, NumberOfComponents>&) const;
 
     constexpr float at(size_t row, size_t column) const
     {
-        return m_matrix[(row * Columns) + column];
+        return m_matrix[(row * ColumnCount) + column];
     }
 
 private:
-    std::array<float, Rows * Columns> m_matrix;
+    std::array<float, RowCount * ColumnCount> m_matrix;
 };
 
-// FIXME: These are only used in FilterOperations.cpp. Consider moving them there.
+template<size_t ColumnCount, size_t RowCount>
+constexpr bool operator==(const ColorMatrix<ColumnCount, RowCount>& a, const ColorMatrix<ColumnCount, RowCount>& b)
+{
+    for (size_t row = 0; row < RowCount; ++row) {
+        for (size_t column = 0; column < ColumnCount; ++column) {
+            if (a.at(row, column) != b.at(row, column))
+                return false;
+        }
+    }
+    return true;
+}
+
+template<size_t ColumnCount, size_t RowCount>
+constexpr bool operator!=(const ColorMatrix<ColumnCount, RowCount>& a, const ColorMatrix<ColumnCount, RowCount>& b)
+{
+    return !(a == b);
+}
+
+constexpr ColorMatrix<3, 3> brightnessColorMatrix(float amount)
+{
+    // Brightness is specified as a compontent transfer function: https://www.w3.org/TR/filter-effects-1/#brightnessEquivalent
+    // which is equivalent to the following matrix.
+    amount = std::max(amount, 0.0f);
+    return ColorMatrix<3, 3> {
+        amount, 0.0f, 0.0f,
+        0.0f, amount, 0.0f,
+        0.0f, 0.0f, amount,
+    };
+}
+
+constexpr ColorMatrix<5, 4> contrastColorMatrix(float amount)
+{
+    // Contrast is specified as a compontent transfer function: https://www.w3.org/TR/filter-effects-1/#contrastEquivalent
+    // which is equivalent to the following matrix.
+    amount = std::max(amount, 0.0f);
+    float intercept = -0.5f * amount + 0.5f;
+
+    return ColorMatrix<5, 4> {
+        amount, 0.0f, 0.0f, 0.0f, intercept,
+        0.0f, amount, 0.0f, 0.0f, intercept,
+        0.0f, 0.0f, amount, 0.0f, intercept,
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f
+    };
+}
+
 constexpr ColorMatrix<3, 3> grayscaleColorMatrix(float amount)
 {
     // Values from https://www.w3.org/TR/filter-effects-1/#grayscaleEquivalent
@@ -62,6 +107,33 @@ constexpr ColorMatrix<3, 3> grayscaleColorMatrix(float amount)
         0.2126f + 0.7874f * oneMinusAmount, 0.7152f - 0.7152f * oneMinusAmount, 0.0722f - 0.0722f * oneMinusAmount,
         0.2126f - 0.2126f * oneMinusAmount, 0.7152f + 0.2848f * oneMinusAmount, 0.0722f - 0.0722f * oneMinusAmount,
         0.2126f - 0.2126f * oneMinusAmount, 0.7152f - 0.7152f * oneMinusAmount, 0.0722f + 0.9278f * oneMinusAmount
+    };
+}
+
+constexpr ColorMatrix<5, 4> invertColorMatrix(float amount)
+{
+    // Invert is specified as a compontent transfer function: https://www.w3.org/TR/filter-effects-1/#invertEquivalent
+    // which is equivalent to the following matrix.
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    float multiplier = 1.0f - amount * 2.0f;
+    return ColorMatrix<5, 4> {
+        multiplier, 0.0f, 0.0f, 0.0f, amount,
+        0.0f, multiplier, 0.0f, 0.0f, amount,
+        0.0f, 0.0f, multiplier, 0.0f, amount,
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f
+    };
+}
+
+constexpr ColorMatrix<5, 4> opacityColorMatrix(float amount)
+{
+    // Opacity is specified as a compontent transfer function: https://www.w3.org/TR/filter-effects-1/#opacityEquivalent
+    // which is equivalent to the following matrix.
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    return ColorMatrix<5, 4> {
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, amount, 0.0f
     };
 }
 
@@ -100,29 +172,40 @@ inline ColorMatrix<3, 3> hueRotateColorMatrix(float angleInDegrees)
     };
 }
 
-template<size_t Columns, size_t Rows>
-constexpr ColorComponents<float> ColorMatrix<Columns, Rows>::transformedColorComponents(const ColorComponents<float>& inputVector) const
+template<size_t ColumnCount, size_t RowCount>
+template<size_t NumberOfComponents>
+constexpr auto ColorMatrix<ColumnCount, RowCount>::transformedColorComponents(const ColorComponents<float, NumberOfComponents>& inputVector) const -> ColorComponents<float, NumberOfComponents>
 {
-    static_assert(ColorComponents<float>::Size >= Rows);
+    static_assert(ColorComponents<float, NumberOfComponents>::Size >= RowCount);
     
-    ColorComponents<float> result;
-    for (size_t row = 0; row < Rows; ++row) {
-        if constexpr (Columns <= ColorComponents<float>::Size) {
-            for (size_t column = 0; column < Columns; ++column)
+    ColorComponents<float, NumberOfComponents> result;
+    for (size_t row = 0; row < RowCount; ++row) {
+        if constexpr (ColumnCount <= ColorComponents<float, NumberOfComponents>::Size) {
+            for (size_t column = 0; column < ColumnCount; ++column)
                 result[row] += at(row, column) * inputVector[column];
-        } else if constexpr (Columns > ColorComponents<float>::Size) {
-            for (size_t column = 0; column < ColorComponents<float>::Size; ++column)
+        } else if constexpr (ColumnCount > ColorComponents<float, NumberOfComponents>::Size) {
+            for (size_t column = 0; column < ColorComponents<float, NumberOfComponents>::Size; ++column)
                 result[row] += at(row, column) * inputVector[column];
-            for (size_t additionalColumn = ColorComponents<float>::Size; additionalColumn < Columns; ++additionalColumn)
+            for (size_t additionalColumn = ColorComponents<float, NumberOfComponents>::Size; additionalColumn < ColumnCount; ++additionalColumn)
                 result[row] += at(row, additionalColumn);
         }
     }
-    if constexpr (ColorComponents<float>::Size > Rows) {
-        for (size_t additionalRow = Rows; additionalRow < ColorComponents<float>::Size; ++additionalRow)
+    if constexpr (ColorComponents<float, NumberOfComponents>::Size > RowCount) {
+        for (size_t additionalRow = RowCount; additionalRow < ColorComponents<float, NumberOfComponents>::Size; ++additionalRow)
             result[additionalRow] = inputVector[additionalRow];
     }
 
     return result;
+}
+
+template<typename T, typename M> inline constexpr auto applyMatricesToColorComponents(const ColorComponents<T, 4>& components, M matrix) -> ColorComponents<T, 4>
+{
+    return matrix.transformedColorComponents(components);
+}
+
+template<typename T, typename M, typename... Matrices> inline constexpr auto applyMatricesToColorComponents(const ColorComponents<T, 4>& components, M matrix, Matrices... matrices) -> ColorComponents<T, 4>
+{
+    return applyMatricesToColorComponents(matrix.transformedColorComponents(components), matrices...);
 }
 
 } // namespace WebCore

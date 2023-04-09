@@ -47,21 +47,21 @@ class SocketStreamHandleClient;
 
 class SocketStreamHandleImpl : public SocketStreamHandle {
 public:
-    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, PAL::SessionID sessionID, const String& credentialPartition, SourceApplicationAuditToken&& auditData, const StorageSessionProvider* provider) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID, credentialPartition, WTFMove(auditData), provider)); }
+    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, PAL::SessionID sessionID, const String& credentialPartition, SourceApplicationAuditToken&& auditData, const StorageSessionProvider* provider, bool shouldAcceptInsecureCertificates) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID, credentialPartition, WTFMove(auditData), provider, shouldAcceptInsecureCertificates)); }
 
     virtual ~SocketStreamHandleImpl();
 
     WEBCORE_EXPORT static void setLegacyTLSEnabled(bool);
 
     WEBCORE_EXPORT void platformSend(const uint8_t* data, size_t length, Function<void(bool)>&&) final;
-    WEBCORE_EXPORT void platformSendHandshake(const uint8_t* data, size_t length, const Optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final;
+    WEBCORE_EXPORT void platformSendHandshake(const uint8_t* data, size_t length, const std::optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final;
     WEBCORE_EXPORT void platformClose() final;
 private:
     size_t bufferedAmount() final;
-    Optional<size_t> platformSendInternal(const uint8_t*, size_t);
+    std::optional<size_t> platformSendInternal(const uint8_t*, size_t);
     bool sendPendingData();
 
-    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String& credentialPartition, SourceApplicationAuditToken&&, const StorageSessionProvider*);
+    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String& credentialPartition, SourceApplicationAuditToken&&, const StorageSessionProvider*, bool shouldAcceptInsecureCertificates);
     void createStreams();
     void scheduleStreams();
     void chooseProxy();
@@ -72,7 +72,7 @@ private:
     static void pacExecutionCallback(void* client, CFArrayRef proxyList, CFErrorRef);
     static CFStringRef copyPACExecutionDescription(void*);
 
-    bool shouldUseSSL() const { return m_url.protocolIs("wss"); }
+    bool shouldUseSSL() const { return m_url.protocolIs("wss"_s); }
     unsigned short port() const;
 
     void addCONNECTCredentials(CFHTTPMessageRef response);
@@ -99,6 +99,7 @@ private:
 
     RetainPtr<CFHTTPMessageRef> m_proxyResponseMessage;
     bool m_sentStoredCredentials;
+    bool m_shouldAcceptInsecureCertificates;
     RetainPtr<CFReadStreamRef> m_readStream;
     RetainPtr<CFWriteStreamRef> m_writeStream;
 

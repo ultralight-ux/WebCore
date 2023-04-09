@@ -36,14 +36,16 @@
 #include "CSSImportRule.h"
 #include "CSSStyleRule.h"
 #include "CachedImage.h"
-#include "Document.h"
-#include "Element.h"
+#include "CommonAtomStrings.h"
+#include "DocumentInlines.h"
+#include "ElementInlines.h"
 #include "Frame.h"
 #include "HTMLFrameOwnerElement.h"
 #include "HTMLHeadElement.h"
 #include "HTMLImageElement.h"
 #include "HTMLLinkElement.h"
 #include "HTMLMetaCharsetParser.h"
+#include "HTMLMetaElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
 #include "HTMLStyleElement.h"
@@ -54,33 +56,34 @@
 #include "RenderElement.h"
 #include "StyleCachedImage.h"
 #include "StyleImage.h"
-#include "StyleProperties.h"
+#include "StylePropertiesInlines.h"
 #include "StyleRule.h"
 #include "StyleSheetContents.h"
 #include "Text.h"
-#include "TextEncoding.h"
+#include <pal/text/TextEncoding.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-static bool isCharsetSpecifyingNode(const Node& node)
+static bool isCharsetSpecifyingNode(const HTMLMetaElement& element)
 {
-    if (!is<HTMLElement>(node))
+    if (!element.hasAttributes())
         return false;
-
-    const HTMLElement& element = downcast<HTMLElement>(node);
-    if (!element.hasTagName(HTMLNames::metaTag))
-        return false;
-    HTMLMetaCharsetParser::AttributeList attributes;
-    if (element.hasAttributes()) {
-        for (const Attribute& attribute : element.attributesIterator()) {
-            // FIXME: We should deal appropriately with the attribute if they have a namespace.
-            attributes.append(std::make_pair(attribute.name().toString(), attribute.value().string()));
-        }
+    Vector<std::pair<StringView, StringView>> attributes;
+    for (auto& attribute : element.attributesIterator()) {
+        if (attribute.name().hasPrefix())
+            continue;
+        attributes.append({ StringView { attribute.name().localName() }, StringView { attribute.value() } });
     }
     return HTMLMetaCharsetParser::encodingFromMetaAttributes(attributes).isValid();
+}
+
+template<typename NodeType> static bool isCharsetSpecifyingNode(const NodeType& node)
+{
+    auto* metaElement = dynamicDowncast<HTMLMetaElement>(node);
+    return metaElement && isCharsetSpecifyingNode(*metaElement);
 }
 
 static bool shouldIgnoreElement(const Element& element)
@@ -130,11 +133,8 @@ void PageSerializer::SerializerMarkupAccumulator::appendStartTag(StringBuilder& 
     if (!shouldIgnoreElement(element))
         MarkupAccumulator::appendStartTag(out, element, namespaces);
 
-    if (element.hasTagName(HTMLNames::headTag)) {
-        out.appendLiteral("<meta charset=\"");
-        out.append(m_document.charset());
-        out.appendLiteral("\">");
-    }
+    if (element.hasTagName(HTMLNames::headTag))
+        out.append("<meta charset=\"", m_document.charset(), "\">");
 
     // FIXME: For object (plugins) tags and video tag we could replace them by an image of their current contents.
 }
@@ -145,7 +145,7 @@ void PageSerializer::SerializerMarkupAccumulator::appendCustomAttributes(StringB
         return;
 
     const HTMLFrameOwnerElement& frameOwner = downcast<HTMLFrameOwnerElement>(element);
-    Frame* frame = frameOwner.contentFrame();
+    auto* frame = dynamicDowncast<LocalFrame>(frameOwner.contentFrame());
     if (!frame)
         return;
 
@@ -155,7 +155,7 @@ void PageSerializer::SerializerMarkupAccumulator::appendCustomAttributes(StringB
 
     // We need to give a fake location to blank frames so they can be referenced by the serialized frame.
     url = m_serializer.urlForBlankFrame(frame);
-    appendAttribute(out, element, Attribute(frameOwnerURLAttributeName(frameOwner), url.string()), namespaces);
+    appendAttribute(out, element, Attribute(frameOwnerURLAttributeName(frameOwner), AtomString { url.string() }), namespaces);
 }
 
 void PageSerializer::SerializerMarkupAccumulator::appendEndTag(StringBuilder& out, const Element& element)
@@ -192,14 +192,14 @@ void PageSerializer::serializeFrame(Frame* frame)
 
     Vector<Node*> nodes;
     SerializerMarkupAccumulator accumulator(*this, *document, &nodes);
-    TextEncoding textEncoding(document->charset());
+    PAL::TextEncoding textEncoding(document->charset());
     CString data;
     if (!textEncoding.isValid()) {
         // FIXME: iframes used as images trigger this. We should deal with them correctly.
         return;
     }
     String text = accumulator.serializeNodes(*document->documentElement(), SerializedNodes::SubtreeIncludingNode);
-    m_resources.append({ url, document->suggestedMIMEType(), SharedBuffer::create(textEncoding.encode(text, UnencodableHandling::Entities)) });
+    m_resources.append({ url, document->suggestedMIMEType(), SharedBuffer::create(textEncoding.encode(text, PAL::UnencodableHandling::Entities)) });
     m_resourceURLs.add(url);
 
     for (auto& node : nodes) {
@@ -229,8 +229,12 @@ void PageSerializer::serializeFrame(Frame* frame)
         }
     }
 
-    for (Frame* childFrame = frame->tree().firstChild(); childFrame; childFrame = childFrame->tree().nextSibling())
-        serializeFrame(childFrame);
+    for (AbstractFrame* childFrame = frame->tree().firstChild(); childFrame; childFrame = childFrame->tree().nextSibling()) {
+        auto* localFrame = dynamicDowncast<LocalFrame>(childFrame);
+        if (!localFrame)
+            continue;
+        serializeFrame(localFrame);
+    }
 }
 
 void PageSerializer::serializeCSSStyleSheet(CSSStyleSheet* styleSheet, const URL& url)
@@ -242,7 +246,7 @@ void PageSerializer::serializeCSSStyleSheet(CSSStyleSheet* styleSheet, const URL
         if (!itemText.isEmpty()) {
             cssText.append(itemText);
             if (i < styleSheet->length() - 1)
-                cssText.appendLiteral("\n\n");
+                cssText.append("\n\n");
         }
         Document* document = styleSheet->ownerDocument();
         // Some rules have resources associated with them that we need to retrieve.
@@ -261,9 +265,9 @@ void PageSerializer::serializeCSSStyleSheet(CSSStyleSheet* styleSheet, const URL
 
     if (url.isValid() && !m_resourceURLs.contains(url)) {
         // FIXME: We should check whether a charset has been specified and if none was found add one.
-        TextEncoding textEncoding(styleSheet->contents().charset());
+        PAL::TextEncoding textEncoding(styleSheet->contents().charset());
         ASSERT(textEncoding.isValid());
-        m_resources.append({ url, "text/css"_s, SharedBuffer::create(textEncoding.encode(cssText.toString(), UnencodableHandling::Entities)) });
+        m_resources.append({ url, cssContentTypeAtom(), SharedBuffer::create(textEncoding.encode(cssText.toString(), PAL::UnencodableHandling::Entities)) });
         m_resourceURLs.add(url);
     }
 }
@@ -276,7 +280,7 @@ void PageSerializer::addImageToResources(CachedImage* image, RenderElement* imag
     if (!image || image->image() == &Image::nullImage())
         return;
 
-    RefPtr<SharedBuffer> data = imageRenderer ? image->imageForRenderer(imageRenderer)->data() : 0;
+    RefPtr<FragmentedSharedBuffer> data = imageRenderer ? image->imageForRenderer(imageRenderer)->data() : 0;
     if (!data)
         data = image->image()->data();
 
@@ -285,7 +289,7 @@ void PageSerializer::addImageToResources(CachedImage* image, RenderElement* imag
         return;
     }
 
-    m_resources.append({ url, image->response().mimeType(), WTFMove(data) });
+    m_resources.append({ url, image->response().mimeType(), data->makeContiguous() });
     m_resourceURLs.add(url);
 }
 
@@ -302,9 +306,8 @@ void PageSerializer::retrieveResourcesForProperties(const StyleProperties* style
     // The background-image and list-style-image (for ul or ol) are the CSS properties
     // that make use of images. We iterate to make sure we include any other
     // image properties there might be.
-    unsigned propertyCount = styleDeclaration->propertyCount();
-    for (unsigned i = 0; i < propertyCount; ++i) {
-        RefPtr<CSSValue> cssValue = styleDeclaration->propertyAt(i).value();
+    for (auto property : *styleDeclaration) {
+        auto cssValue = property.value();
         if (!is<CSSImageValue>(*cssValue))
             continue;
 
@@ -318,11 +321,10 @@ void PageSerializer::retrieveResourcesForProperties(const StyleProperties* style
 
 URL PageSerializer::urlForBlankFrame(Frame* frame)
 {
-    auto iter = m_blankFrameURLs.find(frame);
-    if (iter != m_blankFrameURLs.end())
-        return iter->value;
-    String url = makeString("wyciwyg://frame/", m_blankFrameCounter++);
-    URL fakeURL({ }, url);
+    auto iterator = m_blankFrameURLs.find(frame);
+    if (iterator != m_blankFrameURLs.end())
+        return iterator->value;
+    URL fakeURL { makeString("wyciwyg://frame/", m_blankFrameCounter++) };
     m_blankFrameURLs.add(frame, fakeURL);
     return fakeURL;
 }

@@ -40,7 +40,12 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
     closed()
     {
-        WI.domManager.removeEventListener(null, null, this);
+        if (this.didInitialLayout) {
+            WI.domManager.removeEventListener(WI.DOMManager.Event.AttributeModified, this._attributesChanged, this);
+            WI.domManager.removeEventListener(WI.DOMManager.Event.AttributeRemoved, this._attributesChanged, this);
+            WI.domManager.removeEventListener(WI.DOMManager.Event.CharacterDataModified, this._characterDataModified, this);
+            WI.domManager.removeEventListener(WI.DOMManager.Event.CustomElementStateChanged, this._customElementStateChanged, this);
+        }
 
         super.closed();
     }
@@ -63,59 +68,40 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
         var identityGroup = new WI.DetailsSectionGroup([this._identityNodeTypeRow, this._identityNodeNameRow, this._identityNodeValueRow, this._identityNodeContentSecurityPolicyHashRow]);
         var identitySection = new WI.DetailsSection("dom-node-identity", WI.UIString("Identity"), [identityGroup]);
+        this.contentView.element.appendChild(identitySection.element);
 
         this._attributesDataGridRow = new WI.DetailsSectionDataGridRow(null, WI.UIString("No Attributes"));
 
         var attributesGroup = new WI.DetailsSectionGroup([this._attributesDataGridRow]);
         var attributesSection = new WI.DetailsSection("dom-node-attributes", WI.UIString("Attributes"), [attributesGroup]);
+        this.contentView.element.appendChild(attributesSection.element);
 
-        this._propertiesRow = new WI.DetailsSectionRow;
-
-        var propertiesGroup = new WI.DetailsSectionGroup([this._propertiesRow]);
-        var propertiesSection = new WI.DetailsSection("dom-node-properties", WI.UIString("Properties"), [propertiesGroup]);
-
-        let eventListenersFilterElement = WI.ImageUtilities.useSVGSymbol("Images/FilterFieldGlyph.svg", "filter", WI.UIString("Grouping Method"));
-
-        let eventListenersGroupMethodSelectElement = eventListenersFilterElement.appendChild(document.createElement("select"));
-        eventListenersGroupMethodSelectElement.addEventListener("change", (event) => {
-            this._eventListenerGroupingMethodSetting.value = eventListenersGroupMethodSelectElement.value;
-
-            this._refreshEventListeners();
-        });
-
-        function createOption(text, value) {
-            let optionElement = eventListenersGroupMethodSelectElement.appendChild(document.createElement("option"));
-            optionElement.value = value;
-            optionElement.textContent = text;
+        if (InspectorBackend.hasCommand("DOM.resolveNode")) {
+            this._propertiesRow = new WI.DetailsSectionRow;
+            let propertiesGroup = new WI.DetailsSectionGroup([this._propertiesRow]);
+            let propertiesSection = new WI.DetailsSection("dom-node-properties", WI.UIString("Properties"), [propertiesGroup]);
+            this.contentView.element.appendChild(propertiesSection.element);
         }
 
-        createOption(WI.UIString("Group by Event"), WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Event);
-        createOption(WI.UIString("Group by Target"), WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Target);
-
-        eventListenersGroupMethodSelectElement.value = this._eventListenerGroupingMethodSetting.value;
+        let eventListenersFilterElement = WI.ImageUtilities.useSVGSymbol("Images/Filter.svg", "filter", WI.UIString("Grouping Method"));
+        WI.addMouseDownContextMenuHandlers(eventListenersFilterElement, this._populateEventListenersFilterContextMenu.bind(this));
 
         this._eventListenersSectionGroup = new WI.DetailsSectionGroup;
         let eventListenersSection = new WI.DetailsSection("dom-node-event-listeners", WI.UIString("Event Listeners"), [this._eventListenersSectionGroup], eventListenersFilterElement);
-
-        this.contentView.element.appendChild(identitySection.element);
-        this.contentView.element.appendChild(attributesSection.element);
-        this.contentView.element.appendChild(propertiesSection.element);
         this.contentView.element.appendChild(eventListenersSection.element);
 
-        if (WI.sharedApp.hasExtraDomains) {
-            if (InspectorBackend.domains.DOM.getDataBindingsForNode) {
-                this._dataBindingsSection = new WI.DetailsSection("dom-node-data-bindings", WI.UIString("Data Bindings"), []);
-                this.contentView.element.appendChild(this._dataBindingsSection.element);
-            }
+        if (InspectorBackend.hasCommand("DOM.getDataBindingsForNode")) {
+            this._dataBindingsSection = new WI.DetailsSection("dom-node-data-bindings", WI.UIString("Data Bindings"), []);
+            this.contentView.element.appendChild(this._dataBindingsSection.element);
+        }
 
-            if (InspectorBackend.domains.DOM.getAssociatedDataForNode) {
-                this._associatedDataGrid = new WI.DetailsSectionRow(WI.UIString("No Associated Data"));
+        if (InspectorBackend.hasCommand("DOM.getAssociatedDataForNode")) {
+            this._associatedDataGrid = new WI.DetailsSectionRow(WI.UIString("No Associated Data"));
 
-                let associatedDataGroup = new WI.DetailsSectionGroup([this._associatedDataGrid]);
+            let associatedDataGroup = new WI.DetailsSectionGroup([this._associatedDataGrid]);
 
-                let associatedSection = new WI.DetailsSection("dom-node-associated-data", WI.UIString("Associated Data"), [associatedDataGroup]);
-                this.contentView.element.appendChild(associatedSection.element);
-            }
+            let associatedSection = new WI.DetailsSection("dom-node-associated-data", WI.UIString("Associated Data"), [associatedDataGroup]);
+            this.contentView.element.appendChild(associatedSection.element);
         }
 
         if (this._accessibilitySupported()) {
@@ -157,7 +143,7 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
     {
         super.layout();
 
-        if (!this.domNode)
+        if (!this.domNode || this.domNode.destroyed)
             return;
 
         this._refreshIdentity();
@@ -195,7 +181,7 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
     _accessibilitySupported()
     {
-        return window.DOMAgent && DOMAgent.getAccessibilityPropertiesForNode;
+        return InspectorBackend.hasCommand("DOM.getAccessibilityPropertiesForNode");
     }
 
     _refreshIdentity()
@@ -240,16 +226,20 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
     _refreshProperties()
     {
+        if (!this._propertiesRow)
+            return;
+
         if (this._nodeRemoteObject) {
             this._nodeRemoteObject.release();
             this._nodeRemoteObject = null;
         }
 
-        let domNode = this.domNode;
+        let target = WI.assumingMainTarget();
 
         const objectGroup = "dom-node-details-sidebar-properties-object-group";
-        RuntimeAgent.releaseObjectGroup(objectGroup);
+        target.RuntimeAgent.releaseObjectGroup(objectGroup);
 
+        let domNode = this.domNode;
         WI.RemoteObject.resolveNode(domNode, objectGroup).then((object) => {
             // Bail if the DOM node changed while we were waiting for the async response.
             if (this.domNode !== domNode)
@@ -277,6 +267,12 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
             const args = undefined;
             const generatePreview = false;
             object.callFunction(inspectedPage_node_collectPrototypes, args, generatePreview, nodePrototypesReady.bind(this));
+        }).catch((error) => {
+            // Bail if the DOM node changed while we were waiting for the async response.
+            if (this.domNode !== domNode)
+                return;
+
+            console.assert(false, "Cannot resolve node.", error, domNode);
         });
 
         function nodePrototypesReady(error, object, wasThrown)
@@ -288,7 +284,7 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
             if (this.domNode !== domNode)
                 return;
 
-            object.deprecatedGetOwnProperties(fillSection.bind(this));
+            object.getPropertyDescriptors(fillSection.bind(this), {ownProperties: true});
         }
 
         function fillSection(prototypes)
@@ -335,116 +331,34 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         }
     }
 
-    _refreshEventListeners()
+    async _refreshEventListeners()
     {
         var domNode = this.domNode;
         if (!domNode)
             return;
 
-        const windowTargetIdentifier = Symbol("window");
+        let {listeners} = await domNode.getEventListeners();
 
-        function createEventListenerSection(title, eventListeners, options = {}) {
-            let groups = eventListeners.map((eventListener) => new WI.EventListenerSectionGroup(eventListener, options));
+        // Bail if the DOM node changed while we were waiting for the async response.
+        if (this.domNode !== domNode)
+            return;
 
-            const optionsElement = null;
-            const defaultCollapsedSettingValue = true;
-            let section = new WI.DetailsSection(`${title}-event-listener-section`, title, groups, optionsElement, defaultCollapsedSettingValue);
-            section.element.classList.add("event-listener-section");
-            return section;
+        if (!listeners.length) {
+            let emptyRow = new WI.DetailsSectionRow(WI.UIString("No Event Listeners"));
+            emptyRow.showEmptyMessage();
+            this._eventListenersSectionGroup.rows = [emptyRow];
+            return;
         }
 
-        function generateGroupsByEvent(eventListeners) {
-            let eventListenerTypes = new Map;
-            for (let eventListener of eventListeners) {
-                console.assert(eventListener.nodeId || eventListener.onWindow);
-                if (eventListener.nodeId)
-                    eventListener.node = WI.domManager.nodeForId(eventListener.nodeId);
+        switch (this._eventListenerGroupingMethodSetting.value) {
+        case WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Event:
+            this._eventListenersSectionGroup.rows = WI.EventListenerSectionGroup.groupIntoSectionsByEvent(listeners);
+            break;
 
-                let eventListenersForType = eventListenerTypes.get(eventListener.type);
-                if (!eventListenersForType)
-                    eventListenerTypes.set(eventListener.type, eventListenersForType = []);
-                eventListenersForType.push(eventListener);
-            }
-
-            let rows = [];
-
-            let types = Array.from(eventListenerTypes.keys());
-            types.sort();
-            for (let type of types)
-                rows.push(createEventListenerSection(type, eventListenerTypes.get(type), {hideType: true}));
-
-            return rows;
+        case WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Target:
+            this._eventListenersSectionGroup.rows = WI.EventListenerSectionGroup.groupIntoSectionsByTarget(listeners, domNode);
+            break;
         }
-
-        function generateGroupsByTarget(eventListeners) {
-            let eventListenerTargets = new Map;
-            for (let eventListener of eventListeners) {
-                console.assert(eventListener.nodeId || eventListener.onWindow);
-                if (eventListener.nodeId)
-                    eventListener.node = WI.domManager.nodeForId(eventListener.nodeId);
-
-                let target = eventListener.onWindow ? windowTargetIdentifier : eventListener.node;
-                let eventListenersForTarget = eventListenerTargets.get(target);
-                if (!eventListenersForTarget)
-                    eventListenerTargets.set(target, eventListenersForTarget = []);
-                eventListenersForTarget.push(eventListener);
-            }
-
-            let rows = [];
-
-            function generateSectionForTarget(target) {
-                let eventListenersForTarget = eventListenerTargets.get(target);
-                if (!eventListenersForTarget)
-                    return;
-
-                eventListenersForTarget.sort((a, b) => a.type.toLowerCase().extendedLocaleCompare(b.type.toLowerCase()));
-
-                let title = target === windowTargetIdentifier ? WI.unlocalizedString("window") : target.displayName;
-
-                let section = createEventListenerSection(title, eventListenersForTarget, {hideTarget: true});
-                if (target instanceof WI.DOMNode)
-                    WI.bindInteractionsForNodeToElement(target, section.titleElement, {ignoreClick: true});
-                rows.push(section);
-            }
-
-            let currentNode = domNode;
-            do {
-                generateSectionForTarget(currentNode);
-            } while (currentNode = currentNode.parentNode);
-
-            generateSectionForTarget(windowTargetIdentifier);
-
-            return rows;
-        }
-
-        function eventListenersCallback(error, eventListeners)
-        {
-            if (error)
-                return;
-
-            // Bail if the DOM node changed while we were waiting for the async response.
-            if (this.domNode !== domNode)
-                return;
-
-            if (!eventListeners.length) {
-                var emptyRow = new WI.DetailsSectionRow(WI.UIString("No Event Listeners"));
-                emptyRow.showEmptyMessage();
-                this._eventListenersSectionGroup.rows = [emptyRow];
-                return;
-            }
-
-            switch (this._eventListenerGroupingMethodSetting.value) {
-            case WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Event:
-                this._eventListenersSectionGroup.rows = generateGroupsByEvent.call(this, eventListeners);
-                break;
-
-            case WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Target:
-                this._eventListenersSectionGroup.rows = generateGroupsByTarget.call(this, eventListeners);
-                break;
-            }
-        }
-
-        domNode.getEventListeners(eventListenersCallback.bind(this));
     }
 
     _refreshDataBindings()
@@ -456,7 +370,8 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         if (!domNode)
             return;
 
-        DOMAgent.getDataBindingsForNode(this.domNode.id).then(({dataBindings}) => {
+        let target = WI.assumingMainTarget();
+        target.DOMAgent.getDataBindingsForNode(this.domNode.id).then(({dataBindings}) => {
             if (this.domNode !== domNode)
                 return;
 
@@ -484,14 +399,16 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         if (!this._associatedDataGrid)
             return;
 
+        let target = WI.assumingMainTarget();
+
         const objectGroup = "dom-node-details-sidebar-associated-data-object-group";
-        RuntimeAgent.releaseObjectGroup(objectGroup);
+        target.RuntimeAgent.releaseObjectGroup(objectGroup);
 
         let domNode = this.domNode;
         if (!domNode)
             return;
 
-        DOMAgent.getAssociatedDataForNode(domNode.id).then(({associatedData}) => {
+        target.DOMAgent.getAssociatedDataForNode(domNode.id).then(({associatedData}) => {
             if (this.domNode !== domNode)
                 return;
 
@@ -621,11 +538,11 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
                 var checked = "";
                 if (accessibilityProperties.checked !== undefined) {
-                    if (accessibilityProperties.checked === DOMAgent.AccessibilityPropertiesChecked.True)
+                    if (accessibilityProperties.checked === InspectorBackend.Enum.DOM.AccessibilityPropertiesChecked.True)
                         checked = WI.UIString("Yes");
-                    else if (accessibilityProperties.checked === DOMAgent.AccessibilityPropertiesChecked.Mixed)
+                    else if (accessibilityProperties.checked === InspectorBackend.Enum.DOM.AccessibilityPropertiesChecked.Mixed)
                         checked = WI.UIString("Mixed");
-                    else // DOMAgent.AccessibilityPropertiesChecked.False
+                    else // InspectorBackend.Enum.DOM.AccessibilityPropertiesChecked.False
                         checked = WI.UIString("No");
                 }
 
@@ -635,22 +552,22 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
                 var current = "";
                 switch (accessibilityProperties.current) {
-                case DOMAgent.AccessibilityPropertiesCurrent.True:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.True:
                     current = WI.UIString("True");
                     break;
-                case DOMAgent.AccessibilityPropertiesCurrent.Page:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.Page:
                     current = WI.UIString("Page");
                     break;
-                case DOMAgent.AccessibilityPropertiesCurrent.Location:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.Location:
                     current = WI.UIString("Location");
                     break;
-                case DOMAgent.AccessibilityPropertiesCurrent.Step:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.Step:
                     current = WI.UIString("Step");
                     break;
-                case DOMAgent.AccessibilityPropertiesCurrent.Date:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.Date:
                     current = WI.UIString("Date");
                     break;
-                case DOMAgent.AccessibilityPropertiesCurrent.Time:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesCurrent.Time:
                     current = WI.UIString("Time");
                     break;
                 default:
@@ -672,11 +589,11 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
                 }
 
                 var invalid = "";
-                if (accessibilityProperties.invalid === DOMAgent.AccessibilityPropertiesInvalid.True)
+                if (accessibilityProperties.invalid === InspectorBackend.Enum.DOM.AccessibilityPropertiesInvalid.True)
                     invalid = WI.UIString("Yes");
-                else if (accessibilityProperties.invalid === DOMAgent.AccessibilityPropertiesInvalid.Grammar)
+                else if (accessibilityProperties.invalid === InspectorBackend.Enum.DOM.AccessibilityPropertiesInvalid.Grammar)
                     invalid = WI.UIString("Grammar");
-                else if (accessibilityProperties.invalid === DOMAgent.AccessibilityPropertiesInvalid.Spelling)
+                else if (accessibilityProperties.invalid === InspectorBackend.Enum.DOM.AccessibilityPropertiesInvalid.Spelling)
                     invalid = WI.UIString("Spelling");
 
                 var label = accessibilityProperties.label;
@@ -685,10 +602,10 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
                 var liveRegionStatusNode = null;
                 var liveRegionStatusToken = accessibilityProperties.liveRegionStatus;
                 switch (liveRegionStatusToken) {
-                case DOMAgent.AccessibilityPropertiesLiveRegionStatus.Assertive:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesLiveRegionStatus.Assertive:
                     liveRegionStatus = WI.UIString("Assertive");
                     break;
-                case DOMAgent.AccessibilityPropertiesLiveRegionStatus.Polite:
+                case InspectorBackend.Enum.DOM.AccessibilityPropertiesLiveRegionStatus.Polite:
                     liveRegionStatus = WI.UIString("Polite");
                     break;
                 default:
@@ -701,19 +618,19 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
                         // @aria-relevant="all" is exposed as ["additions","removals","text"], in order.
                         // This order is controlled in WebCore and expected in WebInspectorUI.
                         if (liveRegionRelevant.length === 3
-                            && liveRegionRelevant[0] === DOMAgent.LiveRegionRelevant.Additions
-                            && liveRegionRelevant[1] === DOMAgent.LiveRegionRelevant.Removals
-                            && liveRegionRelevant[2] === DOMAgent.LiveRegionRelevant.Text)
+                            && liveRegionRelevant[0] === InspectorBackend.Enum.DOM.LiveRegionRelevant.Additions
+                            && liveRegionRelevant[1] === InspectorBackend.Enum.DOM.LiveRegionRelevant.Removals
+                            && liveRegionRelevant[2] === InspectorBackend.Enum.DOM.LiveRegionRelevant.Text)
                             liveRegionRelevant = [WI.UIString("All Changes")];
                         else {
                             // Reassign localized strings in place: ["additions","text"] becomes ["Additions","Text"].
                             liveRegionRelevant = liveRegionRelevant.map(function(value) {
                                 switch (value) {
-                                case DOMAgent.LiveRegionRelevant.Additions:
+                                case InspectorBackend.Enum.DOM.LiveRegionRelevant.Additions:
                                     return WI.UIString("Additions");
-                                case DOMAgent.LiveRegionRelevant.Removals:
+                                case InspectorBackend.Enum.DOM.LiveRegionRelevant.Removals:
                                     return WI.UIString("Removals");
-                                case DOMAgent.LiveRegionRelevant.Text:
+                                case InspectorBackend.Enum.DOM.LiveRegionRelevant.Text:
                                     return WI.UIString("Text");
                                 default: // If WebCore sends a new unhandled value, display as a String.
                                     return "\"" + value + "\"";
@@ -872,6 +789,20 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         }
 
         domNode.accessibilityProperties(accessibilityPropertiesCallback.bind(this));
+    }
+
+    _populateEventListenersFilterContextMenu(contextMenu)
+    {
+        let addGroupingMethodCheckboxItem = (label, groupingMethod) => {
+            contextMenu.appendCheckboxItem(label, () => {
+                this._eventListenerGroupingMethodSetting.value = groupingMethod;
+
+                this._refreshEventListeners();
+            }, this._eventListenerGroupingMethodSetting.value === groupingMethod);
+        };
+
+        addGroupingMethodCheckboxItem(WI.UIString("Group by Event", "Group by Event @ Node Event Listeners", "Group DOM event listeners by DOM event"), WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Event);
+        addGroupingMethodCheckboxItem(WI.UIString("Group by Target", "Group by Target @ Node Event Listeners", "Group DOM event listeners by DOM node"), WI.DOMNodeDetailsSidebarPanel.EventListenerGroupingMethod.Target);
     }
 
     _eventListenersChanged(event)

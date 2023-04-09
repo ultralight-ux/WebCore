@@ -35,6 +35,7 @@
 #include <wtf/Condition.h>
 #include <wtf/Lock.h>
 #include <wtf/MainThread.h>
+#include <wtf/RetainPtr.h>
 #include <wtf/Threading.h>
 
 namespace WebCore {
@@ -52,19 +53,19 @@ CFRunLoopRef loaderRunLoop()
 {
     ASSERT(isMainThread());
 
-    std::unique_lock<Lock> lock(loaderRunLoopMutex);
+    Locker locker { loaderRunLoopMutex };
 
     if (!loaderRunLoopObject) {
         Thread::create("WebCore: CFNetwork Loader", [] {
             {
-                auto locker = holdLock(loaderRunLoopMutex);
+                Locker locker { loaderRunLoopMutex };
 
                 loaderRunLoopObject = CFRunLoopGetCurrent();
 
                 // Must add a source to the run loop to prevent CFRunLoopRun() from exiting.
                 CFRunLoopSourceContext ctxt = {0, (void*)1 /*must be non-null*/, 0, 0, 0, 0, 0, 0, 0, emptyPerform};
-                CFRunLoopSourceRef bogusSource = CFRunLoopSourceCreate(0, 0, &ctxt);
-                CFRunLoopAddSource(loaderRunLoopObject, bogusSource, kCFRunLoopDefaultMode);
+                auto bogusSource = adoptCF(CFRunLoopSourceCreate(0, 0, &ctxt));
+                CFRunLoopAddSource(loaderRunLoopObject, bogusSource.get(), kCFRunLoopDefaultMode);
 
                 loaderRunLoopConditionVariable.notifyOne();
             }
@@ -76,7 +77,7 @@ CFRunLoopRef loaderRunLoop()
             } while (result != kCFRunLoopRunStopped && result != kCFRunLoopRunFinished);
         }, ThreadType::Network);
 
-        loaderRunLoopConditionVariable.wait(lock, [] { return loaderRunLoopObject; });
+        loaderRunLoopConditionVariable.wait(loaderRunLoopMutex, [] { return loaderRunLoopObject; });
     }
 
     return loaderRunLoopObject;

@@ -39,7 +39,6 @@ namespace JSC { namespace DFG {
 void handleExitCounts(VM&, CCallHelpers&, const OSRExitBase&);
 void reifyInlinedCallFrames(CCallHelpers&, const OSRExitBase&);
 void adjustAndJumpToTarget(VM&, CCallHelpers&, const OSRExitBase&);
-MacroAssemblerCodePtr<JSEntryPtrTag> callerReturnPC(CodeBlock* baselineCodeBlockForCaller, BytecodeIndex callBytecodeIndex, InlineCallFrame::Kind callerKind, bool& callerIsLLInt);
 CCallHelpers::Address calleeSaveSlot(InlineCallFrame*, CodeBlock* baselineCodeBlock, GPRReg calleeSave);
 
 template <typename JITCodeType>
@@ -49,11 +48,11 @@ void adjustFrameAndStackInOSRExitCompilerThunk(MacroAssembler& jit, VM& vm, JITT
 
     bool isFTLOSRExit = jitType == JITType::FTLJIT;
     RegisterSet registersToPreserve;
-    registersToPreserve.set(GPRInfo::regT0);
+    registersToPreserve.add(GPRInfo::regT0, IgnoreVectors);
     if (isFTLOSRExit) {
         // FTL can use the scratch registers for values. The code below uses
         // the scratch registers. We need to preserve them before doing anything.
-        registersToPreserve.merge(RegisterSet::macroScratchRegisters());
+        registersToPreserve.merge(RegisterSetBuilder::macroClobberedRegisters());
     }
 
     size_t scratchSize = sizeof(void*) * registersToPreserve.numberOfSetGPRs();

@@ -31,7 +31,7 @@
 #include <wtf/glib/WTFGType.h>
 
 /**
- * SECTION: JSCWeakValue
+ * JSCWeakValue:
  * @short_description: JavaScript weak value
  * @title: JSCWeakValue
  * @see_also: JSCValue
@@ -139,8 +139,7 @@ static void jsc_weak_value_class_init(JSCWeakValueClass* klass)
         PROP_VALUE,
         g_param_spec_object(
             "value",
-            "JSCValue",
-            "JSC Value",
+            nullptr, nullptr,
             JSC_TYPE_VALUE,
             static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY)));
 

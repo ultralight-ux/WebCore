@@ -29,6 +29,7 @@
 #include "ClipboardUtilitiesWin.h"
 #include "DocumentFragment.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameSelection.h"
 #include "Pasteboard.h"
 #include "Range.h"
@@ -50,6 +51,14 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
     if (fragment && shouldInsertFragment(*fragment, *range, EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
+}
+
+void Editor::platformCopyFont()
+{
+}
+
+void Editor::platformPasteFont()
+{
 }
 
 template <typename PlatformDragData>

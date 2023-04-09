@@ -64,7 +64,7 @@ PDFDocumentImage::~PDFDocumentImage() = default;
 
 String PDFDocumentImage::filenameExtension() const
 {
-    return "pdf";
+    return "pdf"_s;
 }
 
 FloatSize PDFDocumentImage::size(ImageOrientation) const
@@ -161,6 +161,9 @@ static void transformContextForPainting(GraphicsContext& context, const FloatRec
     context.translate(dstRect.location() - srcRect.location());
     context.scale(FloatSize(hScale, -vScale));
     context.translate(0, -srcRect.height());
+
+    // FIXME https://bugs.webkit.org/show_bug.cgi?id=227808: Surely there needs to be a clip operation here,
+    // if the srcRect is smaller than the whole PDF.
 }
 
 // To avoid the jetsam on iOS, we are going to limit the size of all the PDF cachedImages to be 64MB.
@@ -201,7 +204,7 @@ void PDFDocumentImage::decodedSizeChanged(size_t newCachedBytes)
 void PDFDocumentImage::updateCachedImageIfNeeded(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect)
 {
     // Clipped option is for testing only. Force re-caching the PDF with each draw.
-    bool forceUpdateCachedImage = m_pdfImageCachingPolicy == PDFImageCachingClipBoundsOnly || !m_cachedImageBuffer;
+    bool forceUpdateCachedImage = m_pdfImageCachingPolicy == PDFImageCachingPolicy::ClipBoundsOnly || !m_cachedImageBuffer;
     if (!forceUpdateCachedImage && cacheParametersMatch(context, dstRect, srcRect)) {
         // Adjust the view-port rectangles if no re-caching will happen.
         m_cachedImageRect.move(FloatSize(dstRect.location() - m_cachedDestinationRect.location()));
@@ -210,17 +213,17 @@ void PDFDocumentImage::updateCachedImageIfNeeded(GraphicsContext& context, const
     }
 
     switch (m_pdfImageCachingPolicy) {
-    case PDFImageCachingDisabled:
+    case PDFImageCachingPolicy::Disabled:
         return;
-    case PDFImageCachingBelowMemoryLimit:
+    case PDFImageCachingPolicy::BelowMemoryLimit:
         // Keep the memory used by the cached image below some threshold, otherwise WebKit process
         // will jetsam if it exceeds its memory limit. Only a rectangle from the PDF may be cached.
         m_cachedImageRect = cachedImageRect(context, dstRect);
         break;
-    case PDFImageCachingClipBoundsOnly:
+    case PDFImageCachingPolicy::ClipBoundsOnly:
         m_cachedImageRect = intersection(context.clipBounds(), dstRect);
         break;
-    case PDFImageCachingEnabled:
+    case PDFImageCachingPolicy::Enabled:
         m_cachedImageRect = dstRect;
         break;
     }
@@ -228,15 +231,16 @@ void PDFDocumentImage::updateCachedImageIfNeeded(GraphicsContext& context, const
     FloatSize cachedImageSize = FloatRect(enclosingIntRect(m_cachedImageRect)).size();
 
     // Cache the PDF image only if the size of the new image won't exceed the cache threshold.
-    if (m_pdfImageCachingPolicy == PDFImageCachingBelowMemoryLimit) {
-        IntSize scaledSize = ImageBuffer::compatibleBufferSize(cachedImageSize, context);
+    if (m_pdfImageCachingPolicy == PDFImageCachingPolicy::BelowMemoryLimit) {
+        auto scaledSize = context.compatibleImageBufferSize(cachedImageSize);
         if (s_allDecodedDataSize + scaledSize.unclampedArea() * 4 - m_cachedBytes > s_maxDecodedDataSize) {
             destroyDecodedData();
             return;
         }
     }
 
-    m_cachedImageBuffer = ImageBuffer::createCompatibleBuffer(cachedImageSize, context);
+    // Create a local ImageBuffer because decoding the PDF images has to happen in WebProcess.
+    m_cachedImageBuffer = context.createAlignedImageBuffer(cachedImageSize, DestinationColorSpace::SRGB(), RenderingMethod::Local);
     if (!m_cachedImageBuffer) {
         destroyDecodedData();
         return;
@@ -246,6 +250,8 @@ void PDFDocumentImage::updateCachedImageIfNeeded(GraphicsContext& context, const
     // We need to transform the coordinate system such that top-left of m_cachedImageRect will be mapped to the
     // top-left of dstRect. Although only m_cachedImageRect.size() of the image copied, the sizes of srcRect
     // and dstRect should be passed to this function because they are used to calculate the image scaling.
+    // FIXME https://bugs.webkit.org/show_bug.cgi?id=227809: Passing in m_cachedImageRect.location() for the
+    // source rect position doesn't seem correct here.
     transformContextForPainting(bufferContext, dstRect, FloatRect(m_cachedImageRect.location(), srcRect.size()));
     drawPDFPage(bufferContext);
 
@@ -275,10 +281,25 @@ ImageDrawResult PDFDocumentImage::draw(GraphicsContext& context, const FloatRect
             // of the source PDF was copied to 'm_cachedImageBuffer', the sizes of the source
             // and the destination rectangles will be equal and no scaling will be needed here.
             context.drawImageBuffer(*m_cachedImageBuffer, m_cachedImageRect);
-        }
-        else {
+        } else if (context.hasPlatformContext()) {
             transformContextForPainting(context, dstRect, srcRect);
             drawPDFPage(context);
+        } else {
+            // We can't draw the PDF directly because we have no platform context (probably because we're doing display list drawing).
+            // We also need to be careful about not getting terminated due to memory pressure.
+            //
+            // (scalar * width) * (scalar * height) = max number of pixels
+            // Solve for scalar...
+            // scalar = sqrt(max number of pixels / (width * height))
+            auto scalar = std::min(1.f, std::sqrt(static_cast<float>(s_maxCachedImageArea) / (dstRect.width() * dstRect.height())));
+            FloatRect localDestinationRect(FloatPoint(), dstRect.size() * scalar);
+            if (auto imageBuffer = context.createAlignedImageBuffer(localDestinationRect.size(), DestinationColorSpace::SRGB(), RenderingMethod::Local)) {
+                auto& bufferContext = imageBuffer->context();
+                transformContextForPainting(bufferContext, localDestinationRect, srcRect);
+                drawPDFPage(bufferContext);
+                context.drawImageBuffer(*imageBuffer, dstRect);
+            } else
+                return ImageDrawResult::DidNothing;
         }
     }
 
@@ -299,7 +320,7 @@ void PDFDocumentImage::destroyDecodedData(bool)
 
 void PDFDocumentImage::createPDFDocument()
 {
-    RetainPtr<CGDataProviderRef> dataProvider = adoptCF(CGDataProviderCreateWithCFData(data()->createCFData().get()));
+    RetainPtr<CGDataProviderRef> dataProvider = adoptCF(CGDataProviderCreateWithCFData(data()->makeContiguous()->createCFData().get()));
     m_document = adoptCF(CGPDFDocumentCreateWithProvider(dataProvider.get()));
 }
 
@@ -342,38 +363,15 @@ void PDFDocumentImage::drawPDFPage(GraphicsContext& context)
 
     context.translate(-m_cropBox.location());
 
-#if USE(DIRECT2D)
-    notImplemented();
-#else
     // CGPDF pages are indexed from 1.
 #if PLATFORM(COCOA)
     CGContextDrawPDFPageWithAnnotations(context.platformContext(), CGPDFDocumentGetPage(m_document.get(), 1), nullptr);
 #else
     CGContextDrawPDFPage(context.platformContext(), CGPDFDocumentGetPage(m_document.get(), 1));
 #endif
-#endif
 }
 
 #endif // !USE(PDFKIT_FOR_PDFDOCUMENTIMAGE)
-
-#if PLATFORM(MAC)
-
-RetainPtr<CFMutableDataRef> PDFDocumentImage::convertPostScriptDataToPDF(RetainPtr<CFDataRef>&& postScriptData)
-{
-    // Convert PostScript to PDF using the Quartz 2D API.
-    // http://developer.apple.com/documentation/GraphicsImaging/Conceptual/drawingwithquartz2d/dq_ps_convert/chapter_16_section_1.html
-
-    CGPSConverterCallbacks callbacks = { };
-    auto converter = adoptCF(CGPSConverterCreate(0, &callbacks, 0));
-    auto provider = adoptCF(CGDataProviderCreateWithCFData(postScriptData.get()));
-    auto pdfData = adoptCF(CFDataCreateMutable(kCFAllocatorDefault, 0));
-    auto consumer = adoptCF(CGDataConsumerCreateWithCFData(pdfData.get()));
-
-    CGPSConverterConvert(converter.get(), provider.get(), consumer.get(), 0);
-    return pdfData;
-}
-
-#endif
 
 void PDFDocumentImage::dump(TextStream& ts) const
 {

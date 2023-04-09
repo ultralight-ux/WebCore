@@ -38,11 +38,12 @@ OBJC_CLASS AVAssetResourceLoadingRequest;
 namespace WebCore {
 
 class CachedResourceMediaLoader;
+class DataURLResourceMediaLoader;
 class MediaPlayerPrivateAVFoundationObjC;
 class PlatformResourceMediaLoader;
 class ResourceError;
 class ResourceResponse;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 
 class WebCoreAVFResourceLoader : public RefCounted<WebCoreAVFResourceLoader> {
     WTF_MAKE_NONCOPYABLE(WebCoreAVFResourceLoader); WTF_MAKE_FAST_ALLOCATED;
@@ -58,15 +59,17 @@ private:
     WebCoreAVFResourceLoader(MediaPlayerPrivateAVFoundationObjC* parent, AVAssetResourceLoadingRequest *);
 
     friend class CachedResourceMediaLoader;
+    friend class DataURLResourceMediaLoader;
     friend class PlatformResourceMediaLoader;
 
     void responseReceived(const ResourceResponse&);
     void loadFailed(const ResourceError&);
     void loadFinished();
-    void newDataStoredInSharedBuffer(SharedBuffer&);
+    void newDataStoredInSharedBuffer(const FragmentedSharedBuffer&);
 
     MediaPlayerPrivateAVFoundationObjC* m_parent;
     RetainPtr<AVAssetResourceLoadingRequest> m_avRequest;
+    std::unique_ptr<DataURLResourceMediaLoader> m_dataURLMediaLoader;
     std::unique_ptr<CachedResourceMediaLoader> m_resourceMediaLoader;
     WeakPtr<PlatformResourceMediaLoader> m_platformMediaLoader;
     size_t m_responseOffset { 0 };

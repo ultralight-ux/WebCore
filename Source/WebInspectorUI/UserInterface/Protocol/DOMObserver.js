@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.DOMObserver = class DOMObserver
+WI.DOMObserver = class DOMObserver extends InspectorBackend.Dispatcher
 {
     // Events defined by the "DOM" domain.
 
@@ -75,6 +75,11 @@ WI.DOMObserver = class DOMObserver
     childNodeRemoved(parentNodeId, nodeId)
     {
         WI.domManager._childNodeRemoved(parentNodeId, nodeId);
+    }
+
+    willDestroyDOMNode(nodeId)
+    {
+        WI.domManager.willDestroyDOMNode(nodeId);
     }
 
     shadowRootPushed(hostId, root)

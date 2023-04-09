@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,11 +31,15 @@
 
 #include "DateInstance.h"
 #include "DirectArguments.h"
+#include "Integrity.h"
 #include "JSArray.h"
 #include "JSBigInt.h"
 #include "JSBoundFunction.h"
+#include "JSCJSValueInlines.h"
+#include "JSCellInlines.h"
 #include "JSDataView.h"
 #include "JSFunction.h"
+#include "JSGenericTypedArrayView.h"
 #include "JSMap.h"
 #include "JSSet.h"
 #include "JSWeakMap.h"
@@ -148,7 +152,17 @@ void dumpSpeculation(PrintStream& outStream, SpeculatedType value)
                 strOut.print("Float64Array");
             else
                 isTop = false;
-    
+
+            if (value & SpecBigInt64Array)
+                strOut.print("BigInt64Array");
+            else
+                isTop = false;
+
+            if (value & SpecBigUint64Array)
+                strOut.print("BigUint64Array");
+            else
+                isTop = false;
+
             if (value & SpecFunction)
                 strOut.print("Function");
             else
@@ -238,6 +252,11 @@ void dumpSpeculation(PrintStream& outStream, SpeculatedType value)
             strOut.print("Symbol");
         else
             isTop = false;
+
+        if (value & SpecHeapBigInt)
+            strOut.print("HeapBigInt");
+        else
+            isTop = false;
     }
     
     if (value == SpecInt32Only)
@@ -273,20 +292,11 @@ void dumpSpeculation(PrintStream& outStream, SpeculatedType value)
             isTop = false;
     }
 
-    if ((value & SpecBigInt) == SpecBigInt)
-        strOut.print("BigInt");
 #if USE(BIGINT32)
-    else {
-        if (value & SpecBigInt32)
-            strOut.print("BigInt32");
-        else
-            isTop = false;
-
-        if (value & SpecHeapBigInt)
-            strOut.print("HeapBigInt");
-        else
-            isTop = false;
-    }
+    if (value & SpecBigInt32)
+        strOut.print("BigInt32");
+    else
+        isTop = false;
 #endif
 
     if (value & SpecDoubleImpureNaN)
@@ -359,6 +369,10 @@ static const char* speculationToAbbreviatedString(SpeculatedType prediction)
         return "<Float32array>";
     if (isFloat64ArraySpeculation(prediction))
         return "<Float64array>";
+    if (isBigInt64ArraySpeculation(prediction))
+        return "<BigInt64array>";
+    if (isBigUint64ArraySpeculation(prediction))
+        return "<BigUint64array>";
     if (isDirectArgumentsSpeculation(prediction))
         return "<DirectArguments>";
     if (isScopedArgumentsSpeculation(prediction))
@@ -424,6 +438,10 @@ SpeculatedType speculationFromTypedArrayType(TypedArrayType type)
         return SpecFloat32Array;
     case TypeFloat64:
         return SpecFloat64Array;
+    case TypeBigInt64:
+        return SpecBigInt64Array;
+    case TypeBigUint64:
+        return SpecBigUint64Array;
     case NotTypedArray:
     case TypeDataView:
         break;
@@ -486,8 +504,7 @@ SpeculatedType speculationFromClassInfoInheritance(const ClassInfo* classInfo)
     if (classInfo == ProxyObject::info())
         return SpecProxyObject;
 
-    static_assert(std::is_final_v<JSDataView>);
-    if (classInfo == JSDataView::info())
+    if (classInfo->isSubClassOf(JSDataView::info()))
         return SpecDataViewObject;
 
     if (classInfo->isSubClassOf(StringObject::info()))
@@ -496,18 +513,23 @@ SpeculatedType speculationFromClassInfoInheritance(const ClassInfo* classInfo)
     if (classInfo->isSubClassOf(JSArray::info()))
         return SpecArray | SpecDerivedArray;
 
-    if (classInfo->isSubClassOf(JSFunction::info())) {
-        if (classInfo == JSBoundFunction::info())
-            return SpecFunctionWithNonDefaultHasInstance;
+    static_assert(std::is_final_v<JSBoundFunction>);
+    if (classInfo == JSBoundFunction::info())
+        return SpecFunctionWithNonDefaultHasInstance;
+
+    if (classInfo->isSubClassOf(JSFunction::info()))
         return SpecFunctionWithDefaultHasInstance;
-    }
 
     if (classInfo->isSubClassOf(JSPromise::info()))
         return SpecPromiseObject;
     
-    if (isTypedView(classInfo->typedArrayStorageType))
-        return speculationFromTypedArrayType(classInfo->typedArrayStorageType);
-    
+#define JSC_TYPED_ARRAY_CHECK(type) do { \
+        if (classInfo->isSubClassOf(JS ## type ## Array::info())) \
+            return Spec ## type ## Array; \
+    } while (0);
+    FOR_EACH_TYPED_ARRAY_TYPE_EXCLUDING_DATA_VIEW(JSC_TYPED_ARRAY_CHECK)
+#undef JSC_TYPED_ARRAY_CHECK
+
     if (classInfo->isSubClassOf(JSObject::info()))
         return SpecObjectOther;
     
@@ -517,7 +539,8 @@ SpeculatedType speculationFromClassInfoInheritance(const ClassInfo* classInfo)
 SpeculatedType speculationFromStructure(Structure* structure)
 {
     SpeculatedType filteredResult = SpecNone;
-    switch (structure->typeInfo().type()) {
+    JSType type = structure->typeInfo().type();
+    switch (type) {
     case StringType:
         filteredResult = SpecString;
         break;
@@ -526,6 +549,39 @@ SpeculatedType speculationFromStructure(Structure* structure)
         break;
     case HeapBigIntType:
         filteredResult = SpecHeapBigInt;
+        break;
+    case FinalObjectType:
+        filteredResult = SpecFinalObject;
+        break;
+    case DirectArgumentsType:
+        filteredResult = SpecDirectArguments;
+        break;
+    case ScopedArgumentsType:
+        filteredResult = SpecScopedArguments;
+        break;
+    case RegExpObjectType:
+        filteredResult = SpecRegExpObject;
+        break;
+    case JSDateType:
+        filteredResult = SpecDateObject;
+        break;
+    case JSMapType:
+        filteredResult = SpecMapObject;
+        break;
+    case JSSetType:
+        filteredResult = SpecSetObject;
+        break;
+    case JSWeakMapType:
+        filteredResult = SpecWeakMapObject;
+        break;
+    case JSWeakSetType:
+        filteredResult = SpecWeakSetObject;
+        break;
+    case ProxyObjectType:
+        filteredResult = SpecProxyObject;
+        break;
+    case DataViewType:
+        filteredResult = SpecDataViewObject;
         break;
     case DerivedArrayType:
         filteredResult = SpecDerivedArray;
@@ -540,25 +596,60 @@ SpeculatedType speculationFromStructure(Structure* structure)
     case DerivedStringObjectType:
         filteredResult = SpecObjectOther;
         break;
+    case JSPromiseType:
+        filteredResult = SpecPromiseObject;
+        break;
+    case JSFunctionType:
+        static_assert(std::is_final_v<JSBoundFunction>);
+        if (structure->classInfoForCells() == JSBoundFunction::info())
+            filteredResult = SpecFunctionWithNonDefaultHasInstance;
+        else
+            filteredResult = SpecFunctionWithDefaultHasInstance;
+        break;
+
+#define JSC_TYPED_ARRAY_CHECK(type) \
+    case type##ArrayType: \
+        filteredResult = Spec ## type ## Array; \
+        break;
+    FOR_EACH_TYPED_ARRAY_TYPE_EXCLUDING_DATA_VIEW(JSC_TYPED_ARRAY_CHECK)
+#undef JSC_TYPED_ARRAY_CHECK
+
     default:
-        return speculationFromClassInfoInheritance(structure->classInfo());
+        if (!isObjectType(type))
+            return SpecCellOther;
+        return speculationFromClassInfoInheritance(structure->classInfoForCells());
     }
     ASSERT(filteredResult);
-    ASSERT(isSubtypeSpeculation(filteredResult, speculationFromClassInfoInheritance(structure->classInfo())));
+    ASSERT(isSubtypeSpeculation(filteredResult, speculationFromClassInfoInheritance(structure->classInfoForCells())));
     return filteredResult;
 }
 
 SpeculatedType speculationFromCell(JSCell* cell)
 {
+    // FIXME: rdar://69036888: remove isSanePointer checks when no longer needed.
+    if (UNLIKELY(!Integrity::isSanePointer(cell))) {
+        ASSERT_NOT_REACHED();
+        return SpecNone;
+    }
     if (cell->isString()) {
         JSString* string = jsCast<JSString*>(cell);
         if (const StringImpl* impl = string->tryGetValueImpl()) {
+            if (UNLIKELY(!Integrity::isSanePointer(impl))) {
+                ASSERT_NOT_REACHED();
+                return SpecNone;
+            }
             if (impl->isAtom())
                 return SpecStringIdent;
         }
         return SpecString;
     }
-    return speculationFromStructure(cell->structure());
+    // FIXME: rdar://69036888: undo this when no longer needed.
+    auto* structure = cell->structureID().tryDecode();
+    if (UNLIKELY(!Integrity::isSanePointer(structure))) {
+        ASSERT_NOT_REACHED();
+        return SpecNone;
+    }
+    return speculationFromStructure(structure);
 }
 
 SpeculatedType speculationFromValue(JSValue value)
@@ -628,11 +719,17 @@ TypedArrayType typedArrayTypeFromSpeculation(SpeculatedType type)
         
     if (isFloat64ArraySpeculation(type))
         return TypeFloat64;
+
+    if (isBigInt64ArraySpeculation(type))
+        return TypeBigInt64;
+
+    if (isBigUint64ArraySpeculation(type))
+        return TypeBigUint64;
     
     return NotTypedArray;
 }
 
-Optional<SpeculatedType> speculationFromJSType(JSType type)
+std::optional<SpeculatedType> speculationFromJSType(JSType type)
 {
     switch (type) {
     case StringType:
@@ -664,7 +761,7 @@ Optional<SpeculatedType> speculationFromJSType(JSType type)
     case DataViewType:
         return SpecDataViewObject;
     default:
-        return WTF::nullopt;
+        return std::nullopt;
     }
 }
 
@@ -874,6 +971,10 @@ SpeculatedType speculationFromString(const char* speculation)
         return SpecFloat32Array;
     if (!strncmp(speculation, "SpecFloat64Array", strlen("SpecFloat64Array")))
         return SpecFloat64Array;
+    if (!strncmp(speculation, "SpecBigInt64Array", strlen("SpecBigInt64Array")))
+        return SpecBigInt64Array;
+    if (!strncmp(speculation, "SpecBigUint64Array", strlen("SpecBigUint64Array")))
+        return SpecBigUint64Array;
     if (!strncmp(speculation, "SpecTypedArrayView", strlen("SpecTypedArrayView")))
         return SpecTypedArrayView;
     if (!strncmp(speculation, "SpecDirectArguments", strlen("SpecDirectArguments")))

@@ -23,28 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.StackTraceView = class StackTraceView extends WI.Object
+WI.StackTraceView = class StackTraceView
 {
     constructor(stackTrace)
     {
-        super();
+        console.assert(stackTrace instanceof WI.StackTrace, stackTrace);
 
         var element = this._element = document.createElement("div");
         element.classList.add("stack-trace");
 
-        for (var callFrame of stackTrace.callFrames) {
-            if (!callFrame.sourceCodeLocation && callFrame.functionName === null)
-                continue;
-            if (callFrame.isConsoleEvaluation && !WI.isDebugUIEnabled())
-                continue;
+        WI.StackTraceTreeController.groupBlackboxedStackTrace(element, stackTrace);
 
-            var callFrameElement = new WI.CallFrameView(callFrame, true);
-            element.appendChild(callFrameElement);
-        }
-    }
-
-    get element()
-    {
-        return this._element;
+        return element;
     }
 };

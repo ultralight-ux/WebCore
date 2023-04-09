@@ -27,7 +27,7 @@ namespace WebCore {
     FontCustomPlatformData(const FontCustomPlatformData&);
     FontCustomPlatformData(FontCustomPlatformData&&) = default;
 
-    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
+    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontCreationContext& fontCreationContext);
     
     ~FontCustomPlatformData();
     

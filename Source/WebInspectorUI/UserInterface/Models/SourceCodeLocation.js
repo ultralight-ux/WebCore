@@ -47,13 +47,37 @@ WI.SourceCodeLocation = class SourceCodeLocation extends WI.Object
         this._resetMappedLocation();
     }
 
+    // Static
+
+    static get specialBreakpointLocation()
+    {
+        return new WI.SourceCodeLocation(null, Infinity, Infinity);
+    }
+
     // Public
 
     isEqual(other)
     {
         if (!other)
             return false;
-        return this._sourceCode === other._sourceCode && this._lineNumber === other._lineNumber && this._columnNumber === other._columnNumber;
+
+        if (this.lineNumber !== other.lineNumber)
+            return false;
+
+        if (this.columnNumber !== other.columnNumber)
+            return false;
+
+        function resolveSourceCode(sourceCode) {
+            if (sourceCode instanceof WI.Script)
+                return sourceCode.resource;
+            return sourceCode;
+        }
+        let thisSourceCode = resolveSourceCode(this.sourceCode);
+        let otherSourceCode = resolveSourceCode(other.sourceCode);
+        if (thisSourceCode !== otherSourceCode)
+            return false;
+
+        return true;
     }
 
     get sourceCode()
@@ -197,15 +221,16 @@ WI.SourceCodeLocation = class SourceCodeLocation extends WI.Object
         });
     }
 
-    populateLiveDisplayLocationTooltip(element, prefix)
+    populateLiveDisplayLocationTooltip(element, prefix, suffix)
     {
         prefix = prefix || "";
+        suffix = suffix || "";
 
-        element.title = prefix + this.tooltipString();
+        element.title = prefix + this.tooltipString() + suffix;
 
         this.addEventListener(WI.SourceCodeLocation.Event.DisplayLocationChanged, function(event) {
             if (this.sourceCode)
-                element.title = prefix + this.tooltipString();
+                element.title = prefix + this.tooltipString() + suffix;
         }, this);
     }
 

@@ -27,58 +27,40 @@
 
 #if ENABLE(WEB_AUDIO)
 
-#include "AudioDestination.h"
+#include "AudioDestinationResampler.h"
+#include "AudioOutputUnitAdaptor.h"
 #include <AudioUnit/AudioUnit.h>
+#include <wtf/Lock.h>
 #include <wtf/RefPtr.h>
+#include <wtf/UniqueRef.h>
 
 namespace WebCore {
 
 class AudioBus;
+class MultiChannelResampler;
+class PushPullFIFO;
 
-using CreateAudioDestinationCocoaOverride = std::unique_ptr<AudioDestination>(*)(AudioIOCallback&, float sampleRate);
+using CreateAudioDestinationCocoaOverride = Ref<AudioDestination>(*)(AudioIOCallback&, float sampleRate);
 
 // An AudioDestination using CoreAudio's default output AudioUnit
-class AudioDestinationCocoa : public AudioDestination {
+class AudioDestinationCocoa : public AudioDestinationResampler, public AudioUnitRenderer {
 public:
-    AudioDestinationCocoa(AudioIOCallback&, float sampleRate);
-    virtual ~AudioDestinationCocoa();
+    WEBCORE_EXPORT AudioDestinationCocoa(AudioIOCallback&, unsigned numberOfOutputChannels, float sampleRate);
+    WEBCORE_EXPORT virtual ~AudioDestinationCocoa();
 
     WEBCORE_EXPORT static CreateAudioDestinationCocoaOverride createOverride;
 
 protected:
-    void setIsPlaying(bool);
-
-    bool isPlaying() final { return m_isPlaying; }
-    float sampleRate() const final { return m_sampleRate; }
-    unsigned framesPerBuffer() const final;
-    AudioUnit& outputUnit() { return m_outputUnit; }
-    
-    // DefaultOutputUnit callback
-    static OSStatus inputProc(void* userData, AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32 busNumber, UInt32 numberOfFrames, AudioBufferList* ioData);
-
-    void setAudioStreamBasicDescription(AudioStreamBasicDescription&, float sampleRate);
+    WEBCORE_EXPORT OSStatus render(double sampleTime, uint64_t hostTime, UInt32 numberOfFrames, AudioBufferList* ioData) final;
 
 private:
-    void start() override;
-    void stop() override;
+    friend Ref<AudioDestination> AudioDestination::create(AudioIOCallback&, const String&, unsigned, unsigned, float);
 
-    friend std::unique_ptr<AudioDestination> AudioDestination::create(AudioIOCallback&, const String&, unsigned, unsigned, float);
-    
-    void configure();
-    void processBusAfterRender(AudioBus&, UInt32 numberOfFrames);
+    void startRendering(CompletionHandler<void(bool)>&&) override;
+    void stopRendering(CompletionHandler<void(bool)>&&) override;
 
-    OSStatus render(const AudioTimeStamp*, UInt32 numberOfFrames, AudioBufferList* ioData);
+    AudioOutputUnitAdaptor m_audioOutputUnitAdaptor;
 
-    AudioUnit m_outputUnit;
-    AudioIOCallback& m_callback;
-    Ref<AudioBus> m_renderBus;
-    Ref<AudioBus> m_spareBus;
-
-    float m_sampleRate;
-    bool m_isPlaying { false };
-
-    unsigned m_startSpareFrame { 0 };
-    unsigned m_endSpareFrame { 0 };
 };
 
 } // namespace WebCore

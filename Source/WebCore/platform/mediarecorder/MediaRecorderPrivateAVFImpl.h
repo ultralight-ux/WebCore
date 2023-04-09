@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "CAAudioStreamDescription.h"
 #include "MediaRecorderPrivate.h"
@@ -49,21 +49,22 @@ private:
     explicit MediaRecorderPrivateAVFImpl(Ref<MediaRecorderPrivateWriter>&&);
 
     // MediaRecorderPrivate
-    void videoSampleAvailable(MediaSample&) final;
+    void videoFrameAvailable(VideoFrame&, VideoFrameTimeMetadata) final;
     void fetchData(FetchDataCallback&&) final;
-    void audioSamplesAvailable(const WTF::MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t) final;
-    void startRecording(StartRecordingCallback&& callback) final { callback(String(m_writer->mimeType())); }
+    void audioSamplesAvailable(const MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t) final;
+    void startRecording(StartRecordingCallback&&) final;
     const String& mimeType() const final;
 
-    void stopRecording();
+    void stopRecording(CompletionHandler<void()>&&) final;
+    void pauseRecording(CompletionHandler<void()>&&) final;
+    void resumeRecording(CompletionHandler<void()>&&) final;
 
     Ref<MediaRecorderPrivateWriter> m_writer;
-    RetainPtr<CVPixelBufferRef> m_blackFrame;
-    RetainPtr<CMFormatDescriptionRef> m_blackFrameDescription;
-    CAAudioStreamDescription m_description;
+    RefPtr<VideoFrame> m_blackFrame;
+    std::optional<CAAudioStreamDescription> m_description;
     std::unique_ptr<WebAudioBufferList> m_audioBuffer;
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#endif // ENABLE(MEDIA_RECORDER)

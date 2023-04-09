@@ -32,6 +32,7 @@
 
 #include "CoordinatedBackingStore.h"
 #include "NicosiaBuffer.h"
+#include "NicosiaImageBackingStore.h"
 #include "NicosiaPlatformLayer.h"
 #include <wtf/Lock.h>
 
@@ -59,7 +60,8 @@ public:
         Update& operator=(Update&&) = default;
 
         bool isVisible { false };
-        RefPtr<Nicosia::Buffer> buffer;
+        uintptr_t nativeImageID { 0 };
+        RefPtr<Nicosia::ImageBackingStore> imageBackingStore;
     };
 
     // An immutable layer-side state object. flushUpdate() prepares
@@ -72,7 +74,6 @@ public:
         LayerState& operator=(LayerState&&) = delete;
 
         uintptr_t imageID { 0 };
-        uintptr_t nativeImageID { 0 };
         Update update;
     };
     LayerState& layerState() { return m_layerState; }
@@ -88,7 +89,7 @@ public:
         CompositionState(CompositionState&&) = delete;
         CompositionState& operator=(CompositionState&&) = delete;
 
-        RefPtr<WebCore::CoordinatedBackingStore> backingStore;
+        RefPtr<Nicosia::ImageBackingStore> imageBackingStore;
     };
     CompositionState& compositionState() { return m_compositionState; }
 

@@ -29,8 +29,13 @@
 
 #include "MediaPlayerEnums.h"
 #include "SourceBufferPrivateClient.h"
-#include <JavaScriptCore/Uint8Array.h>
+#include <JavaScriptCore/Forward.h>
+#include <pal/spi/cocoa/MediaToolboxSPI.h>
+#include <variant>
+#include <wtf/CompletionHandler.h>
+#include <wtf/Expected.h>
 #include <wtf/RefCounted.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 namespace WTF {
 class Logger;
@@ -39,13 +44,14 @@ class Logger;
 namespace WebCore {
 
 class ContentType;
-class MediaSample;
+class MediaSampleAVFObjC;
+class SharedBuffer;
 
 class WEBCORE_EXPORT SourceBufferParser : public ThreadSafeRefCounted<SourceBufferParser> {
 public:
     static MediaPlayerEnums::SupportsType isContentTypeSupported(const ContentType&);
 
-    static RefPtr<SourceBufferParser> create(const ContentType&);
+    static RefPtr<SourceBufferParser> create(const ContentType&, bool webMParserEnabled);
     virtual ~SourceBufferParser() = default;
 
     enum class Type : uint8_t {
@@ -57,60 +63,103 @@ public:
         None,
         Discontinuity,
     };
-    virtual void appendData(Vector<unsigned char>&&, AppendFlags = AppendFlags::None) = 0;
+
+    class Segment {
+    public:
+#if HAVE(MT_PLUGIN_FORMAT_READER)
+        Segment(RetainPtr<MTPluginByteSourceRef>&&);
+#endif
+        Segment(Ref<SharedBuffer>&&);
+        Segment(Segment&&) = default;
+        Ref<SharedBuffer> takeSharedBuffer();
+        // Will return nullptr if Segment's backend isn't a SharedBuffer.
+        RefPtr<SharedBuffer> getSharedBuffer() const;
+
+        size_t size() const;
+
+        enum class ReadError { EndOfFile, FatalError };
+        using ReadResult = Expected<size_t, ReadError>;
+
+        ReadResult read(size_t position, size_t, uint8_t* destination) const;
+
+    private:
+        std::variant<
+#if HAVE(MT_PLUGIN_FORMAT_READER)
+            RetainPtr<MTPluginByteSourceRef>,
+#endif
+            Ref<SharedBuffer>
+        > m_segment;
+    };
+
+    using CallOnClientThreadCallback = Function<void(Function<void()>&&)>;
+    void setCallOnClientThreadCallback(CallOnClientThreadCallback&&);
+
+    // appendData will be called on the SourceBufferPrivateAVFObjC data parser queue.
+    // Other methods will be called on the main thread, but only once appendData has returned.
+    virtual void appendData(Segment&&, CompletionHandler<void()>&& = [] { }, AppendFlags = AppendFlags::None) = 0;
     virtual void flushPendingMediaData() = 0;
     virtual void setShouldProvideMediaDataForTrackID(bool, uint64_t) = 0;
     virtual bool shouldProvideMediadataForTrackID(uint64_t) = 0;
     virtual void resetParserState() = 0;
     virtual void invalidate() = 0;
+    virtual void setMinimumAudioSampleDuration(float);
 #if !RELEASE_LOG_DISABLED
-    virtual void setLogger(const WTF::Logger&, const void* logIdentifier) = 0;
+    virtual void setLogger(const Logger&, const void* logIdentifier) = 0;
 #endif
 
     // Will be called on the main thread.
     using InitializationSegment = SourceBufferPrivateClient::InitializationSegment;
-    using DidParseInitializationDataCallback = WTF::Function<void(InitializationSegment&&)>;
+    using DidParseInitializationDataCallback = Function<void(InitializationSegment&&)>;
     void setDidParseInitializationDataCallback(DidParseInitializationDataCallback&& callback)
     {
         m_didParseInitializationDataCallback = WTFMove(callback);
     }
 
     // Will be called on the main thread.
-    using DidEncounterErrorDuringParsingCallback = WTF::Function<void(uint64_t errorCode)>;
+    using DidEncounterErrorDuringParsingCallback = Function<void(uint64_t errorCode)>;
     void setDidEncounterErrorDuringParsingCallback(DidEncounterErrorDuringParsingCallback&& callback)
     {
         m_didEncounterErrorDuringParsingCallback = WTFMove(callback);
     }
 
     // Will be called on the main thread.
-    using DidProvideMediaDataCallback = WTF::Function<void(Ref<MediaSample>&&, uint64_t trackID, const String& mediaType)>;
+    using DidProvideMediaDataCallback = Function<void(Ref<MediaSampleAVFObjC>&&, uint64_t trackID, const String& mediaType)>;
     void setDidProvideMediaDataCallback(DidProvideMediaDataCallback&& callback)
     {
         m_didProvideMediaDataCallback = WTFMove(callback);
     }
 
     // Will be called synchronously on the parser thead.
-    using WillProvideContentKeyRequestInitializationDataForTrackIDCallback = WTF::Function<void(uint64_t trackID)>;
+    using WillProvideContentKeyRequestInitializationDataForTrackIDCallback = Function<void(uint64_t trackID)>;
     void setWillProvideContentKeyRequestInitializationDataForTrackIDCallback(WillProvideContentKeyRequestInitializationDataForTrackIDCallback&& callback)
     {
         m_willProvideContentKeyRequestInitializationDataForTrackIDCallback = WTFMove(callback);
     }
 
     // Will be called synchronously on the parser thead.
-    using DidProvideContentKeyRequestInitializationDataForTrackIDCallback = WTF::Function<void(Ref<Uint8Array>&&, uint64_t trackID)>;
+    using DidProvideContentKeyRequestInitializationDataForTrackIDCallback = Function<void(Ref<SharedBuffer>&&, uint64_t trackID)>;
     void setDidProvideContentKeyRequestInitializationDataForTrackIDCallback(DidProvideContentKeyRequestInitializationDataForTrackIDCallback&& callback)
     {
         m_didProvideContentKeyRequestInitializationDataForTrackIDCallback = WTFMove(callback);
     }
 
-protected:
-    SourceBufferParser() = default;
+    // Will be called on the main thread.
+    using DidProvideContentKeyRequestIdentifierForTrackIDCallback = Function<void(Ref<SharedBuffer>&&, uint64_t trackID)>;
+    void setDidProvideContentKeyRequestIdentifierForTrackIDCallback(DidProvideContentKeyRequestIdentifierForTrackIDCallback&& callback)
+    {
+        m_didProvideContentKeyRequestIdentifierForTrackIDCallback = WTFMove(callback);
+    }
 
+protected:
+    SourceBufferParser();
+
+    CallOnClientThreadCallback m_callOnClientThreadCallback;
     DidParseInitializationDataCallback m_didParseInitializationDataCallback;
     DidEncounterErrorDuringParsingCallback m_didEncounterErrorDuringParsingCallback;
     DidProvideMediaDataCallback m_didProvideMediaDataCallback;
     WillProvideContentKeyRequestInitializationDataForTrackIDCallback m_willProvideContentKeyRequestInitializationDataForTrackIDCallback;
     DidProvideContentKeyRequestInitializationDataForTrackIDCallback m_didProvideContentKeyRequestInitializationDataForTrackIDCallback;
+    DidProvideContentKeyRequestIdentifierForTrackIDCallback m_didProvideContentKeyRequestIdentifierForTrackIDCallback;
 };
 
 }

@@ -52,15 +52,196 @@ WI.EventListenerSectionGroup = class EventListenerSectionGroup extends WI.Detail
         if (this._eventListener.once)
             rows.push(new WI.DetailsSectionSimpleRow(WI.UIString("Once"), WI.UIString("Yes")));
 
-        if (this._eventListener.eventListenerId) {
-            if (DOMAgent.setEventListenerDisabled)
-                rows.push(this._createDisabledToggleRow());
+        this._eventListenerEnabledToggleElement = document.createElement("input");
+        this._eventListenerEnabledToggleElement.type = "checkbox";
+        this._updateDisabledToggle();
+        this._eventListenerEnabledToggleElement.addEventListener("change", (event) => {
+            this.isEventListenerDisabled = !this._eventListenerEnabledToggleElement.checked;
+            this.hasEventListenerBreakpoint = false;
+        });
 
-            if (DOMAgent.setBreakpointForEventListener && DOMAgent.removeBreakpointForEventListener)
-                rows.push(this._createBreakpointToggleRow());
+        let toggleLabel = document.createElement("span");
+        toggleLabel.textContent = WI.UIString("Enabled");
+        toggleLabel.addEventListener("click", (event) => {
+            this._eventListenerEnabledToggleElement.click();
+        });
+
+        rows.push(new WI.DetailsSectionSimpleRow(toggleLabel, this._eventListenerEnabledToggleElement));
+
+        if (WI.DOMManager.supportsEventListenerBreakpoints()) {
+            let toggleContainer = document.createElement("span");
+
+            this._eventListenerBreakpointToggleElement = toggleContainer.appendChild(document.createElement("input"));
+            this._eventListenerBreakpointToggleElement.type = "checkbox";
+            this._updateBreakpointToggle();
+            this._eventListenerBreakpointToggleElement.addEventListener("change", (event) => {
+                this.isEventListenerDisabled = false;
+                this.hasEventListenerBreakpoint = !!this._eventListenerBreakpointToggleElement.checked;
+            });
+
+            if (WI.DOMManager.supportsEventListenerBreakpointConfiguration()) {
+                let revealBreakpointGoToArrow = toggleContainer.appendChild(WI.createGoToArrowButton());
+                revealBreakpointGoToArrow.title = WI.UIString("Reveal in Sources Tab");
+                revealBreakpointGoToArrow.addEventListener("click", (event) => {
+                    console.assert(this.hasEventListenerBreakpoint);
+                    WI.showSourcesTab({
+                        representedObjectToSelect: WI.domManager.breakpointForEventListenerId(this._eventListener.eventListenerId),
+                    });
+                });
+            }
+
+            let toggleLabel = document.createElement("span");
+            toggleLabel.textContent = WI.UIString("Breakpoint");
+            toggleLabel.addEventListener("click", (event) => {
+                this._eventListenerBreakpointToggleElement.click();
+            });
+
+            rows.push(new WI.DetailsSectionSimpleRow(toggleLabel, toggleContainer));
         }
 
         this.rows = rows;
+    }
+
+    // Static
+
+    static groupIntoSectionsByEvent(eventListeners, options = {})
+    {
+        let eventListenerTypes = new Map;
+        for (let eventListener of eventListeners) {
+            console.assert(eventListener.nodeId || eventListener.onWindow);
+            if (eventListener.nodeId)
+                eventListener.node = WI.domManager.nodeForId(eventListener.nodeId);
+
+            let eventListenersForType = eventListenerTypes.get(eventListener.type);
+            if (!eventListenersForType)
+                eventListenerTypes.set(eventListener.type, eventListenersForType = []);
+            eventListenersForType.push(eventListener);
+        }
+
+        let rows = [];
+
+        let types = Array.from(eventListenerTypes.keys());
+        types.sort();
+        for (let type of types)
+            rows.push(WI.EventListenerSectionGroup._createEventListenerSection(type, eventListenerTypes.get(type), {...options, hideType: true}));
+
+        return rows;
+    }
+
+    static groupIntoSectionsByTarget(eventListeners, domNode, options = {})
+    {
+        const windowTargetIdentifier = Symbol("window");
+
+        let eventListenerTargets = new Map;
+        for (let eventListener of eventListeners) {
+            console.assert(eventListener.nodeId || eventListener.onWindow);
+            if (eventListener.nodeId)
+                eventListener.node = WI.domManager.nodeForId(eventListener.nodeId);
+
+            let target = eventListener.onWindow ? windowTargetIdentifier : eventListener.node;
+            let eventListenersForTarget = eventListenerTargets.get(target);
+            if (!eventListenersForTarget)
+                eventListenerTargets.set(target, eventListenersForTarget = []);
+            eventListenersForTarget.push(eventListener);
+        }
+
+        let rows = [];
+
+        function generateSectionForTarget(target) {
+            let eventListenersForTarget = eventListenerTargets.get(target);
+            if (!eventListenersForTarget)
+                return;
+
+            eventListenersForTarget.sort((a, b) => a.type.toLowerCase().extendedLocaleCompare(b.type.toLowerCase()));
+
+            let title = target === windowTargetIdentifier ? WI.unlocalizedString("window") : target.displayName;
+            let identifier = target === windowTargetIdentifier ? WI.unlocalizedString("window") : target.unescapedSelector;
+
+            let section = WI.EventListenerSectionGroup._createEventListenerSection(title, eventListenersForTarget, {...options, hideTarget: true, identifier});
+            if (target instanceof WI.DOMNode)
+                WI.bindInteractionsForNodeToElement(target, section.titleElement, {ignoreClick: true});
+            rows.push(section);
+        }
+
+        let currentNode = domNode;
+        do {
+            generateSectionForTarget(currentNode);
+        } while (currentNode = currentNode.parentNode);
+
+        generateSectionForTarget(windowTargetIdentifier);
+
+        return rows;
+    }
+
+    static _createEventListenerSection(title, eventListeners, options = {})
+    {
+        let groups = eventListeners.map((eventListener) => new WI.EventListenerSectionGroup(eventListener, options));
+
+        let optionsElement = WI.ImageUtilities.useSVGSymbol("Images/Gear.svg", "event-listener-options", WI.UIString("Options"));
+        WI.addMouseDownContextMenuHandlers(optionsElement, (contextMenu) => {
+            let shouldDisable = groups.some((eventListener) => !eventListener.isEventListenerDisabled);
+            contextMenu.appendItem(shouldDisable ? WI.UIString("Disable Event Listeners") : WI.UIString("Enable Event Listeners"), () => {
+                for (let group of groups)
+                    group.isEventListenerDisabled = shouldDisable;
+            });
+
+            if (WI.DOMManager.supportsEventListenerBreakpoints()) {
+                let shouldBreakpoint = groups.some((eventListener) => !eventListener.hasEventListenerBreakpoint);
+                contextMenu.appendItem(shouldBreakpoint ? WI.UIString("Add Breakpoints") : WI.UIString("Delete Breakpoints"), () => {
+                    for (let group of groups)
+                        group.hasEventListenerBreakpoint = shouldBreakpoint;
+                });
+            }
+        });
+
+        const defaultCollapsedSettingValue = true;
+        let identifier = `${options.identifier ?? title}-event-listener-section`;
+        let section = new WI.DetailsSection(identifier, title, groups, optionsElement, defaultCollapsedSettingValue);
+        section.element.classList.add("event-listener-section");
+        return section;
+    }
+
+    // Public
+
+    get isEventListenerDisabled()
+    {
+        return this._eventListener.disabled;
+    }
+
+    set isEventListenerDisabled(disabled)
+    {
+        if (this._eventListener.disabled === disabled)
+            return;
+
+        this._eventListener.disabled = disabled;
+
+        this._updateDisabledToggle();
+
+        WI.domManager.setEventListenerDisabled(this._eventListener, this._eventListener.disabled);
+    }
+
+    get hasEventListenerBreakpoint()
+    {
+        console.assert(WI.DOMManager.supportsEventListenerBreakpoints());
+
+        return this._eventListener.hasBreakpoint;
+    }
+
+    set hasEventListenerBreakpoint(hasBreakpoint)
+    {
+        console.assert(WI.DOMManager.supportsEventListenerBreakpoints());
+
+        if (this._eventListener.hasBreakpoint === hasBreakpoint)
+            return;
+
+        this._eventListener.hasBreakpoint = hasBreakpoint;
+
+        this._updateBreakpointToggle();
+
+        if (this._eventListener.hasBreakpoint)
+            WI.domManager.setBreakpointForEventListener(this._eventListener);
+        else
+            WI.domManager.removeBreakpointForEventListener(this._eventListener);
     }
 
     // Private
@@ -119,67 +300,17 @@ WI.EventListenerSectionGroup = class EventListenerSectionGroup extends WI.Detail
         return fragment;
     }
 
-    _createDisabledToggleRow()
+    _updateDisabledToggle()
     {
-        let toggleElement = document.createElement("input");
-        toggleElement.type = "checkbox";
-        toggleElement.checked = !this._eventListener.disabled;
-
-        let updateTitle = () => {
-            if (this._eventListener.disabled)
-                toggleElement.title = WI.UIString("Enable Event Listener");
-            else
-                toggleElement.title = WI.UIString("Disable Event Listener");
-        };
-
-        updateTitle();
-
-        toggleElement.addEventListener("change", (event) => {
-            this._eventListener.disabled = !toggleElement.checked;
-            WI.domManager.setEventListenerDisabled(this._eventListener, this._eventListener.disabled);
-            updateTitle();
-        });
-
-        let toggleLabel = document.createElement("span");
-        toggleLabel.textContent = WI.UIString("Enabled");
-        toggleLabel.addEventListener("click", (event) => {
-            toggleElement.click();
-        });
-
-        return new WI.DetailsSectionSimpleRow(toggleLabel, toggleElement);
+        console.assert(this._eventListenerEnabledToggleElement);
+        this._eventListenerEnabledToggleElement.checked = !this._eventListener.disabled;
+        this._eventListenerEnabledToggleElement.title = this._eventListener.disabled ? WI.UIString("Enable Event Listener") : WI.UIString("Disable Event Listener");
     }
 
-    _createBreakpointToggleRow()
+    _updateBreakpointToggle()
     {
-        let checkboxElement = document.createElement("input");
-        checkboxElement.type = "checkbox";
-        checkboxElement.checked = !!this._eventListener.hasBreakpoint;
-
-        let updateTitle = () => {
-            if (this._eventListener.hasBreakpoint)
-                checkboxElement.title = WI.UIString("Delete Breakpoint");
-            else
-                checkboxElement.title = WI.UIString("Add Breakpoint");
-        };
-
-        updateTitle();
-
-        checkboxElement.addEventListener("change", (event) => {
-            this._eventListener.hasBreakpoint = !!checkboxElement.checked;
-            if (this._eventListener.hasBreakpoint)
-                WI.domManager.setBreakpointForEventListener(this._eventListener);
-            else
-                WI.domManager.removeBreakpointForEventListener(this._eventListener);
-
-            updateTitle();
-        });
-
-        let labelElement = document.createElement("span");
-        labelElement.textContent = WI.UIString("Breakpoint");
-        labelElement.addEventListener("click", (event) => {
-            checkboxElement.click();
-        });
-
-        return new WI.DetailsSectionSimpleRow(labelElement, checkboxElement);
+        console.assert(this._eventListenerBreakpointToggleElement);
+        this._eventListenerBreakpointToggleElement.checked = this._eventListener.hasBreakpoint;
+        this._eventListenerBreakpointToggleElement.title = this._eventListener.hasBreakpoint ? WI.UIString("Delete Breakpoint") : WI.UIString("Add Breakpoint");
     }
 };

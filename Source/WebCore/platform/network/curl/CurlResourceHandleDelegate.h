@@ -40,6 +40,7 @@ namespace WebCore {
 class ResourceHandle;
 class ResourceHandleClient;
 class ResourceHandleInternal;
+class SharedBuffer;
 
 class CurlResourceHandleDelegate final : public CurlRequestClient {
     WTF_MAKE_NONCOPYABLE(CurlResourceHandleDelegate); WTF_MAKE_FAST_ALLOCATED;
@@ -50,17 +51,18 @@ public:
 
     // CurlRequestClient methods
 
-    void ref() override final;
-    void deref() override final;
+    void ref() final;
+    void deref() final;
 
-    void curlDidSendData(CurlRequest&, unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override final;
-    void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) override final;
-    void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) override final;
-    void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) override final;
-
-    void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) override final;
+    void curlDidSendData(CurlRequest&, unsigned long long bytesSent, unsigned long long totalBytesToBeSent) final;
+    void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) final;
+    void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) final;
+    void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) final;
+    void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) final;
 
 private:
+    void updateNetworkLoadMetrics(NetworkLoadMetrics&);
+
     ResourceHandle& m_handle;
     ResourceResponse m_response;
 

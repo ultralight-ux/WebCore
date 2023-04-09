@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,13 +37,12 @@ public:
     typedef InternalFunction Base;
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.callbackFunctionSpace<mode>();
     }
 
     static JSCallbackFunction* create(VM&, JSGlobalObject*, JSObjectCallAsFunctionCallback, const String& name);
-    static JSCallbackFunction* create(VM&, JSGlobalObject*, JSClassRef, JSObjectCallAsFunctionCallbackEx, const String& name);
 
     DECLARE_INFO;
     
@@ -56,23 +55,11 @@ public:
 
 private:
     JSCallbackFunction(VM&, Structure*, JSObjectCallAsFunctionCallback);
-    JSCallbackFunction(VM&, Structure*, JSClassRef, JSObjectCallAsFunctionCallbackEx);
     void finishCreation(VM&, const String& name);
 
     JSObjectCallAsFunctionCallback functionCallback() { return m_callback; }
 
-    JSObjectCallAsFunctionCallbackEx functionCallbackEx() { return m_callbackEx; }
-
-    JSClassRef callClass() { return m_clazz; }
-
-    union {
-        JSObjectCallAsFunctionCallback m_callback{ nullptr };
-
-        struct {
-            JSObjectCallAsFunctionCallbackEx m_callbackEx;
-            JSClassRef m_clazz;
-        };
-    };
+    JSObjectCallAsFunctionCallback m_callback { nullptr };
 };
 
 } // namespace JSC

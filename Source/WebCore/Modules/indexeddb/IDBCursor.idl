@@ -24,19 +24,22 @@
  */
 
 [
-    Conditional=INDEXED_DATABASE,
+    EnabledBySetting=IndexedDBAPIEnabled,
     CustomToJSObject,
     JSCustomMarkFunction,
     SkipVTableValidation,
+    Exposed=(Window,Worker)
 ] interface IDBCursor {
     readonly attribute (IDBObjectStore or IDBIndex) source;
     readonly attribute IDBCursorDirection direction;
     [CustomGetter] readonly attribute any key;
     [CustomGetter] readonly attribute any primaryKey;
+    [SameObject] readonly attribute IDBRequest request;
 
-    [CallWith=GlobalObject, MayThrowException] IDBRequest update(any value);
-    [MayThrowException] void advance([EnforceRange] unsigned long count);
-    [CallWith=GlobalObject, ImplementedAs=continueFunction, MayThrowException] void continue(optional any key);
-    [CallWith=GlobalObject, MayThrowException] void continuePrimaryKey(any key, any primaryKey);
-    [CallWith=GlobalObject, ImplementedAs=deleteFunction, MayThrowException] IDBRequest delete();
+    undefined advance([EnforceRange] unsigned long count);
+    [CallWith=CurrentGlobalObject, ImplementedAs=continueFunction] undefined continue(optional any key);
+    [CallWith=CurrentGlobalObject] undefined continuePrimaryKey(any key, any primaryKey);
+
+    [NewObject, CallWith=CurrentGlobalObject] IDBRequest update(any value);
+    [NewObject, ImplementedAs=deleteFunction] IDBRequest delete();
 };

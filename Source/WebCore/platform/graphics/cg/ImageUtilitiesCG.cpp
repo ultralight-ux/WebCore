@@ -28,6 +28,7 @@
 
 #include "Logging.h"
 #include "MIMETypeRegistry.h"
+#include "UTIUtilities.h"
 #include <ImageIO/ImageIO.h>
 #include <wtf/FileSystem.h>
 #include <wtf/text/CString.h>
@@ -48,8 +49,20 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
         return nullString();
 
     auto sourceUTI = String(CGImageSourceGetType(source.get()));
-    if (sourceUTI == destinationUTI)
+    if (!sourceUTI || sourceUTI == destinationUTI)
         return nullString();
+
+#if !HAVE(IMAGEIO_FIX_FOR_RADAR_59589723)
+    auto sourceMIMEType = MIMETypeFromUTI(sourceUTI);
+    if (sourceMIMEType == "image/heif"_s || sourceMIMEType == "image/heic"_s) {
+        static std::once_flag onceFlag;
+        std::call_once(onceFlag, [&] {
+            // This call will force ImageIO to load the symbols of the HEIF reader. This
+            // bug is already fixed in ImageIO of macOS Big Sur <rdar://problem/59589723>.
+            CGImageSourceGetCount(source.get());
+        });
+    }
+#endif
 
     // It is important to add the appropriate file extension to the temporary file path.
     // The File object depends solely on the extension to know the MIME type of the file.
@@ -65,7 +78,7 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
     CGDataConsumerCallbacks callbacks = {
         [](void* info, const void* buffer, size_t count) -> size_t {
             auto handle = *static_cast<FileSystem::PlatformFileHandle*>(info);
-            return FileSystem::writeToFile(handle, static_cast<const char*>(buffer), count);
+            return FileSystem::writeToFile(handle, buffer, count);
         },
         nullptr
     };
@@ -88,19 +101,15 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
 
 Vector<String> findImagesForTranscoding(const Vector<String>& paths, const Vector<String>& allowedMIMETypes)
 {
-    Vector<String> transcodingPaths;
-    transcodingPaths.reserveInitialCapacity(paths.size());
-
     bool needsTranscoding = false;
-
-    for (auto& path : paths) {
+    auto transcodingPaths = paths.map([&](auto& path) {
         // Append a path of the image which needs transcoding. Otherwise append a null string.
         if (!allowedMIMETypes.contains(WebCore::MIMETypeRegistry::mimeTypeForPath(path))) {
-            transcodingPaths.uncheckedAppend(path);
             needsTranscoding = true;
-        } else
-            transcodingPaths.uncheckedAppend(nullString());
-    }
+            return path;
+        }
+        return nullString();
+    });
 
     // If none of the files needs image transcoding, return an empty Vector.
     return needsTranscoding ? transcodingPaths : Vector<String>();
@@ -111,18 +120,10 @@ Vector<String> transcodeImages(const Vector<String>& paths, const String& destin
     ASSERT(!destinationUTI.isNull());
     ASSERT(!destinationExtension.isNull());
     
-    Vector<String> transcodedPaths;
-    transcodedPaths.reserveInitialCapacity(paths.size());
-
-    for (auto& path : paths) {
+    return paths.map([&](auto& path) {
         // Append the transcoded path if the image needs transcoding. Otherwise append a null string.
-        if (!path.isNull())
-            transcodedPaths.uncheckedAppend(transcodeImage(path, destinationUTI, destinationExtension));
-        else
-            transcodedPaths.uncheckedAppend(nullString());
-    }
-
-    return transcodedPaths;
+        return path.isNull() ? nullString() : transcodeImage(path, destinationUTI, destinationExtension);
+    });
 }
 
 } // namespace WebCore

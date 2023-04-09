@@ -38,19 +38,23 @@ class AudioIOCallback;
 class MockAudioDestinationCocoa final : public AudioDestinationCocoa {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<AudioDestination> create(AudioIOCallback& callback, float sampleRate) { return makeUnique<MockAudioDestinationCocoa>(callback, sampleRate); }
+    static Ref<AudioDestination> create(AudioIOCallback& callback, float sampleRate)
+    {
+        return adoptRef(*new MockAudioDestinationCocoa(callback, sampleRate));
+    }
+
     WEBCORE_EXPORT MockAudioDestinationCocoa(AudioIOCallback&, float sampleRate);
     WEBCORE_EXPORT virtual ~MockAudioDestinationCocoa();
 
 private:
-    void start() final;
-    void stop() final;
+    void startRendering(CompletionHandler<void(bool)>&&) final;
+    void stopRendering(CompletionHandler<void(bool)>&&) final;
 
     void tick();
 
     Ref<WorkQueue> m_workQueue;
-    RunLoop::Timer<MockAudioDestinationCocoa> m_timer;
-    uint32_t m_numberOfFramesToProcess { 384 };
+    RunLoop::Timer m_timer;
+    size_t m_numberOfFramesToProcess { 384 };
 };
 
 } // namespace WebCore

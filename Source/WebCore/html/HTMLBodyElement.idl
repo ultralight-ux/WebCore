@@ -18,30 +18,35 @@
  * Boston, MA 02110-1301, USA.
  */
 
-interface HTMLBodyElement : HTMLElement {
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString aLink;
+[
+    Exposed=Window,
+    GenerateForEachWindowEventHandlerContentAttribute,
+] interface HTMLBodyElement : HTMLElement {
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString aLink;
     [CEReactions=NotNeeded, Reflect] attribute DOMString background;
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString bgColor;
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString link;
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString text;
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString vLink;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString bgColor;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString link;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString text;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString vLink;
 
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onblur;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onerror;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onfocus;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onfocusin;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onfocusout;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onload;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onresize;
-    [NotEnumerable, WindowEventHandler] attribute EventHandler onscroll;
+    [WindowEventHandler] attribute EventHandler onblur;
+    [WindowEventHandler] attribute EventHandler onerror;
+    [WindowEventHandler] attribute EventHandler onfocus;
+    [WindowEventHandler] attribute EventHandler onload;
+    [WindowEventHandler] attribute EventHandler onresize;
+    [WindowEventHandler] attribute EventHandler onscroll;
 
+    // See these 2 issues for onfocusin and onfocusout.
+    // https://github.com/w3c/uievents/issues/88
+    // https://github.com/whatwg/html/issues/3514
+    [WindowEventHandler] attribute EventHandler onfocusin;
+    [WindowEventHandler] attribute EventHandler onfocusout;
+
+    // Non-standard
     [NotEnumerable, WindowEventHandler, Conditional=MOUSE_FORCE_EVENTS] attribute EventHandler onwebkitmouseforcechanged;
     [NotEnumerable, WindowEventHandler, Conditional=MOUSE_FORCE_EVENTS] attribute EventHandler onwebkitmouseforcedown;
     [NotEnumerable, WindowEventHandler, Conditional=MOUSE_FORCE_EVENTS] attribute EventHandler onwebkitmouseforcewillbegin;
     [NotEnumerable, WindowEventHandler, Conditional=MOUSE_FORCE_EVENTS] attribute EventHandler onwebkitmouseforceup;
-
-    // Unique to Document and HTMLBodyElement
-    [NotEnumerable, DocumentEventHandler] attribute EventHandler onselectionchange;
 };
 
-HTMLBodyElement implements WindowEventHandlers;
+HTMLBodyElement includes WindowEventHandlers;

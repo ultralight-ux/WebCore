@@ -36,6 +36,7 @@
 namespace WebCore {
 
 class ContentSecurityPolicyResponseHeaders;
+class ScriptBuffer;
 class WorkerObjectProxy;
 
 class DedicatedWorkerThread : public WorkerThread {
@@ -51,10 +52,11 @@ public:
 
 protected:
     Ref<WorkerGlobalScope> createWorkerGlobalScope(const WorkerParameters&, Ref<SecurityOrigin>&&, Ref<SecurityOrigin>&& topOrigin) override;
-    void runEventLoop() override;
 
 private:
-    DedicatedWorkerThread(const WorkerParameters&, const String& sourceCode, WorkerLoaderProxy&, WorkerDebuggerProxy&, WorkerObjectProxy&, WorkerThreadStartMode, const SecurityOrigin& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*, JSC::RuntimeFlags);
+    DedicatedWorkerThread(const WorkerParameters&, const ScriptBuffer& sourceCode, WorkerLoaderProxy&, WorkerDebuggerProxy&, WorkerObjectProxy&, WorkerBadgeProxy&, WorkerThreadStartMode, const SecurityOrigin& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*, JSC::RuntimeFlags);
+
+    ASCIILiteral threadName() const final { return "WebCore: Worker"_s; }
 
     WorkerObjectProxy& m_workerObjectProxy;
 };

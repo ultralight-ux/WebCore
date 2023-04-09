@@ -67,7 +67,7 @@ void ResourceResponse::initNSURLResponse() const
     m_nsResponse = adoptNS([[NSHTTPURLResponse alloc] initWithURL:m_url statusCode:m_httpStatusCode HTTPVersion:(NSString*)kCFHTTPVersion1_1 headerFields:headerDictionary]);
 
     // Mime type sniffing doesn't work with a synthesized response.
-    [m_nsResponse.get() _setMIMEType:(NSString *)m_mimeType];
+    [m_nsResponse _setMIMEType:(NSString *)m_mimeType];
 }
 
 void ResourceResponse::disableLazyInitialization()
@@ -75,7 +75,7 @@ void ResourceResponse::disableLazyInitialization()
     lazyInit(AllFields);
 }
 
-CertificateInfo ResourceResponse::platformCertificateInfo() const
+CertificateInfo ResourceResponse::platformCertificateInfo(Span<const std::byte> auditToken) const
 {
     CFURLResponseRef cfResponse = [m_nsResponse _CFURLResponse];
     if (!cfResponse)
@@ -90,6 +90,15 @@ CertificateInfo ResourceResponse::platformCertificateInfo() const
         return { };
     auto trust = checked_cf_cast<SecTrustRef>(trustValue);
 
+#if HAVE(SEC_TRUST_SET_CLIENT_AUDIT_TOKEN)
+    if (trust && auditToken.size()) {
+        auto data = adoptCF(CFDataCreate(nullptr, reinterpret_cast<const uint8_t*>(auditToken.data()), auditToken.size()));
+        SecTrustSetClientAuditToken(trust, data.get());
+    }
+#else
+    UNUSED_PARAM(auditToken);
+#endif
+
     SecTrustResultType trustResultType;
     OSStatus result = SecTrustGetTrustResult(trust, &trustResultType);
     if (result != errSecSuccess)
@@ -100,11 +109,7 @@ CertificateInfo ResourceResponse::platformCertificateInfo() const
             return { };
     }
 
-#if HAVE(SEC_TRUST_SERIALIZATION)
     return CertificateInfo(trust);
-#else
-    return CertificateInfo(CertificateInfo::certificateChainFromSecTrust(trust));
-#endif
 }
 
 NSURLResponse *ResourceResponse::nsURLResponse() const
@@ -124,7 +129,7 @@ static inline AtomString stripLeadingAndTrailingDoubleQuote(const String& value)
 {
     unsigned length = value.length();
     if (length < 2 || value[0u] != '"' || value[length - 1] != '"')
-        return value;
+        return AtomString { value };
 
     return StringView(value).substring(1, length - 2).toAtomString();
 }
@@ -144,7 +149,7 @@ static inline AtomString extractHTTPStatusText(CFHTTPMessageRef messageRef)
     if (auto httpStatusLine = adoptCF(CFHTTPMessageCopyResponseStatusLine(messageRef)))
         return extractReasonPhraseFromHTTPStatusLine(httpStatusLine.get());
 
-    static MainThreadNeverDestroyed<const AtomString> defaultStatusText("OK", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> defaultStatusText("OK"_s);
     return defaultStatusText;
 }
 
@@ -160,21 +165,26 @@ void ResourceResponse::platformLazyInit(InitLevel initLevel)
     
     @autoreleasepool {
 
-        auto messageRef = [m_nsResponse.get() isKindOfClass:[NSHTTPURLResponse class]] ? CFURLResponseGetHTTPResponse([ (NSHTTPURLResponse *)m_nsResponse.get() _CFURLResponse]) : nullptr;
+        auto messageRef = [m_nsResponse isKindOfClass:[NSHTTPURLResponse class]] ? CFURLResponseGetHTTPResponse([ (NSHTTPURLResponse *)m_nsResponse.get() _CFURLResponse]) : nullptr;
 
         if (m_initLevel < CommonFieldsOnly) {
-            m_url = [m_nsResponse.get() URL];
-            m_mimeType = [m_nsResponse.get() MIMEType];
-            m_expectedContentLength = [m_nsResponse.get() expectedContentLength];
+            m_url = [m_nsResponse URL];
+#if USE(AVIF)
+            if (m_url.string().endsWithIgnoringASCIICase(".avif"_s) || m_url.string().endsWithIgnoringASCIICase(".avifs"_s))
+                m_mimeType = "image/avif"_s;
+            else
+#endif
+                m_mimeType = [m_nsResponse MIMEType];
+            m_expectedContentLength = [m_nsResponse expectedContentLength];
             // Stripping double quotes as a workaround for <rdar://problem/8757088>, can be removed once that is fixed.
-            m_textEncodingName = stripLeadingAndTrailingDoubleQuote([m_nsResponse.get() textEncodingName]);
+            m_textEncodingName = stripLeadingAndTrailingDoubleQuote([m_nsResponse textEncodingName]);
             m_httpStatusCode = messageRef ? CFHTTPMessageGetResponseStatusCode(messageRef) : 0;
             if (messageRef)
                 m_httpHeaderFields = initializeHTTPHeaders(messageRef);
         }
         if (messageRef && initLevel == AllFields) {
             m_httpStatusText = extractHTTPStatusText(messageRef);
-            m_httpVersion = String(adoptCF(CFHTTPMessageCopyVersion(messageRef)).get()).convertToASCIIUppercase();
+            m_httpVersion = AtomString { String(adoptCF(CFHTTPMessageCopyVersion(messageRef)).get()).convertToASCIIUppercase() };
         }
     }
 

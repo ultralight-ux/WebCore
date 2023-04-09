@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.ResourceQueryController = class ResourceQueryController extends WI.Object
+WI.ResourceQueryController = class ResourceQueryController extends WI.QueryController
 {
     constructor()
     {
@@ -67,15 +67,36 @@ WI.ResourceQueryController = class ResourceQueryController extends WI.Object
 
         let results = [];
         for (let [resource, cachedData] of this._resourceDataMap) {
-            if (!cachedData.searchString) {
+            if (isEmptyObject(cachedData)) {
                 let displayName = resource.displayName;
-                cachedData.searchString = displayName.toLowerCase();
-                cachedData.specialCharacterIndices = this._findSpecialCharacterIndices(displayName);
+                cachedData.displayName = {
+                    searchString: displayName.toLowerCase(),
+                    specialCharacterIndices: this._findSpecialCharacterIndicesInDisplayName(displayName),
+                };
+
+                let url = resource.url;
+                cachedData.url = {
+                    searchString: url.toLowerCase(),
+                    specialCharacterIndices: this._findSpecialCharacterIndicesInURL(url),
+                };
             }
 
-            let matches = this._findQueryMatches(query, cachedData.searchString, cachedData.specialCharacterIndices);
-            if (matches.length)
-                results.push(new WI.ResourceQueryResult(resource, matches, cookie));
+            let resourceResult = null;
+
+            let findQueryMatches = ({searchString, specialCharacterIndices}) => {
+                let matches = this.findQueryMatches(query, searchString, specialCharacterIndices);
+                if (!matches.length)
+                    return;
+
+                let queryResult = new WI.ResourceQueryResult(resource, searchString, matches, cookie);
+                if (!resourceResult || resourceResult.rank < queryResult.rank)
+                    resourceResult = queryResult;
+            };
+            findQueryMatches(cachedData.displayName);
+            findQueryMatches(cachedData.url);
+
+            if (resourceResult)
+                results.push(resourceResult);
         }
 
         // Resources are sorted in descending order by rank. Resources of equal
@@ -89,118 +110,13 @@ WI.ResourceQueryController = class ResourceQueryController extends WI.Object
 
     // Private
 
-    _findQueryMatches(query, searchString, specialCharacterIndices)
+    _findSpecialCharacterIndicesInDisplayName(displayName)
     {
-        if (query.length > searchString.length)
-            return [];
-
-        let matches = [];
-        let queryIndex = 0;
-        let searchIndex = 0;
-        let specialIndex = 0;
-        let deadBranches = new Array(query.length).fill(Infinity);
-        let type = WI.ResourceQueryMatch.Type.Special;
-
-        function pushMatch(index)
-        {
-            matches.push(new WI.ResourceQueryMatch(type, index, queryIndex));
-            searchIndex = index + 1;
-            queryIndex++;
-        }
-
-        function matchNextSpecialCharacter()
-        {
-            if (specialIndex >= specialCharacterIndices.length)
-                return false;
-
-            let originalSpecialIndex = specialIndex;
-            while (specialIndex < specialCharacterIndices.length) {
-                // Normal character matching can move past special characters,
-                // so advance the special character index if it's before the
-                // current search string position.
-                let index = specialCharacterIndices[specialIndex++];
-                if (index < searchIndex)
-                    continue;
-
-                if (query[queryIndex] === searchString[index]) {
-                    pushMatch(index);
-                    return true;
-                }
-            }
-
-            specialIndex = originalSpecialIndex;
-            return false;
-        }
-
-        function backtrack()
-        {
-            while (matches.length) {
-                queryIndex--;
-
-                let lastMatch = matches.pop();
-                if (lastMatch.type !== WI.ResourceQueryMatch.Type.Special)
-                    continue;
-
-                deadBranches[lastMatch.queryIndex] = lastMatch.index;
-                searchIndex = matches.lastValue ? matches.lastValue.index + 1 : 0;
-                return true;
-            }
-
-            return false;
-        }
-
-        while (queryIndex < query.length && searchIndex <= searchString.length) {
-            if (type === WI.ResourceQueryMatch.Type.Special && !matchNextSpecialCharacter())
-                type = WI.ResourceQueryMatch.Type.Normal;
-
-            if (type === WI.ResourceQueryMatch.Type.Normal) {
-                let index = searchString.indexOf(query[queryIndex], searchIndex);
-                if (index >= 0 && index < deadBranches[queryIndex]) {
-                    pushMatch(index);
-                    type = WI.ResourceQueryMatch.Type.Special;
-                } else if (!backtrack())
-                    return [];
-            }
-        }
-
-        if (queryIndex < query.length)
-            return [];
-
-        return matches;
+        return this.findSpecialCharacterIndices(displayName, "_.-");
     }
 
-    _findSpecialCharacterIndices(string)
+    _findSpecialCharacterIndicesInURL(url)
     {
-        if (!string.length)
-            return [];
-
-        const filenameSeparators = "_.-";
-
-        // Special characters include the following:
-        // 1. The first character.
-        // 2. Uppercase characters that follow a lowercase letter.
-        // 3. Filename separators and the first character following the separator.
-        let indices = [0];
-
-        for (let i = 1; i < string.length; ++i) {
-            let character = string[i];
-            let isSpecial = false;
-
-            if (filenameSeparators.includes(character))
-                isSpecial = true;
-            else {
-                let previousCharacter = string[i - 1];
-                let previousCharacterIsSeparator = filenameSeparators.includes(previousCharacter);
-                if (previousCharacterIsSeparator)
-                    isSpecial = true;
-                else if (character.isUpperCase() && previousCharacter.isLowerCase())
-                    isSpecial = true;
-            }
-
-            if (isSpecial)
-                indices.push(i);
-        }
-
-        return indices;
+        return this.findSpecialCharacterIndices(url, "_.-/");
     }
 };

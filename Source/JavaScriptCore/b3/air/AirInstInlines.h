@@ -44,13 +44,13 @@ void Inst::forEach(const Functor& functor)
         });
 }
 
-inline RegisterSet Inst::extraClobberedRegs()
+inline RegisterSetBuilder Inst::extraClobberedRegs()
 {
     ASSERT(kind.opcode == Patch);
     return args[0].special()->extraClobberedRegs(*this);
 }
 
-inline RegisterSet Inst::extraEarlyClobberedRegs()
+inline RegisterSetBuilder Inst::extraEarlyClobberedRegs()
 {
     ASSERT(kind.opcode == Patch);
     return args[0].special()->extraEarlyClobberedRegs(*this);
@@ -80,27 +80,29 @@ template<typename Thing, typename Functor>
 inline void Inst::forEachDefWithExtraClobberedRegs(
     Inst* prevInst, Inst* nextInst, const Functor& functor)
 {
-    forEachDef<Thing>(prevInst, nextInst, functor);
+    forEachDef<Thing>(prevInst, nextInst, [&functor] (Thing thing, Arg::Role role, Bank b,  Width w) {
+        functor(thing, role, b, w, PreservesNothing);
+    });
 
     Arg::Role regDefRole;
-    
-    auto reportReg = [&] (Reg reg) {
+
+    auto reportReg = [&] (Reg reg, Width width, PreservedWidth preservedWidth) {
         Bank bank = reg.isGPR() ? GP : FP;
-        functor(Thing(reg), regDefRole, bank, conservativeWidth(bank));
+        functor(Thing(reg), regDefRole, bank, width, preservedWidth);
     };
 
     if (prevInst && prevInst->kind.opcode == Patch) {
         regDefRole = Arg::Def;
-        prevInst->extraClobberedRegs().forEach(reportReg);
+        prevInst->extraClobberedRegs().forEachWithWidthAndPreserved(reportReg);
     }
 
     if (nextInst && nextInst->kind.opcode == Patch) {
         regDefRole = Arg::EarlyDef;
-        nextInst->extraEarlyClobberedRegs().forEach(reportReg);
+        nextInst->extraEarlyClobberedRegs().forEachWithWidthAndPreserved(reportReg);
     }
 }
 
-inline void Inst::reportUsedRegisters(const RegisterSet& usedRegisters)
+inline void Inst::reportUsedRegisters(const RegisterSetBuilder& usedRegisters)
 {
     ASSERT(kind.opcode == Patch);
     args[0].special()->reportUsedRegisters(*this, usedRegisters);
@@ -116,10 +118,10 @@ inline bool Inst::admitsExtendedOffsetAddr(Arg& arg)
     return admitsExtendedOffsetAddr(&arg - &args[0]);
 }
 
-inline Optional<unsigned> Inst::shouldTryAliasingDef()
+inline std::optional<unsigned> Inst::shouldTryAliasingDef()
 {
     if (!isX86())
-        return WTF::nullopt;
+        return std::nullopt;
 
     switch (kind.opcode) {
     case Add32:
@@ -147,7 +149,7 @@ inline Optional<unsigned> Inst::shouldTryAliasingDef()
     case MulFloat:
 #if CPU(X86) || CPU(X86_64)
         if (MacroAssembler::supportsAVX())
-            return WTF::nullopt;
+            return std::nullopt;
 #endif
         if (args.size() == 3)
             return 2;
@@ -178,7 +180,27 @@ inline Optional<unsigned> Inst::shouldTryAliasingDef()
     default:
         break;
     }
-    return WTF::nullopt;
+    return std::nullopt;
+}
+
+inline bool isAddZeroExtend64Valid(const Inst& inst)
+{
+#if CPU(ARM64)
+    return inst.args[1] != Tmp(ARM64Registers::sp);
+#else
+    UNUSED_PARAM(inst);
+    return true;
+#endif
+}
+
+inline bool isAddSignExtend64Valid(const Inst& inst)
+{
+#if CPU(ARM64)
+    return inst.args[1] != Tmp(ARM64Registers::sp);
+#else
+    UNUSED_PARAM(inst);
+    return true;
+#endif
 }
 
 inline bool isShiftValid(const Inst& inst)
@@ -347,6 +369,16 @@ inline bool isBranchAtomicStrongCAS32Valid(const Inst& inst)
 inline bool isBranchAtomicStrongCAS64Valid(const Inst& inst)
 {
     return isBranchAtomicStrongCASValid(inst);
+}
+
+inline bool isVectorSwizzle2Valid(const Inst& inst)
+{
+#if CPU(ARM64)
+    return inst.args[1].fpr() == inst.args[0].fpr() + 1;
+#else
+    UNUSED_PARAM(inst);
+    return false;
+#endif
 }
 
 } } } // namespace JSC::B3::Air

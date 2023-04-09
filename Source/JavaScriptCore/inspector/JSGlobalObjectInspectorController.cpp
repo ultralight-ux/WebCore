@@ -1,27 +1,27 @@
 /*
-* Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions
-* are met:
-* 1. Redistributions of source code must retain the above copyright
-*    notice, this list of conditions and the following disclaimer.
-* 2. Redistributions in binary form must reproduce the above copyright
-*    notice, this list of conditions and the following disclaimer in the
-*    documentation and/or other materials provided with the distribution.
-*
-* THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
-* EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-* PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
-* CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-* EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-* PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-* PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
-* OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "config.h"
 #include "JSGlobalObjectInspectorController.h"
@@ -42,6 +42,7 @@
 #include "JSGlobalObject.h"
 #include "JSGlobalObjectAuditAgent.h"
 #include "JSGlobalObjectConsoleClient.h"
+#include "JSGlobalObjectDebugger.h"
 #include "JSGlobalObjectDebuggerAgent.h"
 #include "JSGlobalObjectRuntimeAgent.h"
 #include "ScriptCallStack.h"
@@ -62,7 +63,6 @@ JSGlobalObjectInspectorController::JSGlobalObjectInspectorController(JSGlobalObj
     : m_globalObject(globalObject)
     , m_injectedScriptManager(makeUnique<InjectedScriptManager>(*this, InjectedScriptHost::create()))
     , m_executionStopwatch(Stopwatch::create())
-    , m_scriptDebugServer(globalObject)
     , m_frontendRouter(FrontendRouter::create())
     , m_backendDispatcher(BackendDispatcher::create(m_frontendRouter.copyRef()))
 {
@@ -75,24 +75,26 @@ JSGlobalObjectInspectorController::JSGlobalObjectInspectorController(JSGlobalObj
     m_consoleClient = makeUnique<JSGlobalObjectConsoleClient>(m_consoleAgent);
 
     m_executionStopwatch->start();
-  }
+}
 
-  JSGlobalObjectInspectorController::~JSGlobalObjectInspectorController()
-  {
+JSGlobalObjectInspectorController::~JSGlobalObjectInspectorController()
+{
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_augmentingClient)
-      m_augmentingClient->inspectorControllerDestroyed();
+        m_augmentingClient->inspectorControllerDestroyed();
 #endif
-  }
+}
 
-  void JSGlobalObjectInspectorController::globalObjectDestroyed()
-  {
+void JSGlobalObjectInspectorController::globalObjectDestroyed()
+{
     ASSERT(!m_frontendRouter->hasFrontends());
 
     m_injectedScriptManager->disconnect();
 
     m_agents.discardValues();
-  }
+
+    m_debugger = nullptr;
+}
 
 void JSGlobalObjectInspectorController::connectFrontend(FrontendChannel& frontendChannel, bool isAutomaticInspection, bool immediatelyPause)
 {
@@ -105,7 +107,7 @@ void JSGlobalObjectInspectorController::connectFrontend(FrontendChannel& fronten
     m_frontendRouter->connectFrontend(frontendChannel);
 
     if (!connectedFirstFrontend)
-      return;
+        return;
 
     // Keep the JSGlobalObject and VM alive while we are debugging it.
     m_strongVM = &m_globalObject.vm();
@@ -115,13 +117,10 @@ void JSGlobalObjectInspectorController::connectFrontend(FrontendChannel& fronten
     m_agents.didCreateFrontendAndBackend(nullptr, nullptr);
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
-    if (m_globalObject.inspectorDebuggable().type() == Inspector::RemoteControllableTarget::Type::JavaScript)
-        ensureInspectorAgent().activateExtraDomains(m_agents.extraDomains());
-
     if (m_augmentingClient)
-      m_augmentingClient->inspectorConnected();
+        m_augmentingClient->inspectorConnected();
 #endif
-  }
+}
 
 void JSGlobalObjectInspectorController::disconnectFrontend(FrontendChannel& frontendChannel)
 {
@@ -135,22 +134,22 @@ void JSGlobalObjectInspectorController::disconnectFrontend(FrontendChannel& fron
 
     bool disconnectedLastFrontend = !m_frontendRouter->hasFrontends();
     if (!disconnectedLastFrontend)
-      return;
+        return;
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_augmentingClient)
-      m_augmentingClient->inspectorDisconnected();
+        m_augmentingClient->inspectorDisconnected();
 #endif
 
     // Remove our JSGlobalObject and VM references, we are done debugging it.
     m_strongGlobalObject.clear();
     m_strongVM = nullptr;
-  }
+}
 
-  void JSGlobalObjectInspectorController::dispatchMessageFromFrontend(const String& message)
-  {
+void JSGlobalObjectInspectorController::dispatchMessageFromFrontend(const String& message)
+{
     m_backendDispatcher->dispatch(message);
-  }
+}
 
 void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& callStack)
 {
@@ -164,9 +163,9 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& call
     void** stack = samples + framesToSkip;
     int size = frames - framesToSkip;
     for (int i = 0; i < size; ++i) {
-        auto demangled = StackTrace::demangle(stack[i]);
+        auto demangled = StackTraceSymbolResolver::demangle(stack[i]);
         if (demangled)
-            callStack.append(ScriptCallFrame(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName(), "[native code]"_s, noSourceID, 0, 0));
+            callStack.append(ScriptCallFrame(String::fromLatin1(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName()), "[native code]"_s, noSourceID, 0, 0));
         else
             callStack.append(ScriptCallFrame("?"_s, "[native code]"_s, noSourceID, 0, 0));
     }
@@ -175,7 +174,7 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& call
 void JSGlobalObjectInspectorController::reportAPIException(JSGlobalObject* globalObject, Exception* exception)
 {
     VM& vm = globalObject->vm();
-    if (isTerminatedExecutionException(vm, exception))
+    if (vm.isTerminationException(exception))
         return;
 
     auto scope = DECLARE_CATCH_SCOPE(vm);
@@ -183,7 +182,7 @@ void JSGlobalObjectInspectorController::reportAPIException(JSGlobalObject* globa
 
     Ref<ScriptCallStack> callStack = createScriptCallStackFromException(globalObject, exception);
     if (includesNativeCallStackWhenReportingExceptions())
-      appendAPIBacktrace(callStack.get());
+        appendAPIBacktrace(callStack.get());
 
     // FIXME: <http://webkit.org/b/115087> Web Inspector: Should not evaluate JavaScript handling exceptions
     // If this is a custom exception object, call toString on it to try and get a nice string representation for the exception.
@@ -191,88 +190,82 @@ void JSGlobalObjectInspectorController::reportAPIException(JSGlobalObject* globa
     scope.clearException();
 
     if (JSGlobalObjectConsoleClient::logToSystemConsole()) {
-      if (callStack->size()) {
-        const ScriptCallFrame& callFrame = callStack->at(0);
-        ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, callFrame.sourceURL(), callFrame.lineNumber(), callFrame.columnNumber());
-      }
-      else
-        ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, String(), 0, 0);
+        if (callStack->size()) {
+            const ScriptCallFrame& callFrame = callStack->at(0);
+            ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, callFrame.sourceURL(), callFrame.lineNumber(), callFrame.columnNumber());
+        } else
+            ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, String(), 0, 0);
     }
 
     m_consoleAgent->addMessageToConsole(makeUnique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, WTFMove(callStack)));
 }
 
-  ConsoleClient* JSGlobalObjectInspectorController::consoleClient() const
-  {
-    return m_consoleClient.get();
-  }
+WeakPtr<ConsoleClient> JSGlobalObjectInspectorController::consoleClient() const
+{
+    return WeakPtr<ConsoleClient>(m_consoleClient.get(), EnableWeakPtrThreadingAssertions::No);
+}
 
-  bool JSGlobalObjectInspectorController::developerExtrasEnabled() const
-  {
+bool JSGlobalObjectInspectorController::developerExtrasEnabled() const
+{
 #if ENABLE(REMOTE_INSPECTOR)
     if (!RemoteInspector::singleton().enabled())
-      return false;
+        return false;
 
-    if (!m_globalObject.inspectorDebuggable().remoteDebuggingAllowed())
-      return false;
+    if (!m_globalObject.inspectorDebuggable().allowsInspectionByPolicy())
+        return false;
 #endif
 
     return true;
-  }
+}
 
-  InspectorFunctionCallHandler JSGlobalObjectInspectorController::functionCallHandler() const
-  {
+InspectorFunctionCallHandler JSGlobalObjectInspectorController::functionCallHandler() const
+{
     return JSC::call;
-  }
+}
 
-  InspectorEvaluateHandler JSGlobalObjectInspectorController::evaluateHandler() const
-  {
+InspectorEvaluateHandler JSGlobalObjectInspectorController::evaluateHandler() const
+{
     return JSC::evaluate;
-  }
+}
 
 void JSGlobalObjectInspectorController::frontendInitialized()
 {
     if (m_pauseAfterInitialization) {
         m_pauseAfterInitialization = false;
 
-        ErrorString ignored;
-        ensureDebuggerAgent().enable(ignored);
-        ensureDebuggerAgent().pause(ignored);
+        ensureDebuggerAgent().enable();
+        ensureDebuggerAgent().pause();
     }
 
 #if ENABLE(REMOTE_INSPECTOR)
     if (m_isAutomaticInspection)
-      m_globalObject.inspectorDebuggable().unpauseForInitializedInspector();
+        m_globalObject.inspectorDebuggable().unpauseForInitializedInspector();
 #endif
-  }
+}
 
 Stopwatch& JSGlobalObjectInspectorController::executionStopwatch() const
 {
     return m_executionStopwatch;
 }
 
-  JSGlobalObjectScriptDebugServer& JSGlobalObjectInspectorController::scriptDebugServer()
-  {
-    return m_scriptDebugServer;
-  }
+JSC::Debugger* JSGlobalObjectInspectorController::debugger()
+{
+    ASSERT_IMPLIES(m_didCreateLazyAgents, m_debugger);
+    return m_debugger.get();
+}
 
-  VM& JSGlobalObjectInspectorController::vm()
-  {
+VM& JSGlobalObjectInspectorController::vm()
+{
     return m_globalObject.vm();
-  }
+}
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
-  void JSGlobalObjectInspectorController::appendExtraAgent(std::unique_ptr<InspectorAgentBase> agent)
-  {
-    String domainName = agent->domainName();
-
+void JSGlobalObjectInspectorController::registerAlternateAgent(std::unique_ptr<InspectorAgentBase> agent)
+{
     // FIXME: change this to notify agents which frontend has connected (by id).
     agent->didCreateFrontendAndBackend(nullptr, nullptr);
 
-    m_agents.appendExtraAgent(WTFMove(agent));
-
-    if (m_globalObject.inspectorDebuggable().type() == Inspector::RemoteControllableTarget::Type::JavaScript)
-        ensureInspectorAgent().activateExtraDomain(domainName);
+    m_agents.append(WTFMove(agent));
 }
 #endif
 
@@ -322,6 +315,8 @@ void JSGlobalObjectInspectorController::createLazyAgents()
         return;
 
     m_didCreateLazyAgents = true;
+
+    m_debugger = makeUnique<JSGlobalObjectDebugger>(m_globalObject);
 
     auto context = jsAgentContext();
 

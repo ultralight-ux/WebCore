@@ -31,8 +31,8 @@
 #include "Yarr.h"
 #include "YarrCanonicalize.h"
 #include "YarrParser.h"
+#include <limits>
 #include <wtf/DataLog.h>
-#include <wtf/Optional.h>
 #include <wtf/StackCheck.h>
 #include <wtf/Vector.h>
 
@@ -453,6 +453,9 @@ public:
     {
         m_pattern.resetForReparsing();
         m_characterClassConstructor.reset();
+        m_error = ErrorCode::NoError;
+        m_parenthesisContext.reset();
+        m_forwardReferencesInLookbehind.clear();
 
         auto body = makeUnique<PatternDisjunction>();
         m_pattern.m_body = body.get();
@@ -462,7 +465,7 @@ public:
 
     void assertionBOL()
     {
-        if (!m_alternative->m_terms.size() && !m_invertParentheticalAssertion) {
+        if (!m_alternative->m_terms.size() && !parenthesisInvert()) {
             m_alternative->m_startsWithBOL = true;
             m_alternative->m_containsBOL = true;
             m_pattern.m_containsBOL = true;
@@ -483,19 +486,19 @@ public:
         // We handle case-insensitive checking of unicode characters which do have both
         // cases by handling them as if they were defined using a CharacterClass.
         if (!m_pattern.ignoreCase() || (isASCII(ch) && !m_pattern.unicode())) {
-            m_alternative->m_terms.append(PatternTerm(ch));
+            m_alternative->m_terms.append(PatternTerm(ch, parenthesisMatchDirection()));
             return;
         }
 
         const CanonicalizationRange* info = canonicalRangeInfoFor(ch, m_pattern.unicode() ? CanonicalMode::Unicode : CanonicalMode::UCS2);
         if (info->type == CanonicalizeUnique) {
-            m_alternative->m_terms.append(PatternTerm(ch));
+            m_alternative->m_terms.append(PatternTerm(ch, parenthesisMatchDirection()));
             return;
         }
 
         m_characterClassConstructor.putUnicodeIgnoreCase(ch, info);
         auto newCharacterClass = m_characterClassConstructor.charClass();
-        m_alternative->m_terms.append(PatternTerm(newCharacterClass.get(), false));
+        m_alternative->m_terms.append(PatternTerm(newCharacterClass.get(), false, parenthesisMatchDirection()));
         m_pattern.m_userCharacterClasses.append(WTFMove(newCharacterClass));
     }
 
@@ -503,26 +506,26 @@ public:
     {
         switch (classID) {
         case BuiltInCharacterClassID::DigitClassID:
-            m_alternative->m_terms.append(PatternTerm(m_pattern.digitsCharacterClass(), invert));
+            m_alternative->m_terms.append(PatternTerm(m_pattern.digitsCharacterClass(), invert, parenthesisMatchDirection()));
             break;
         case BuiltInCharacterClassID::SpaceClassID:
-            m_alternative->m_terms.append(PatternTerm(m_pattern.spacesCharacterClass(), invert));
+            m_alternative->m_terms.append(PatternTerm(m_pattern.spacesCharacterClass(), invert, parenthesisMatchDirection()));
             break;
         case BuiltInCharacterClassID::WordClassID:
             if (m_pattern.unicode() && m_pattern.ignoreCase())
-                m_alternative->m_terms.append(PatternTerm(m_pattern.wordUnicodeIgnoreCaseCharCharacterClass(), invert));
+                m_alternative->m_terms.append(PatternTerm(m_pattern.wordUnicodeIgnoreCaseCharCharacterClass(), invert, parenthesisMatchDirection()));
             else
-                m_alternative->m_terms.append(PatternTerm(m_pattern.wordcharCharacterClass(), invert));
+                m_alternative->m_terms.append(PatternTerm(m_pattern.wordcharCharacterClass(), invert, parenthesisMatchDirection()));
             break;
         case BuiltInCharacterClassID::DotClassID:
             ASSERT(!invert);
             if (m_pattern.dotAll())
-                m_alternative->m_terms.append(PatternTerm(m_pattern.anyCharacterClass(), false));
+                m_alternative->m_terms.append(PatternTerm(m_pattern.anyCharacterClass(), false, parenthesisMatchDirection()));
             else
-                m_alternative->m_terms.append(PatternTerm(m_pattern.newlineCharacterClass(), true));
+                m_alternative->m_terms.append(PatternTerm(m_pattern.newlineCharacterClass(), true, parenthesisMatchDirection()));
             break;
         default:
-            m_alternative->m_terms.append(PatternTerm(m_pattern.unicodeCharacterClassFor(classID), invert));
+            m_alternative->m_terms.append(PatternTerm(m_pattern.unicodeCharacterClassFor(classID), invert, parenthesisMatchDirection()));
             break;
         }
     }
@@ -582,7 +585,7 @@ public:
         m_pattern.m_userCharacterClasses.append(WTFMove(newCharacterClass));
     }
 
-    void atomParenthesesSubpatternBegin(bool capture = true, Optional<String> optGroupName = WTF::nullopt)
+    void atomParenthesesSubpatternBegin(bool capture = true, std::optional<String> optGroupName = std::nullopt)
     {
         unsigned subpatternId = m_pattern.m_numSubpatterns + 1;
         if (capture) {
@@ -597,17 +600,22 @@ public:
             ASSERT(!optGroupName);
 
         auto parenthesesDisjunction = makeUnique<PatternDisjunction>(m_alternative);
-        m_alternative->m_terms.append(PatternTerm(PatternTerm::TypeParenthesesSubpattern, subpatternId, parenthesesDisjunction.get(), capture, false));
-        m_alternative = parenthesesDisjunction->addNewAlternative();
+        m_alternative->m_terms.append(PatternTerm(PatternTerm::Type::ParenthesesSubpattern, subpatternId, parenthesesDisjunction.get(), capture, false, parenthesisMatchDirection()));
+        m_alternative = parenthesesDisjunction->addNewAlternative(m_pattern.m_numSubpatterns, parenthesisMatchDirection());
+        pushParenthesisContext();
         m_pattern.m_disjunctions.append(WTFMove(parenthesesDisjunction));
     }
 
-    void atomParentheticalAssertionBegin(bool invert = false)
+    void atomParentheticalAssertionBegin(bool invert, MatchDirection matchDirection)
     {
         auto parenthesesDisjunction = makeUnique<PatternDisjunction>(m_alternative);
-        m_alternative->m_terms.append(PatternTerm(PatternTerm::TypeParentheticalAssertion, m_pattern.m_numSubpatterns + 1, parenthesesDisjunction.get(), false, invert));
-        m_alternative = parenthesesDisjunction->addNewAlternative();
-        m_invertParentheticalAssertion = invert;
+        m_alternative->m_terms.append(PatternTerm(PatternTerm::Type::ParentheticalAssertion, m_pattern.m_numSubpatterns + 1, parenthesesDisjunction.get(), false, invert, matchDirection));
+        m_alternative = parenthesesDisjunction->addNewAlternative(m_pattern.m_numSubpatterns, matchDirection);
+        pushParenthesisContext();
+        setParenthesisInvert(invert);
+        setParenthesisMatchDirection(matchDirection);
+        if (matchDirection == Backward)
+            m_pattern.m_containsLookbehinds = true;
         m_pattern.m_disjunctions.append(WTFMove(parenthesesDisjunction));
     }
 
@@ -638,16 +646,41 @@ public:
         }
 
         lastTerm.parentheses.lastSubpatternId = m_pattern.m_numSubpatterns;
-        m_invertParentheticalAssertion = false;
+
+        bool shouldTryConvertingForwardReferencesToBackreferences =
+            lastTerm.type == PatternTerm::Type::ParentheticalAssertion
+            && !m_forwardReferencesInLookbehind.isEmpty()
+            && parenthesisMatchDirection() == Backward;
+
+        popParenthesisContext();
+
+        if (shouldTryConvertingForwardReferencesToBackreferences && parenthesisMatchDirection() == Forward) {
+            //  There are forward references that could actually be lookbehind back references.
+            for (unsigned i = 0; i < m_forwardReferencesInLookbehind.size(); ++i) {
+                auto term = m_forwardReferencesInLookbehind[i];
+                if (term->backReferenceSubpatternId <= m_pattern.m_numSubpatterns) {
+                    term->convertToBackreference();
+                    m_pattern.m_containsBackreferences = true;
+                }
+            }
+
+            m_forwardReferencesInLookbehind.clear();
+        }
     }
 
     void atomBackReference(unsigned subpatternId)
     {
         ASSERT(subpatternId);
-        m_pattern.m_containsBackreferences = true;
-
         if (subpatternId > m_pattern.m_numSubpatterns) {
             m_alternative->m_terms.append(PatternTerm::ForwardReference());
+            if (parenthesisMatchDirection() == Backward) {
+                // When matching backwards, this forward reference could actually be
+                // a backreference for a captured paren in the lookbehind yet to be parsed.
+                PatternTerm& term = m_alternative->lastTerm();
+                term.backReferenceSubpatternId = subpatternId;
+                term.m_matchDirection = parenthesisMatchDirection();
+                m_forwardReferencesInLookbehind.append(&term);
+            }
             return;
         }
 
@@ -657,15 +690,24 @@ public:
         // Note to self: if we waited until the AST was baked, we could also remove forwards refs 
         while ((currentAlternative = currentAlternative->m_parent->m_parent)) {
             PatternTerm& term = currentAlternative->lastTerm();
-            ASSERT((term.type == PatternTerm::TypeParenthesesSubpattern) || (term.type == PatternTerm::TypeParentheticalAssertion));
+            ASSERT((term.type == PatternTerm::Type::ParenthesesSubpattern) || (term.type == PatternTerm::Type::ParentheticalAssertion));
 
-            if ((term.type == PatternTerm::TypeParenthesesSubpattern) && term.capture() && (subpatternId == term.parentheses.subpatternId)) {
+            if ((term.type == PatternTerm::Type::ParenthesesSubpattern) && term.capture() && (subpatternId == term.parentheses.subpatternId)) {
+                m_alternative->m_terms.append(PatternTerm::ForwardReference());
+                return;
+            }
+
+            if (parenthesisMatchDirection() == Backward
+                && term.type == PatternTerm::Type::ParentheticalAssertion
+                && term.matchDirection() == Backward
+                && subpatternId >= term.parentheses.subpatternId) {
                 m_alternative->m_terms.append(PatternTerm::ForwardReference());
                 return;
             }
         }
 
         m_alternative->m_terms.append(PatternTerm(subpatternId));
+        m_pattern.m_containsBackreferences = true;
     }
 
     void atomNamedBackReference(const String& subpatternName)
@@ -696,7 +738,8 @@ public:
                     newDisjunction = makeUnique<PatternDisjunction>();
                     newDisjunction->m_parent = disjunction->m_parent;
                 }
-                PatternAlternative* newAlternative = newDisjunction->addNewAlternative();
+                PatternAlternative* newAlternative = newDisjunction->addNewAlternative(alternative->m_firstSubpatternId, alternative->matchDirection());
+                newAlternative->m_lastSubpatternId = alternative->m_lastSubpatternId;
                 newAlternative->m_terms.reserveInitialCapacity(alternative->m_terms.size());
                 for (unsigned i = 0; i < alternative->m_terms.size(); ++i)
                     newAlternative->m_terms.append(copyTerm(alternative->m_terms[i], filterStartsWithBOL));
@@ -723,7 +766,7 @@ public:
             return PatternTerm(term);
         }
 
-        if ((term.type != PatternTerm::TypeParenthesesSubpattern) && (term.type != PatternTerm::TypeParentheticalAssertion))
+        if ((term.type != PatternTerm::Type::ParenthesesSubpattern) && (term.type != PatternTerm::Type::ParentheticalAssertion))
             return PatternTerm(term);
         
         PatternTerm termCopy = term;
@@ -743,10 +786,10 @@ public:
         }
 
         PatternTerm& term = m_alternative->lastTerm();
-        ASSERT(term.type > PatternTerm::TypeAssertionWordBoundary);
-        ASSERT(term.quantityMinCount == 1 && term.quantityMaxCount == 1 && term.quantityType == QuantifierFixedCount);
+        ASSERT(term.type > PatternTerm::Type::AssertionWordBoundary);
+        ASSERT(term.quantityMinCount == 1 && term.quantityMaxCount == 1 && term.quantityType == QuantifierType::FixedCount);
 
-        if (term.type == PatternTerm::TypeParentheticalAssertion) {
+        if (term.type == PatternTerm::Type::ParentheticalAssertion) {
             // If an assertion is quantified with a minimum count of zero, it can simply be removed.
             // This arises from the RepeatMatcher behaviour in the spec. Matching an assertion never
             // results in any input being consumed, however the continuation passed to the assertion
@@ -767,22 +810,37 @@ public:
         }
 
         if (min == max)
-            term.quantify(min, max, QuantifierFixedCount);
-        else if (!min || (term.type == PatternTerm::TypeParenthesesSubpattern && m_pattern.m_hasCopiedParenSubexpressions))
-            term.quantify(min, max, greedy ? QuantifierGreedy : QuantifierNonGreedy);
+            term.quantify(min, max, QuantifierType::FixedCount);
+        else if (!min || (term.type == PatternTerm::Type::ParenthesesSubpattern && m_pattern.m_hasCopiedParenSubexpressions))
+            term.quantify(min, max, greedy ? QuantifierType::Greedy : QuantifierType::NonGreedy);
         else {
-            term.quantify(min, min, QuantifierFixedCount);
-            m_alternative->m_terms.append(copyTerm(term));
-            // NOTE: this term is interesting from an analysis perspective, in that it can be ignored.....
-            m_alternative->lastTerm().quantify((max == quantifyInfinite) ? max : max - min, greedy ? QuantifierGreedy : QuantifierNonGreedy);
-            if (m_alternative->lastTerm().type == PatternTerm::TypeParenthesesSubpattern)
-                m_alternative->lastTerm().parentheses.isCopy = true;
+            if (term.matchDirection() == Forward) {
+                term.quantify(min, min, QuantifierType::FixedCount);
+                m_alternative->m_terms.append(copyTerm(term));
+                // NOTE: this term is interesting from an analysis perspective, in that it can be ignored.....
+                m_alternative->lastTerm().quantify((max == quantifyInfinite) ? max : max - min, greedy ? QuantifierType::Greedy : QuantifierType::NonGreedy);
+                if (m_alternative->lastTerm().type == PatternTerm::Type::ParenthesesSubpattern)
+                    m_alternative->lastTerm().parentheses.isCopy = true;
+            } else {
+                term.quantify((max == quantifyInfinite) ? max : max - min, greedy ? QuantifierType::Greedy : QuantifierType::NonGreedy);
+                if (term.type == PatternTerm::Type::ParenthesesSubpattern)
+                    term.parentheses.isCopy = true;
+                m_alternative->m_terms.append(copyTerm(term));
+                m_alternative->lastTerm().quantify(min, min, QuantifierType::FixedCount);
+                if (m_alternative->lastTerm().type == PatternTerm::Type::ParenthesesSubpattern)
+                    m_alternative->lastTerm().parentheses.isCopy = false;
+            }
         }
     }
 
-    void disjunction()
+    void disjunction(CreateDisjunctionPurpose purpose = CreateDisjunctionPurpose::NotForNextAlternative)
     {
-        m_alternative = m_alternative->m_parent->addNewAlternative();
+        if (purpose == CreateDisjunctionPurpose::ForNextAlternative && !m_alternative->m_parent->m_parent) {
+            // Top level alternative, record captured ranges to clear out from prior alternatives.
+            m_alternative->m_lastSubpatternId = m_pattern.m_numSubpatterns;
+        }
+        
+        m_alternative = m_alternative->m_parent->addNewAlternative(m_pattern.m_numSubpatterns, parenthesisMatchDirection());
     }
 
     ErrorCode setupAlternativeOffsets(PatternAlternative* alternative, unsigned currentCallFrameSize, unsigned initialInputPosition, unsigned& newCallFrameSize) WARN_UNUSED_RETURN
@@ -792,36 +850,36 @@ public:
 
         ErrorCode error = ErrorCode::NoError;
         alternative->m_hasFixedSize = true;
-        Checked<unsigned, RecordOverflow> currentInputPosition = initialInputPosition;
+        CheckedUint32 currentInputPosition = initialInputPosition;
 
         for (unsigned i = 0; i < alternative->m_terms.size(); ++i) {
             PatternTerm& term = alternative->m_terms[i];
 
             switch (term.type) {
-            case PatternTerm::TypeAssertionBOL:
-            case PatternTerm::TypeAssertionEOL:
-            case PatternTerm::TypeAssertionWordBoundary:
-                term.inputPosition = currentInputPosition.unsafeGet();
+            case PatternTerm::Type::AssertionBOL:
+            case PatternTerm::Type::AssertionEOL:
+            case PatternTerm::Type::AssertionWordBoundary:
+                term.inputPosition = currentInputPosition;
                 break;
 
-            case PatternTerm::TypeBackReference:
-                term.inputPosition = currentInputPosition.unsafeGet();
+            case PatternTerm::Type::BackReference:
+                term.inputPosition = currentInputPosition;
                 term.frameLocation = currentCallFrameSize;
                 currentCallFrameSize += YarrStackSpaceForBackTrackInfoBackReference;
                 alternative->m_hasFixedSize = false;
                 break;
 
-            case PatternTerm::TypeForwardReference:
+            case PatternTerm::Type::ForwardReference:
                 break;
 
-            case PatternTerm::TypePatternCharacter:
-                term.inputPosition = currentInputPosition.unsafeGet();
-                if (term.quantityType != QuantifierFixedCount) {
+            case PatternTerm::Type::PatternCharacter:
+                term.inputPosition = currentInputPosition;
+                if (term.quantityType != QuantifierType::FixedCount) {
                     term.frameLocation = currentCallFrameSize;
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoPatternCharacter;
                     alternative->m_hasFixedSize = false;
                 } else if (m_pattern.unicode()) {
-                    Checked<unsigned, RecordOverflow> tempCount = term.quantityMaxCount;
+                    CheckedUint32 tempCount = term.quantityMaxCount;
                     tempCount *= U16_LENGTH(term.patternCharacter);
                     if (tempCount.hasOverflowed())
                         return ErrorCode::OffsetTooLarge;
@@ -830,9 +888,9 @@ public:
                     currentInputPosition += term.quantityMaxCount;
                 break;
 
-            case PatternTerm::TypeCharacterClass:
-                term.inputPosition = currentInputPosition.unsafeGet();
-                if (term.quantityType != QuantifierFixedCount) {
+            case PatternTerm::Type::CharacterClass:
+                term.inputPosition = currentInputPosition;
+                if (term.quantityType != QuantifierType::FixedCount) {
                     term.frameLocation = currentCallFrameSize;
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoCharacterClass;
                     alternative->m_hasFixedSize = false;
@@ -840,7 +898,7 @@ public:
                     term.frameLocation = currentCallFrameSize;
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoCharacterClass;
                     if (term.characterClass->hasOneCharacterSize() && !term.invert()) {
-                        Checked<unsigned, RecordOverflow> tempCount = term.quantityMaxCount;
+                        CheckedUint32 tempCount = term.quantityMaxCount;
                         tempCount *= term.characterClass->hasNonBMPCharacters() ? 2 : 1;
                         if (tempCount.hasOverflowed())
                             return ErrorCode::OffsetTooLarge;
@@ -853,28 +911,28 @@ public:
                     currentInputPosition += term.quantityMaxCount;
                 break;
 
-            case PatternTerm::TypeParenthesesSubpattern:
+            case PatternTerm::Type::ParenthesesSubpattern:
                 // Note: for fixed once parentheses we will ensure at least the minimum is available; others are on their own.
                 term.frameLocation = currentCallFrameSize;
                 if (term.quantityMaxCount == 1 && !term.parentheses.isCopy) {
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoParenthesesOnce;
-                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition.unsafeGet(), currentCallFrameSize);
+                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition, currentCallFrameSize);
                     if (hasError(error))
                         return error;
                     // If quantity is fixed, then pre-check its minimum size.
-                    if (term.quantityType == QuantifierFixedCount)
+                    if (term.quantityType == QuantifierType::FixedCount)
                         currentInputPosition += term.parentheses.disjunction->m_minimumSize;
-                    term.inputPosition = currentInputPosition.unsafeGet();
+                    term.inputPosition = currentInputPosition;
                 } else if (term.parentheses.isTerminal) {
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoParenthesesTerminal;
-                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition.unsafeGet(), currentCallFrameSize);
+                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition, currentCallFrameSize);
                     if (hasError(error))
                         return error;
-                    term.inputPosition = currentInputPosition.unsafeGet();
+                    term.inputPosition = currentInputPosition;
                 } else {
-                    term.inputPosition = currentInputPosition.unsafeGet();
+                    term.inputPosition = currentInputPosition;
                     currentCallFrameSize += YarrStackSpaceForBackTrackInfoParentheses;
-                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition.unsafeGet(), currentCallFrameSize);
+                    error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize, currentInputPosition, currentCallFrameSize);
                     if (hasError(error))
                         return error;
                 }
@@ -882,15 +940,17 @@ public:
                 alternative->m_hasFixedSize = false;
                 break;
 
-            case PatternTerm::TypeParentheticalAssertion:
-                term.inputPosition = currentInputPosition.unsafeGet();
+            case PatternTerm::Type::ParentheticalAssertion: {
+                unsigned disjunctionInitialInputPosition = (term.matchDirection() == Forward) ? currentInputPosition.value() : 0;
+                term.inputPosition = currentInputPosition;
                 term.frameLocation = currentCallFrameSize;
-                error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize + YarrStackSpaceForBackTrackInfoParentheticalAssertion, currentInputPosition.unsafeGet(), currentCallFrameSize);
+                error = setupDisjunctionOffsets(term.parentheses.disjunction, currentCallFrameSize + YarrStackSpaceForBackTrackInfoParentheticalAssertion, disjunctionInitialInputPosition, currentCallFrameSize);
                 if (hasError(error))
                     return error;
                 break;
+            }
 
-            case PatternTerm::TypeDotStarEnclosure:
+            case PatternTerm::Type::DotStarEnclosure:
                 ASSERT(!m_pattern.m_saveInitialStartValue);
                 alternative->m_hasFixedSize = false;
                 term.inputPosition = initialInputPosition;
@@ -903,7 +963,7 @@ public:
                 return ErrorCode::OffsetTooLarge;
         }
 
-        alternative->m_minimumSize = (currentInputPosition - initialInputPosition).unsafeGet();
+        alternative->m_minimumSize = currentInputPosition - initialInputPosition;
         newCallFrameSize = currentCallFrameSize;
         return error;
     }
@@ -934,7 +994,6 @@ public:
                 m_pattern.m_containsUnsignedLengthPattern = true;
         }
         
-        ASSERT(minimumInputSize != UINT_MAX);
         ASSERT(maximumCallFrameSize >= initialCallFrameSize);
 
         disjunction->m_hasFixedSize = hasFixedSize;
@@ -970,8 +1029,8 @@ public:
             Vector<PatternTerm>& terms = alternatives[i]->m_terms;
             if (terms.size()) {
                 PatternTerm& term = terms.last();
-                if (term.type == PatternTerm::TypeParenthesesSubpattern
-                    && term.quantityType == QuantifierGreedy
+                if (term.type == PatternTerm::Type::ParenthesesSubpattern
+                    && term.quantityType == QuantifierType::Greedy
                     && term.quantityMinCount == 0
                     && term.quantityMaxCount == quantifyInfinite
                     && !term.capture())
@@ -1018,7 +1077,7 @@ public:
             if (term.m_capture)
                 return true;
 
-            if (term.type == PatternTerm::TypeParenthesesSubpattern) {
+            if (term.type == PatternTerm::Type::ParenthesesSubpattern) {
                 PatternDisjunction* nestedDisjunction = term.parentheses.disjunction;
                 for (unsigned alt = 0; alt < nestedDisjunction->m_alternatives.size(); ++alt) {
                     if (containsCapturingTerms(nestedDisjunction->m_alternatives[alt].get(), 0, nestedDisjunction->m_alternatives[alt]->m_terms.size()))
@@ -1050,13 +1109,13 @@ public:
             size_t termIndex, firstExpressionTerm;
 
             termIndex = 0;
-            if (terms[termIndex].type == PatternTerm::TypeAssertionBOL) {
+            if (terms[termIndex].type == PatternTerm::Type::AssertionBOL) {
                 startsWithBOL = true;
                 ++termIndex;
             }
             
             PatternTerm& firstNonAnchorTerm = terms[termIndex];
-            if (firstNonAnchorTerm.type != PatternTerm::TypeCharacterClass
+            if (firstNonAnchorTerm.type != PatternTerm::Type::CharacterClass
                 || firstNonAnchorTerm.characterClass != dotCharacterClass
                 || firstNonAnchorTerm.quantityMinCount
                 || firstNonAnchorTerm.quantityMaxCount != quantifyInfinite)
@@ -1065,15 +1124,15 @@ public:
             firstExpressionTerm = termIndex + 1;
             
             termIndex = terms.size() - 1;
-            if (terms[termIndex].type == PatternTerm::TypeAssertionEOL) {
+            if (terms[termIndex].type == PatternTerm::Type::AssertionEOL) {
                 endsWithEOL = true;
                 --termIndex;
             }
             
             PatternTerm& lastNonAnchorTerm = terms[termIndex];
-            if (lastNonAnchorTerm.type != PatternTerm::TypeCharacterClass
+            if (lastNonAnchorTerm.type != PatternTerm::Type::CharacterClass
                 || lastNonAnchorTerm.characterClass != dotCharacterClass
-                || lastNonAnchorTerm.quantityType != QuantifierGreedy
+                || lastNonAnchorTerm.quantityType != QuantifierType::Greedy
                 || lastNonAnchorTerm.quantityMinCount
                 || lastNonAnchorTerm.quantityMaxCount != quantifyInfinite)
                 return;
@@ -1099,18 +1158,131 @@ public:
     ErrorCode error() { return m_error; }
 
 private:
+    class ParenthesisContext {
+    private:
+        class SavedContext {
+        public:
+            SavedContext(bool invert, MatchDirection matchDirection)
+                : m_invert(invert)
+                , m_matchDirection(matchDirection)
+            {
+            }
+
+            void restore(bool& invert, MatchDirection& matchDirection)
+            {
+                invert = m_invert;
+                matchDirection = m_matchDirection;
+            }
+
+        private:
+            bool m_invert { false };
+            MatchDirection m_matchDirection { Forward };
+        };
+
+    public:
+        ParenthesisContext()
+        {
+        }
+
+        void push()
+        {
+            ASSERT(m_stackDepth < std::numeric_limits<unsigned>::max());
+
+            if (m_stackDepth++ > 0)
+                m_backingStack.append(SavedContext(m_invert, m_matchDirection));
+        }
+
+        void pop()
+        {
+            ASSERT(m_stackDepth > 0);
+
+            if (--m_stackDepth > 0) {
+                SavedContext context = m_backingStack.takeLast();
+                context.restore(m_invert, m_matchDirection);
+            } else {
+                m_invert = false;
+                m_matchDirection = Forward;
+            }
+        }
+
+        void setInvert(bool invert)
+        {
+            m_invert = invert;
+        }
+
+        bool invert() const
+        {
+            return m_invert;
+        }
+
+        void setMatchDirection(MatchDirection matchDirection)
+        {
+            m_matchDirection = matchDirection;
+        }
+
+        MatchDirection matchDirection() const
+        {
+            return m_matchDirection;
+        }
+
+        void reset()
+        {
+            m_backingStack.clear();
+            m_stackDepth = 0;
+            m_invert = false;
+            m_matchDirection = Forward;
+        }
+
+    private:
+        Vector<SavedContext, 0> m_backingStack;
+        unsigned m_stackDepth { 0 };
+        bool m_invert { false };
+        MatchDirection m_matchDirection { Forward };
+    };
+
+    void pushParenthesisContext()
+    {
+        m_parenthesisContext.push();
+    }
+
+    void popParenthesisContext()
+    {
+        m_parenthesisContext.pop();
+    }
+
+    void setParenthesisInvert(bool invert)
+    {
+        m_parenthesisContext.setInvert(invert);
+    }
+
+    bool parenthesisInvert() const
+    {
+        return m_parenthesisContext.invert();
+    }
+
+    void setParenthesisMatchDirection(MatchDirection matchDirection)
+    {
+        m_parenthesisContext.setMatchDirection(matchDirection);
+    }
+
+    MatchDirection parenthesisMatchDirection() const
+    {
+        return m_parenthesisContext.matchDirection();
+    }
+
     inline bool isSafeToRecurse() { return m_stackCheck.isSafeToRecurse(); }
 
     YarrPattern& m_pattern;
     PatternAlternative* m_alternative;
     CharacterClassConstructor m_characterClassConstructor;
+    Vector<PatternTerm*> m_forwardReferencesInLookbehind;
     StackCheck m_stackCheck;
     ErrorCode m_error { ErrorCode::NoError };
     bool m_invertCharacterClass;
-    bool m_invertParentheticalAssertion { false };
+    ParenthesisContext m_parenthesisContext;
 };
 
-ErrorCode YarrPattern::compile(const String& patternString)
+ErrorCode YarrPattern::compile(StringView patternString)
 {
     YarrPatternConstructor constructor(*this);
 
@@ -1139,9 +1311,10 @@ ErrorCode YarrPattern::compile(const String& patternString)
     return ErrorCode::NoError;
 }
 
-YarrPattern::YarrPattern(const String& pattern, OptionSet<Flags> flags, ErrorCode& error)
+YarrPattern::YarrPattern(StringView pattern, OptionSet<Flags> flags, ErrorCode& error)
     : m_containsBackreferences(false)
     , m_containsBOL(false)
+    , m_containsLookbehinds(false)
     , m_containsUnsignedLengthPattern(false)
     , m_hasCopiedParenSubexpressions(false)
     , m_saveInitialStartValue(false)
@@ -1168,75 +1341,96 @@ void dumpUChar32(PrintStream& out, UChar32 c)
 
 void dumpCharacterClass(PrintStream& out, YarrPattern* pattern, CharacterClass* characterClass)
 {
-    if (characterClass == pattern->anyCharacterClass())
-        out.print("<any character>");
-    else if (characterClass == pattern->newlineCharacterClass())
-        out.print("<newline>");
-    else if (characterClass == pattern->digitsCharacterClass())
-        out.print("<digits>");
-    else if (characterClass == pattern->spacesCharacterClass())
-        out.print("<whitespace>");
-    else if (characterClass == pattern->wordcharCharacterClass())
-        out.print("<word>");
-    else if (characterClass == pattern->wordUnicodeIgnoreCaseCharCharacterClass())
-        out.print("<unicode word ignore case>");
-    else if (characterClass == pattern->nondigitsCharacterClass())
-        out.print("<non-digits>");
-    else if (characterClass == pattern->nonspacesCharacterClass())
-        out.print("<non-whitespace>");
-    else if (characterClass == pattern->nonwordcharCharacterClass())
-        out.print("<non-word>");
-    else if (characterClass == pattern->nonwordUnicodeIgnoreCaseCharCharacterClass())
-        out.print("<unicode non-word ignore case>");
-    else {
-        bool needMatchesRangesSeperator = false;
-
-        auto dumpMatches = [&] (const char* prefix, Vector<UChar32> matches) {
-            size_t matchesSize = matches.size();
-            if (matchesSize) {
-                if (needMatchesRangesSeperator)
-                    out.print(",");
-                needMatchesRangesSeperator = true;
-
-                out.print(prefix, ":(");
-                for (size_t i = 0; i < matchesSize; ++i) {
-                    if (i)
-                        out.print(",");
-                    dumpUChar32(out, matches[i]);
-                }
-                out.print(")");
-            }
-        };
-
-        auto dumpRanges = [&] (const char* prefix, Vector<CharacterRange> ranges) {
-            size_t rangeSize = ranges.size();
-            if (rangeSize) {
-                if (needMatchesRangesSeperator)
-                    out.print(",");
-                needMatchesRangesSeperator = true;
-
-                out.print(prefix, " ranges:(");
-                for (size_t i = 0; i < rangeSize; ++i) {
-                    if (i)
-                        out.print(",");
-                    CharacterRange range = ranges[i];
-                    out.print("(");
-                    dumpUChar32(out, range.begin);
-                    out.print("..");
-                    dumpUChar32(out, range.end);
-                    out.print(")");
-                }
-                out.print(")");
-            }
-        };
-
-        out.print("[");
-        dumpMatches("ASCII", characterClass->m_matches);
-        dumpRanges("ASCII", characterClass->m_ranges);
-        dumpMatches("Unicode", characterClass->m_matchesUnicode);
-        dumpRanges("Unicode", characterClass->m_rangesUnicode);
-        out.print("]");
+    if (pattern) {
+        if (characterClass == pattern->anyCharacterClass()) {
+            out.print("<any character>");
+            return;
+        }
+        if (characterClass == pattern->newlineCharacterClass()) {
+            out.print("<newline>");
+            return;
+        }
+        if (characterClass == pattern->digitsCharacterClass()) {
+            out.print("<digits>");
+            return;
+        }
+        if (characterClass == pattern->spacesCharacterClass()) {
+            out.print("<whitespace>");
+            return;
+        }
+        if (characterClass == pattern->wordcharCharacterClass()) {
+            out.print("<word>");
+            return;
+        }
+        if (characterClass == pattern->wordUnicodeIgnoreCaseCharCharacterClass()) {
+            out.print("<unicode word ignore case>");
+            return;
+        }
+        if (characterClass == pattern->nondigitsCharacterClass()) {
+            out.print("<non-digits>");
+            return;
+        }
+        if (characterClass == pattern->nonspacesCharacterClass()) {
+            out.print("<non-whitespace>");
+            return;
+        }
+        if (characterClass == pattern->nonwordcharCharacterClass()) {
+            out.print("<non-word>");
+            return;
+        }
+        if (characterClass == pattern->nonwordUnicodeIgnoreCaseCharCharacterClass()) {
+            out.print("<unicode non-word ignore case>");
+            return;
+        }
     }
+
+    bool needMatchesRangesSeperator = false;
+
+    auto dumpMatches = [&] (const char* prefix, Vector<UChar32> matches) {
+        size_t matchesSize = matches.size();
+        if (matchesSize) {
+            if (needMatchesRangesSeperator)
+                out.print(",");
+            needMatchesRangesSeperator = true;
+
+            out.print(prefix, ":(");
+            for (size_t i = 0; i < matchesSize; ++i) {
+                if (i)
+                    out.print(",");
+                dumpUChar32(out, matches[i]);
+            }
+            out.print(")");
+        }
+    };
+
+    auto dumpRanges = [&] (const char* prefix, Vector<CharacterRange> ranges) {
+        size_t rangeSize = ranges.size();
+        if (rangeSize) {
+            if (needMatchesRangesSeperator)
+                out.print(",");
+            needMatchesRangesSeperator = true;
+
+            out.print(prefix, " ranges:(");
+            for (size_t i = 0; i < rangeSize; ++i) {
+                if (i)
+                    out.print(",");
+                CharacterRange range = ranges[i];
+                out.print("(");
+                dumpUChar32(out, range.begin);
+                out.print("..");
+                dumpUChar32(out, range.end);
+                out.print(")");
+            }
+            out.print(")");
+        }
+    };
+
+    out.print("[");
+    dumpMatches("ASCII", characterClass->m_matches);
+    dumpRanges("ASCII", characterClass->m_ranges);
+    dumpMatches("Unicode", characterClass->m_matchesUnicode);
+    dumpRanges("Unicode", characterClass->m_rangesUnicode);
+    out.print("]");
 }
 
 void PatternAlternative::dump(PrintStream& out, YarrPattern* thisPattern, unsigned nestingDepth)
@@ -1258,19 +1452,19 @@ void PatternAlternative::dump(PrintStream& out, YarrPattern* thisPattern, unsign
 
 void PatternTerm::dumpQuantifier(PrintStream& out)
 {
-    if (quantityType == QuantifierFixedCount && quantityMinCount == 1 && quantityMaxCount == 1)
+    if (quantityType == QuantifierType::FixedCount && quantityMinCount == 1 && quantityMaxCount == 1)
         return;
-    out.print(" {", quantityMinCount.unsafeGet());
+    out.print(" {", quantityMinCount.value());
     if (quantityMinCount != quantityMaxCount) {
         if (quantityMaxCount == UINT_MAX)
             out.print(",...");
         else
-            out.print(",", quantityMaxCount.unsafeGet());
+            out.print(",", quantityMaxCount.value());
     }
     out.print("}");
-    if (quantityType == QuantifierGreedy)
+    if (quantityType == QuantifierType::Greedy)
         out.print(" greedy");
-    else if (quantityType == QuantifierNonGreedy)
+    else if (quantityType == QuantifierType::NonGreedy)
         out.print(" non-greedy");
 }
 
@@ -1278,22 +1472,22 @@ void PatternTerm::dump(PrintStream& out, YarrPattern* thisPattern, unsigned nest
 {
     indentForNestingLevel(out, nestingDepth);
 
-    if (type != TypeParenthesesSubpattern && type != TypeParentheticalAssertion) {
+    if (type != Type::ParenthesesSubpattern && type != Type::ParentheticalAssertion) {
         if (invert())
             out.print("not ");
     }
 
     switch (type) {
-    case TypeAssertionBOL:
+    case Type::AssertionBOL:
         out.println("BOL");
         break;
-    case TypeAssertionEOL:
+    case Type::AssertionEOL:
         out.println("EOL");
         break;
-    case TypeAssertionWordBoundary:
+    case Type::AssertionWordBoundary:
         out.println("word boundary");
         break;
-    case TypePatternCharacter:
+    case Type::PatternCharacter:
         out.printf("character ");
         out.printf("inputPosition %u ", inputPosition);
         if (thisPattern->ignoreCase() && isASCIIAlpha(patternCharacter)) {
@@ -1303,40 +1497,48 @@ void PatternTerm::dump(PrintStream& out, YarrPattern* thisPattern, unsigned nest
         } else
             dumpUChar32(out, patternCharacter);
         dumpQuantifier(out);
-        if (quantityType != QuantifierFixedCount)
+        if (quantityType != QuantifierType::FixedCount)
             out.print(",frame location ", frameLocation);
         out.println();
         break;
-    case TypeCharacterClass:
+    case Type::CharacterClass:
         out.print("character class ");
         out.printf("inputPosition %u ", inputPosition);
         dumpCharacterClass(out, thisPattern, characterClass);
         dumpQuantifier(out);
-        if (quantityType != QuantifierFixedCount || thisPattern->unicode())
+        if (quantityType != QuantifierType::FixedCount || thisPattern->unicode())
             out.print(",frame location ", frameLocation);
         out.println();
         break;
-    case TypeBackReference:
-        out.print("back reference to subpattern #", backReferenceSubpatternId);
-        out.println(",frame location ", frameLocation);
+    case Type::BackReference:
+        out.print("back reference of subpattern #", backReferenceSubpatternId);
+        out.printf(" inputPosition %u", inputPosition);
+        out.println();
         break;
-    case TypeForwardReference:
+    case Type::ForwardReference:
         out.println("forward reference");
         break;
-    case TypeParenthesesSubpattern:
+    case Type::ParenthesesSubpattern:
         if (m_capture)
             out.print("captured ");
         else
             out.print("non-captured ");
 
         FALLTHROUGH;
-    case TypeParentheticalAssertion:
+    case Type::ParentheticalAssertion:
+        if (m_matchDirection) {
+            if (type == Type::ParenthesesSubpattern)
+                out.print("backwards ");
+            else
+                out.print("lookbehind ");
+        }
+        out.printf("inputPosition %u ", inputPosition);
         if (m_invert)
             out.print("inverted ");
 
-        if (type == TypeParenthesesSubpattern)
+        if (type == Type::ParenthesesSubpattern)
             out.print("subpattern");
-        else if (type == TypeParentheticalAssertion)
+        else if (type == Type::ParentheticalAssertion)
             out.print("assertion");
 
         if (m_capture)
@@ -1366,7 +1568,7 @@ void PatternTerm::dump(PrintStream& out, YarrPattern* thisPattern, unsigned nest
 
         parentheses.disjunction->dump(out, thisPattern, nestingDepth + 1);
         break;
-    case TypeDotStarEnclosure:
+    case Type::DotStarEnclosure:
         out.println(".* enclosure,frame location ", thisPattern->m_initialStartValueFrameLocation);
         break;
     }
@@ -1383,7 +1585,7 @@ void PatternDisjunction::dump(PrintStream& out, YarrPattern* thisPattern, unsign
     }
 }
 
-void YarrPattern::dumpPatternString(PrintStream& out, const String& patternString)
+void YarrPattern::dumpPatternString(PrintStream& out, StringView patternString)
 {
     out.print("/", patternString, "/");
 
@@ -1399,12 +1601,12 @@ void YarrPattern::dumpPatternString(PrintStream& out, const String& patternStrin
         out.print("y");
 }
 
-void YarrPattern::dumpPattern(const String& patternString)
+void YarrPattern::dumpPattern(StringView patternString)
 {
     dumpPattern(WTF::dataFile(), patternString);
 }
 
-void YarrPattern::dumpPattern(PrintStream& out, const String& patternString)
+void YarrPattern::dumpPattern(PrintStream& out, StringView patternString)
 {
     out.print("RegExp pattern for ");
     dumpPatternString(out, patternString);

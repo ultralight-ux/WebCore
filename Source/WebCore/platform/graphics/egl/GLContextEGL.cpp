@@ -21,7 +21,7 @@
 
 #if USE(EGL)
 
-#include "GraphicsContextGLOpenGL.h"
+#include "GraphicsContextGL.h"
 #include "Logging.h"
 #include "PlatformDisplay.h"
 
@@ -45,12 +45,11 @@
 #include "OpenGLShims.h"
 #endif
 
-#if ENABLE(ACCELERATED_2D_CANVAS)
-// cairo-gl.h includes some definitions from GLX that conflict with
-// the ones provided by us. Since GLContextEGL doesn't use any GLX
-// functions we can safely disable them.
-#undef CAIRO_HAS_GLX_FUNCTIONS
-#include <cairo-gl.h>
+#if PLATFORM(X11)
+#include "PlatformDisplayX11.h"
+#include "XUniquePtr.h"
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #endif
 
 #include <wtf/Vector.h>
@@ -96,8 +95,11 @@ const char* GLContextEGL::lastErrorString()
     return errorString(eglGetError());
 }
 
-bool GLContextEGL::getEGLConfig(EGLDisplay display, EGLConfig* config, EGLSurfaceType surfaceType)
+bool GLContextEGL::getEGLConfig(EGLDisplay display, EGLConfig* config, EGLSurfaceType surfaceType, Function<bool(int)>&& checkCompatibleVisuals)
 {
+#if !PLATFORM(X11)
+    UNUSED_PARAM(checkCompatibleVisuals);
+#endif
     std::array<EGLint, 4> rgbaSize = { 8, 8, 8, 8 };
     if (const char* environmentVariable = getenv("WEBKIT_EGL_PIXEL_LAYOUT")) {
         if (!strcmp(environmentVariable, "RGB565"))
@@ -118,6 +120,7 @@ bool GLContextEGL::getEGLConfig(EGLDisplay display, EGLConfig* config, EGLSurfac
         EGL_ALPHA_SIZE, rgbaSize[3],
         EGL_STENCIL_SIZE, 8,
         EGL_SURFACE_TYPE, EGL_NONE,
+        EGL_DEPTH_SIZE, 0,
         EGL_NONE
     };
 
@@ -147,12 +150,22 @@ bool GLContextEGL::getEGLConfig(EGLDisplay display, EGLConfig* config, EGLSurfac
         return false;
     }
 
-    auto index = configs.findMatching([&](EGLConfig value) {
+    auto index = configs.findIf([&](EGLConfig value) {
         EGLint redSize, greenSize, blueSize, alphaSize;
         eglGetConfigAttrib(display, value, EGL_RED_SIZE, &redSize);
         eglGetConfigAttrib(display, value, EGL_GREEN_SIZE, &greenSize);
         eglGetConfigAttrib(display, value, EGL_BLUE_SIZE, &blueSize);
         eglGetConfigAttrib(display, value, EGL_ALPHA_SIZE, &alphaSize);
+#if PLATFORM(X11)
+        if (checkCompatibleVisuals) {
+            EGLint visualid;
+            if (!eglGetConfigAttrib(display, value, EGL_NATIVE_VISUAL_ID, &visualid))
+                return false;
+
+            if (!checkCompatibleVisuals(visualid))
+                return false;
+        }
+#endif
         return redSize == rgbaSize[0] && greenSize == rgbaSize[1]
             && blueSize == rgbaSize[2] && alphaSize == rgbaSize[3];
     });
@@ -168,9 +181,42 @@ bool GLContextEGL::getEGLConfig(EGLDisplay display, EGLConfig* config, EGLSurfac
 
 std::unique_ptr<GLContextEGL> GLContextEGL::createWindowContext(GLNativeWindowType window, PlatformDisplay& platformDisplay, EGLContext sharingContext)
 {
+    Function<bool(int)> checkCompatibleVisuals = nullptr;
+#if PLATFORM(X11)
+    if (platformDisplay.type() == PlatformDisplay::Type::X11) {
+        Display* x11Display = downcast<PlatformDisplayX11>(platformDisplay).native();
+        XWindowAttributes attributes;
+        if (!XGetWindowAttributes(x11Display, static_cast<Window>(window), &attributes))
+            return nullptr;
+
+        auto visualInfoForID = [x11Display](VisualID visualID) -> XUniquePtr<XVisualInfo> {
+            XVisualInfo templateVisualInfo;
+            templateVisualInfo.visualid = visualID;
+            int visualInfoCount;
+            return XUniquePtr<XVisualInfo>(XGetVisualInfo(x11Display, VisualIDMask, &templateVisualInfo, &visualInfoCount));
+        };
+
+        XUniquePtr<XVisualInfo> visualInfo(visualInfoForID(XVisualIDFromVisual(attributes.visual)));
+        if (!visualInfo)
+            return nullptr;
+
+        checkCompatibleVisuals = [visualInfo = WTFMove(visualInfo), visualInfoForID = WTFMove(visualInfoForID)](unsigned long configVisualID) {
+            auto configVisualInfo = visualInfoForID(configVisualID);
+            return configVisualInfo
+                && visualInfo->c_class == configVisualInfo->c_class
+                && visualInfo->depth >= configVisualInfo->depth
+                && visualInfo->red_mask == configVisualInfo->red_mask
+                && visualInfo->green_mask == configVisualInfo->green_mask
+                && visualInfo->blue_mask == configVisualInfo->blue_mask
+                && visualInfo->colormap_size == configVisualInfo->colormap_size
+                && visualInfo->bits_per_rgb == configVisualInfo->bits_per_rgb;
+        };
+    }
+#endif
+
     EGLDisplay display = platformDisplay.eglDisplay();
     EGLConfig config;
-    if (!getEGLConfig(display, &config, WindowSurface)) {
+    if (!getEGLConfig(display, &config, WindowSurface, WTFMove(checkCompatibleVisuals))) {
         RELEASE_LOG_INFO(Compositing, "Cannot obtain EGL window context configuration: %s\n", lastErrorString());
         return nullptr;
     }
@@ -211,7 +257,7 @@ std::unique_ptr<GLContextEGL> GLContextEGL::createWindowContext(GLNativeWindowTy
         return nullptr;
     }
 
-    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, WindowSurface));
+    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, config, WindowSurface));
 }
 
 std::unique_ptr<GLContextEGL> GLContextEGL::createPbufferContext(PlatformDisplay& platformDisplay, EGLContext sharingContext)
@@ -237,7 +283,7 @@ std::unique_ptr<GLContextEGL> GLContextEGL::createPbufferContext(PlatformDisplay
         return nullptr;
     }
 
-    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, PbufferSurface));
+    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, surface, config, PbufferSurface));
 }
 
 std::unique_ptr<GLContextEGL> GLContextEGL::createSurfacelessContext(PlatformDisplay& platformDisplay, EGLContext sharingContext)
@@ -266,7 +312,7 @@ std::unique_ptr<GLContextEGL> GLContextEGL::createSurfacelessContext(PlatformDis
         return nullptr;
     }
 
-    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, EGL_NO_SURFACE, Surfaceless));
+    return std::unique_ptr<GLContextEGL>(new GLContextEGL(platformDisplay, context, EGL_NO_SURFACE, config, Surfaceless));
 }
 
 std::unique_ptr<GLContextEGL> GLContextEGL::createContext(GLNativeWindowType window, PlatformDisplay& platformDisplay)
@@ -360,25 +406,34 @@ std::unique_ptr<GLContextEGL> GLContextEGL::createSharingContext(PlatformDisplay
     return context;
 }
 
-GLContextEGL::GLContextEGL(PlatformDisplay& display, EGLContext context, EGLSurface surface, EGLSurfaceType type)
+GLContextEGL::GLContextEGL(PlatformDisplay& display, EGLContext context, EGLSurface surface, EGLConfig config, EGLSurfaceType type)
     : GLContext(display)
     , m_context(context)
     , m_surface(surface)
+    , m_config(config)
     , m_type(type)
 {
     ASSERT(type != PixmapSurface);
     ASSERT(type == Surfaceless || surface != EGL_NO_SURFACE);
     RELEASE_ASSERT(m_display.eglDisplay() != EGL_NO_DISPLAY);
     RELEASE_ASSERT(context != EGL_NO_CONTEXT);
+
+    if (display.eglCheckVersion(1, 5)) {
+        m_eglCreateImage = reinterpret_cast<PFNEGLCREATEIMAGEPROC>(eglGetProcAddress("eglCreateImage"));
+        m_eglDestroyImage = reinterpret_cast<PFNEGLDESTROYIMAGEPROC>(eglGetProcAddress("eglDestroyImage"));
+        RELEASE_ASSERT(!m_eglCreateImage == !m_eglDestroyImage);
+    } else {
+        const char* extensions = eglQueryString(display.eglDisplay(), EGL_EXTENSIONS);
+        if (GLContext::isExtensionSupported(extensions, "EGL_KHR_image_base")) {
+            m_eglCreateImageKHR = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
+            m_eglDestroyImageKHR = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+        }
+        RELEASE_ASSERT(!m_eglCreateImageKHR == !m_eglDestroyImageKHR);
+    }
 }
 
 GLContextEGL::~GLContextEGL()
 {
-#if USE(CAIRO)
-    if (m_cairoDevice)
-        cairo_device_destroy(m_cairoDevice);
-#endif
-
     EGLDisplay display = m_display.eglDisplay();
     if (m_context) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -395,6 +450,32 @@ GLContextEGL::~GLContextEGL()
 #if USE(WPE_RENDERER)
     destroyWPETarget();
 #endif
+}
+
+EGLImage GLContextEGL::createImage(EGLenum target, EGLClientBuffer clientBuffer, const Vector<EGLAttrib>& attribList) const
+{
+    if (m_eglCreateImage)
+        return m_eglCreateImage(m_display.eglDisplay(), attribList.isEmpty() ? m_context : EGL_NO_CONTEXT, target, clientBuffer, attribList.data());
+
+    if (m_eglCreateImageKHR) {
+        if (attribList.isEmpty())
+            return m_eglCreateImageKHR(m_display.eglDisplay(), m_context, target, clientBuffer, nullptr);
+
+        auto intAttribList = attribList.map<Vector<EGLint>>([] (EGLAttrib value) {
+            return value;
+        });
+        return m_eglCreateImageKHR(m_display.eglDisplay(), EGL_NO_CONTEXT, target, clientBuffer, intAttribList.data());
+    }
+    return EGL_NO_IMAGE;
+}
+
+bool GLContextEGL::destroyImage(EGLImage image) const
+{
+    if (m_eglDestroyImage)
+        return m_eglDestroyImage(m_display.eglDisplay(), image);
+    if (m_eglDestroyImageKHR)
+        return m_eglDestroyImageKHR(m_display.eglDisplay(), image);
+    return false;
 }
 
 bool GLContextEGL::canRenderToDefaultFramebuffer()
@@ -488,6 +569,9 @@ bool GLContextEGL::makeContextCurrent()
 
 void GLContextEGL::swapBuffers()
 {
+    if (m_type == Surfaceless)
+        return;
+
     ASSERT(m_surface);
     eglSwapBuffers(m_display.eglDisplay(), m_surface);
 }
@@ -503,26 +587,10 @@ void GLContextEGL::swapInterval(int interval)
     eglSwapInterval(m_display.eglDisplay(), interval);
 }
 
-#if USE(CAIRO)
-cairo_device_t* GLContextEGL::cairoDevice()
-{
-    if (m_cairoDevice)
-        return m_cairoDevice;
-
-#if ENABLE(ACCELERATED_2D_CANVAS)
-    m_cairoDevice = cairo_egl_device_create(m_display.eglDisplay(), m_context);
-#endif
-
-    return m_cairoDevice;
-}
-#endif
-
-#if ENABLE(GRAPHICS_CONTEXT_GL)
-PlatformGraphicsContextGL GLContextEGL::platformContext()
+GCGLContext GLContextEGL::platformContext()
 {
     return m_context;
 }
-#endif
 
 } // namespace WebCore
 

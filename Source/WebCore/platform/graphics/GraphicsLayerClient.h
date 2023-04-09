@@ -25,7 +25,9 @@
 
 #pragma once
 
+#include "LayerTreeAsTextOptions.h"
 #include "TiledBacking.h"
+#include "TransformationMatrix.h"
 #include <wtf/Forward.h>
 #include <wtf/OptionSet.h>
 
@@ -37,7 +39,20 @@ class GraphicsContext;
 class GraphicsLayer;
 class IntPoint;
 class IntRect;
-class TransformationMatrix;
+
+enum class AnimatedProperty : uint8_t {
+    Invalid,
+    Translate,
+    Scale,
+    Rotate,
+    Transform,
+    Opacity,
+    BackgroundColor,
+    Filter,
+#if ENABLE(FILTERS_LEVEL_2)
+    WebkitBackdropFilter,
+#endif
+};
 
 enum class GraphicsLayerPaintingPhase {
     Background            = 1 << 0,
@@ -49,35 +64,11 @@ enum class GraphicsLayerPaintingPhase {
     ChildClippingMask     = 1 << 6,
 };
 
-enum AnimatedPropertyID {
-    AnimatedPropertyInvalid,
-    AnimatedPropertyTransform,
-    AnimatedPropertyOpacity,
-    AnimatedPropertyBackgroundColor,
-    AnimatedPropertyFilter,
-#if ENABLE(FILTERS_LEVEL_2)
-    AnimatedPropertyWebkitBackdropFilter,
-#endif
+enum class PlatformLayerTreeAsTextFlags : uint8_t {
+    Debug = 1 << 0,
+    IgnoreChildren = 1 << 1,
+    IncludeModels = 1 << 2,
 };
-
-enum LayerTreeAsTextBehaviorFlags {
-    LayerTreeAsTextBehaviorNormal               = 0,
-    LayerTreeAsTextDebug                        = 1 << 0, // Dump extra debugging info like layer addresses.
-    LayerTreeAsTextIncludeVisibleRects          = 1 << 1,
-    LayerTreeAsTextIncludeTileCaches            = 1 << 2,
-    LayerTreeAsTextIncludeRepaintRects          = 1 << 3,
-    LayerTreeAsTextIncludePaintingPhases        = 1 << 4,
-    LayerTreeAsTextIncludeContentLayers         = 1 << 5,
-    LayerTreeAsTextIncludePageOverlayLayers     = 1 << 6,
-    LayerTreeAsTextIncludeAcceleratesDrawing    = 1 << 7,
-    LayerTreeAsTextIncludeClipping              = 1 << 8,
-    LayerTreeAsTextIncludeBackingStoreAttached  = 1 << 9,
-    LayerTreeAsTextIncludeRootLayerProperties   = 1 << 10,
-    LayerTreeAsTextIncludeEventRegion           = 1 << 11,
-    LayerTreeAsTextIncludeDeepColor             = 1 << 12,
-    LayerTreeAsTextShowAll                      = 0xFFFF
-};
-typedef unsigned LayerTreeAsTextBehavior;
 
 enum GraphicsLayerPaintFlags {
     GraphicsLayerPaintNormal                    = 0,
@@ -125,19 +116,22 @@ public:
 
     virtual bool isTrackingRepaints() const { return false; }
 
-    virtual bool shouldSkipLayerInDump(const GraphicsLayer*, LayerTreeAsTextBehavior) const { return false; }
-    virtual bool shouldDumpPropertyForLayer(const GraphicsLayer*, const char*, LayerTreeAsTextBehavior) const { return true; }
+    virtual bool shouldSkipLayerInDump(const GraphicsLayer*, OptionSet<LayerTreeAsTextOptions>) const { return false; }
+    virtual bool shouldDumpPropertyForLayer(const GraphicsLayer*, const char*, OptionSet<LayerTreeAsTextOptions>) const { return true; }
 
     virtual bool shouldAggressivelyRetainTiles(const GraphicsLayer*) const { return false; }
     virtual bool shouldTemporarilyRetainTileCohorts(const GraphicsLayer*) const { return true; }
 
     virtual bool useGiantTiles() const { return false; }
+    virtual bool useCSS3DTransformInteroperability() const { return false; }
 
     virtual bool needsPixelAligment() const { return false; }
 
     virtual bool needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack(const GraphicsLayer&) const { return false; }
 
     virtual void logFilledVisibleFreshTile(unsigned) { };
+
+    virtual TransformationMatrix transformMatrixForProperty(AnimatedProperty) const { return { }; }
 
 #ifndef NDEBUG
     // RenderLayerBacking overrides this to verify that it is not

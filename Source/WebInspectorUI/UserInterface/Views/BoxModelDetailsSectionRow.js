@@ -32,6 +32,9 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
         this.element.classList.add("box-model");
 
         this._nodeStyles = null;
+
+        this._outermostBox = null;
+        this._outermostBoxWidth = NaN;
     }
 
     // Public
@@ -50,7 +53,17 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
         if (this._nodeStyles && this._nodeStyles.computedStyle)
             this._nodeStyles.computedStyle.addEventListener(WI.CSSStyleDeclaration.Event.PropertiesChanged, this._refresh, this);
 
+        this.element.classList.remove("hovered");
         this._refresh();
+    }
+
+    get minimumWidth()
+    {
+        if (isNaN(this._outermostBoxWidth) && this._outermostBox) {
+            const margin = 6; // Keep this in sync with `.details-section .row.box-model .box`.
+            this._outermostBoxWidth = this._outermostBox.realOffsetWidth + margin;
+        }
+        return this._outermostBoxWidth || 0;
     }
 
     // Private
@@ -65,36 +78,60 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
         this._updateMetrics();
     }
 
+    _getPropertyValue(style, propertyName)
+    {
+        let property = style.propertyForName(propertyName);
+        if (!property)
+            return null;
+        return property.value;
+    }
+
     _getPropertyValueAsPx(style, propertyName)
     {
-        return Number(style.propertyForName(propertyName).value.replace(/px$/, "") || 0);
+        let value = this._getPropertyValue(style, propertyName);
+        if (!value)
+            return 0;
+        return Number(value.replace(/px$/, "") || 0);
     }
 
     _getBox(computedStyle, componentName)
     {
-        var suffix = this._getComponentSuffix(componentName);
-        var left = this._getPropertyValueAsPx(computedStyle, componentName + "-left" + suffix);
-        var top = this._getPropertyValueAsPx(computedStyle, componentName + "-top" + suffix);
-        var right = this._getPropertyValueAsPx(computedStyle, componentName + "-right" + suffix);
-        var bottom = this._getPropertyValueAsPx(computedStyle, componentName + "-bottom" + suffix);
+        let prefix = this._getComponentPrefix(componentName);
+        let suffix = this._getComponentSuffix(componentName);
+        let left = this._getPropertyValueAsPx(computedStyle, prefix + "-left" + suffix);
+        let top = this._getPropertyValueAsPx(computedStyle, prefix + "-top" + suffix);
+        let right = this._getPropertyValueAsPx(computedStyle, prefix + "-right" + suffix);
+        let bottom = this._getPropertyValueAsPx(computedStyle, prefix + "-bottom" + suffix);
         return {left, top, right, bottom};
+    }
+
+    _getComponentPrefix(componentName)
+    {
+        return componentName === "border-radius" ? "border" : componentName;
     }
 
     _getComponentSuffix(componentName)
     {
-        return componentName === "border" ? "-width" : "";
+        switch (componentName) {
+        case "border":
+            return "-width";
+
+        case "border-radius":
+            return "-radius";
+        }
+        return "";
     }
 
     _highlightDOMNode(showHighlight, mode, event)
     {
         event.stopPropagation();
 
-        var nodeId = showHighlight ? this.nodeStyles.node.id : 0;
-        if (nodeId) {
+        let node = showHighlight ? this.nodeStyles.node : null;
+        if (node) {
             if (this._highlightMode === mode)
                 return;
             this._highlightMode = mode;
-            WI.domManager.highlightDOMNode(nodeId, mode);
+            node.highlight(this._highlightMode);
         } else {
             this._highlightMode = null;
             WI.domManager.hideDOMNodeHighlight();
@@ -102,7 +139,7 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
 
         for (var i = 0; this._boxElements && i < this._boxElements.length; ++i) {
             var element = this._boxElements[i];
-            if (nodeId && (mode === "all" || element._name === mode))
+            if (node && (mode === "all" || element._name === mode))
                 element.classList.add("active");
             else
                 element.classList.remove("active");
@@ -135,17 +172,19 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
 
         function createBoxPartElement(name, side)
         {
+            let prefix = this._getComponentPrefix(name);
             let suffix = this._getComponentSuffix(name);
-            let propertyName = (name !== "position" ? name + "-" : "") + side + suffix;
-            let property = style.propertyForName(propertyName);
-            if (!property)
-                return null;
-
-            let value = property.value;
-            if (value === "" || (name !== "position" && value === "0px") || (name === "position" && value === "auto"))
+            let propertyName = (prefix !== "position" ? prefix + "-" : "") + side + suffix;
+            let value = this._getPropertyValue(style, propertyName);
+            if (value) {
+                if (prefix === "position" && value === "auto")
+                    value = "";
+                else if (prefix !== "position" && value === "0px")
+                    value = "";
+                else
+                    value = value.replace(/px$/, "");
+            } else
                 value = "";
-            else
-                value = value.replace(/px$/, "");
 
             let element = createValueElement.call(this, "div", value, name, propertyName);
             element.className = side;
@@ -156,12 +195,8 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
         {
             console.assert(name === "width" || name === "height");
 
-            let property = style.propertyForName(name);
-            if (!property)
-                return null;
-
-            let size = property.value.replace(/px$/, "");
-            if (style.propertyForName("box-sizing").value === "border-box") {
+            let size = this._getPropertyValueAsPx(style, name);
+            if (this._getPropertyValue(style, "box-sizing") === "border-box") {
                 let borderBox = this._getBox(style, "border");
                 let paddingBox = this._getBox(style, "padding");
 
@@ -205,14 +240,16 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
             return;
         }
 
-        let displayProperty = style.propertyForName("display");
-        let positionProperty = style.propertyForName("position");
+        let displayProperty = this._getPropertyValue(style, "display");
+        let positionProperty = this._getPropertyValue(style, "position");
         if (!displayProperty || !positionProperty) {
             this.showEmptyMessage();
             return;
         }
 
-        var previousBox = null;
+        this._outermostBox = null;
+        this._outermostBoxWidth = NaN;
+
         for (let name of ["content", "padding", "border", "margin", "position"]) {
 
             if (name === "margin" && noMarginDisplayType[displayProperty.value])
@@ -223,7 +260,7 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
                 continue;
 
             let boxElement = document.createElement("div");
-            boxElement.className = name;
+            boxElement.classList.add("box", name);
             boxElement._name = name;
             boxElement.addEventListener("mouseover", this._highlightDOMNode.bind(this, true, name === "position" ? "all" : name), false);
             this._boxElements.push(boxElement);
@@ -238,6 +275,23 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
 
                 boxElement.append(widthElement, " \u00D7 ", heightElement);
             } else {
+                let borderTopLeftRadiusElement = null;
+                let borderTopRightRadiusElement = null;
+                let borderBottomRightRadiusElement = null;
+                let borderBottomLeftRadiusElement = null;
+                if (name === "border") {
+                    for (let corner of ["top-left", "top-right", "bottom-right", "bottom-left"]) {
+                        let cornerValue = this._getPropertyValue(style, "border-" + corner + "-radius");
+                        if (cornerValue && cornerValue !== "0px")
+                            boxElement.classList.add("has-" + corner + "-radius");
+                    }
+
+                    borderTopLeftRadiusElement = createBoxPartElement.call(this, "border-radius", "top-left");
+                    borderTopRightRadiusElement = createBoxPartElement.call(this, "border-radius", "top-right");
+                    borderBottomRightRadiusElement = createBoxPartElement.call(this, "border-radius", "bottom-right");
+                    borderBottomLeftRadiusElement = createBoxPartElement.call(this, "border-radius", "bottom-left");
+                }
+
                 let topElement = createBoxPartElement.call(this, name, "top");
                 let leftElement = createBoxPartElement.call(this, name, "left");
                 let rightElement = createBoxPartElement.call(this, name, "right");
@@ -252,22 +306,36 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
                 labelElement.textContent = name;
                 boxElement.appendChild(labelElement);
 
+                if (borderTopLeftRadiusElement)
+                    boxElement.appendChild(borderTopLeftRadiusElement);
+
                 boxElement.appendChild(topElement);
+
+                if (borderTopRightRadiusElement)
+                    boxElement.appendChild(borderTopRightRadiusElement);
+
                 boxElement.appendChild(document.createElement("br"));
                 boxElement.appendChild(leftElement);
 
-                if (previousBox)
-                    boxElement.appendChild(previousBox);
+                if (this._outermostBox)
+                    boxElement.appendChild(this._outermostBox);
 
                 boxElement.appendChild(rightElement);
                 boxElement.appendChild(document.createElement("br"));
+
+                if (borderBottomLeftRadiusElement)
+                    boxElement.appendChild(borderBottomLeftRadiusElement);
+
                 boxElement.appendChild(bottomElement);
+
+                if (borderBottomRightRadiusElement)
+                    boxElement.appendChild(borderBottomRightRadiusElement);
             }
 
-            previousBox = boxElement;
+            this._outermostBox = boxElement;
         }
 
-        metricsElement.appendChild(previousBox);
+        metricsElement.appendChild(this._outermostBox);
         metricsElement.addEventListener("mouseover", this._highlightDOMNode.bind(this, false, ""), false);
 
         this.hideEmptyMessage();
@@ -416,7 +484,7 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
         var styleProperty = context.styleProperty;
         var computedStyle = this._nodeStyles.computedStyle;
 
-        if (computedStyle.propertyForName("box-sizing").value === "border-box" && (styleProperty === "width" || styleProperty === "height")) {
+        if (this._getPropertyValue(computedStyle, "box-sizing") === "border-box" && (styleProperty === "width" || styleProperty === "height")) {
             if (!userInput.match(/px$/)) {
                 console.error("For elements with box-sizing: border-box, only absolute content area dimensions can be applied");
                 return;
@@ -435,16 +503,25 @@ WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.Detail
             userInput = userValuePx + "px";
         }
 
+        let setBorderStyleProperty = null;
+        if (context.box === "border") {
+            let borderStyleProperty = styleProperty.replace("-width", "-style");
+            if (this._getPropertyValue(computedStyle, borderStyleProperty) === "none")
+                setBorderStyleProperty = borderStyleProperty;
+        }
+
         WI.RemoteObject.resolveNode(this._nodeStyles.node).then((object) => {
-            function inspectedPage_node_toggleInlineStyleProperty(property, value) {
-                this.style.setProperty(property, value, "important");
+            function inspectedPage_node_toggleInlineStyleProperty(styleProperty, userInput, setBorderStyleProperty) {
+                if (setBorderStyleProperty)
+                    this.style.setProperty(setBorderStyleProperty, "solid", "important");
+                this.style.setProperty(styleProperty, userInput, "important");
             }
 
             let didToggle = () => {
                 this._nodeStyles.refresh();
             };
 
-            object.callFunction(inspectedPage_node_toggleInlineStyleProperty, [styleProperty, userInput], false, didToggle);
+            object.callFunction(inspectedPage_node_toggleInlineStyleProperty, [styleProperty, userInput, setBorderStyleProperty], false, didToggle);
             object.release();
         });
     }

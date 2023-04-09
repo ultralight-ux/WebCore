@@ -43,12 +43,26 @@ WI.NetworkResourceDetailView = class NetworkResourceDetailView extends WI.Networ
 
     // Public
 
-    shown()
+    get referencePage()
     {
+        let currentContentView = this._contentBrowser.currentContentView;
+        if (!currentContentView)
+            return null;
+
+        if (currentContentView === this._resourceContentView)
+            return WI.ReferencePage.NetworkTab.PreviewPane;
+
+        return currentContentView?.constructor.ReferencePage;
+    }
+
+    // Protected
+
+    attached()
+    {
+        super.attached();
+
         if (this._contentBrowser && this._contentViewCookie && "lineNumber" in this._contentViewCookie && "columnNumber" in this._contentViewCookie)
             this._contentBrowser.navigationBar.selectedNavigationItem = this.detailNavigationItemForIdentifier("preview");
-
-        super.shown();
     }
 
     // ResourceHeadersContentView delegate

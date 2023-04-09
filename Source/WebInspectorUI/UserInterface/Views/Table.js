@@ -86,7 +86,8 @@ WI.Table = class Table extends WI.View
         this._columnWidths = null; // Calculated in _resizeColumnsAndFiller.
         this._fillerHeight = 0; // Calculated in _resizeColumnsAndFiller.
 
-        this._selectionController = new WI.SelectionController(this, (a, b) => this._indexForRepresentedObject(a) - this._indexForRepresentedObject(b));
+        let selectionComparator = WI.SelectionController.createListComparator(this._indexForRepresentedObject.bind(this));
+        this._selectionController = new WI.SelectionController(this, selectionComparator);
 
         this._resizers = [];
         this._currentResizer = null;
@@ -273,6 +274,18 @@ WI.Table = class Table extends WI.View
 
         // Non-visible row, will populate when it becomes visible.
         this._cachedRows.delete(rowIndex);
+    }
+
+    restyleRow(rowIndex)
+    {
+        if (!this._isRowVisible(rowIndex))
+            return;
+
+        let row = this._cachedRows.get(rowIndex);
+        if (!row)
+            return;
+
+        this._styleRow(row);
     }
 
     reloadVisibleColumnCells(column)
@@ -574,13 +587,15 @@ WI.Table = class Table extends WI.View
         }
     }
 
-    restoreScrollPosition()
+    // Protected
+
+    attached()
     {
+        super.attached();
+
         if (this._cachedScrollTop && !this._scrollContainerElement.scrollTop)
             this._scrollContainerElement.scrollTop = this._cachedScrollTop;
     }
-
-    // Protected
 
     initialLayout()
     {
@@ -834,11 +849,31 @@ WI.Table = class Table extends WI.View
         let row = document.createElement("li");
         row.__index = rowIndex;
         row.__widthGeneration = 0;
-        if (this.isRowSelected(rowIndex))
-            row.classList.add("selected");
+        this._styleRow(row);
+
+        if (this._delegate.tableRowHovered) {
+            this._boundHandleRowMouseEnter ??= this._handleRowMouseEnter.bind(this);
+            this._boundHandleRowMouseLeave ??= this._handleRowMouseLeave.bind(this);
+
+            row.addEventListener("mouseenter", this._boundHandleRowMouseEnter);
+            row.addEventListener("mouseleave", this._boundHandleRowMouseLeave);
+        }
 
         this._cachedRows.set(rowIndex, row);
         return row;
+    }
+
+    _styleRow(row)
+    {
+        let selected = row.classList.contains("selected");
+
+        row.className = "";
+
+        if (selected || this.isRowSelected(row.__index))
+            row.classList.add("selected");
+
+        if (this._delegate.tableRowClassNames)
+            row.classList.add(...this._delegate.tableRowClassNames(this, row.__index));
     }
 
     _populatedCellForColumnAndRow(column, columnIndex, rowIndex)
@@ -1127,7 +1162,9 @@ WI.Table = class Table extends WI.View
 
         // Completely remove all rows and add new ones.
         this._listElement.removeChildren();
-        this._listElement.classList.toggle("odd-first-zebra-stripe", !!(topHiddenRowCount % 2));
+
+        // If there are an odd number of rows hidden, the first visible row must be an even row.
+        this._listElement.classList.toggle("even-first-zebra-stripe", !!(topHiddenRowCount % 2));
 
         for (let i = this._visibleRowIndexStart; i < this._visibleRowIndexEnd && i < numberOfRows; ++i) {
             let row = this._getOrCreateRow(i);
@@ -1396,6 +1433,18 @@ WI.Table = class Table extends WI.View
                     this.hideColumn(column);
             }, checked);
         }
+    }
+
+    _handleRowMouseEnter(event)
+    {
+        let row = event.target;
+
+        this.delegate.tableRowHovered(this, row.__index);
+    }
+
+    _handleRowMouseLeave(event)
+    {
+        this.delegate.tableRowHovered(this, NaN);
     }
 
     _removeRows(representedObjects)

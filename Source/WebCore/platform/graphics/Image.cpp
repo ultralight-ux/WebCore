@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 Samuel Weinig (sam.weinig@gmail.com)
- * Copyright (C) 2004, 2005, 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include "AffineTransform.h"
 #include "BitmapImage.h"
+#include "DeprecatedGlobalSettings.h"
 #include "GraphicsContext.h"
 #include "ImageObserver.h"
 #include "Length.h"
@@ -64,13 +65,19 @@ Image& Image::nullImage()
 
 RefPtr<Image> Image::create(ImageObserver& observer)
 {
+    // SVGImage and PDFDocumentImage are not safe to use off the main thread.
+    // Workers can use BitmapImage directly.
+    ASSERT(isMainThread());
+
     auto mimeType = observer.mimeType();
-    if (mimeType == "image/svg+xml")
+    if (mimeType == "image/svg+xml"_s)
         return SVGImage::create(observer);
 
     auto url = observer.sourceUrl();
     if (isPDFResource(mimeType, url) || isPostScriptResource(mimeType, url)) {
 #if USE(CG) && !USE(WEBKIT_IMAGE_DECODERS)
+        if (!DeprecatedGlobalSettings::arePDFImagesEnabled())
+            return nullptr;
         return PDFDocumentImage::create(&observer);
 #else
         return nullptr;
@@ -88,19 +95,19 @@ bool Image::supportsType(const String& type)
 bool Image::isPDFResource(const String& mimeType, const URL& url)
 {
     if (mimeType.isEmpty())
-        return url.path().endsWithIgnoringASCIICase(".pdf");
+        return url.path().endsWithIgnoringASCIICase(".pdf"_s);
     return MIMETypeRegistry::isPDFMIMEType(mimeType);
 }
 
 bool Image::isPostScriptResource(const String& mimeType, const URL& url)
 {
     if (mimeType.isEmpty())
-        return url.path().endsWithIgnoringASCIICase(".ps");
+        return url.path().endsWithIgnoringASCIICase(".ps"_s);
     return MIMETypeRegistry::isPostScriptMIMEType(mimeType);
 }
 
 
-EncodedDataStatus Image::setData(RefPtr<SharedBuffer>&& data, bool allDataReceived)
+EncodedDataStatus Image::setData(RefPtr<FragmentedSharedBuffer>&& data, bool allDataReceived)
 {
     m_encodedImageData = WTFMove(data);
 
@@ -139,10 +146,11 @@ void Image::fillWithSolidColor(GraphicsContext& ctxt, const FloatRect& dstRect, 
 
 void Image::drawPattern(GraphicsContext& ctxt, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform,  const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
-    if (!nativeImageForCurrentFrame(&ctxt))
+    auto tileImage = preTransformedNativeImageForCurrentFrame(options.orientation() == ImageOrientation::FromImage);
+    if (!tileImage)
         return;
 
-    ctxt.drawPattern(*this, destRect, tileRect, patternTransform, phase, spacing, options);
+    ctxt.drawPattern(*tileImage, destRect, tileRect, patternTransform, phase, spacing, options);
 
     if (imageObserver())
         imageObserver()->didDraw(*this);
@@ -183,8 +191,9 @@ ImageDrawResult Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRec
     }
 
 #if PLATFORM(IOS_FAMILY)
+    // FIXME: We should re-test this and remove this iOS behavior difference if possible.
     // When using accelerated drawing on iOS, it's faster to stretch an image than to tile it.
-    if (ctxt.isAcceleratedContext()) {
+    if (ctxt.renderingMode() == RenderingMode::Accelerated) {
         if (size().width() == 1 && intersection(oneTileRect, destRect).height() == destRect.height()) {
             FloatRect visibleSrcRect;
             visibleSrcRect.setX(0);
@@ -333,8 +342,8 @@ ImageDrawResult Image::drawTiled(GraphicsContext& ctxt, const FloatRect& dstRect
 void Image::computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio)
 {
     intrinsicRatio = size();
-    intrinsicWidth = Length(intrinsicRatio.width(), Fixed);
-    intrinsicHeight = Length(intrinsicRatio.height(), Fixed);
+    intrinsicWidth = Length(intrinsicRatio.width(), LengthType::Fixed);
+    intrinsicHeight = Length(intrinsicRatio.height(), LengthType::Fixed);
 }
 
 void Image::startAnimationAsynchronously()
@@ -344,6 +353,11 @@ void Image::startAnimationAsynchronously()
     if (m_animationStartTimer->isActive())
         return;
     m_animationStartTimer->startOneShot(0_s);
+}
+
+DestinationColorSpace Image::colorSpace()
+{
+    return DestinationColorSpace::SRGB();
 }
 
 void Image::dump(TextStream& ts) const
@@ -371,6 +385,8 @@ TextStream& operator<<(TextStream& ts, const Image& image)
         ts << "gradient image";
     else if (image.isSVGImage())
         ts << "svg image";
+    else if (image.isSVGImageForContainer())
+        ts << "svg image for container";
     else if (image.isPDFDocumentImage())
         ts << "pdf image";
 

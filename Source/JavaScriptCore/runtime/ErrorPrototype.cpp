@@ -30,7 +30,7 @@ namespace JSC {
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(ErrorPrototypeBase);
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(ErrorPrototype);
 
-static EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_HOST_FUNCTION(errorProtoFuncToString);
 
 }
 
@@ -38,7 +38,7 @@ static EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(JSGlobalObject*, Call
 
 namespace JSC {
 
-const ClassInfo ErrorPrototype::s_info = { "Object", &Base::s_info, &errorPrototypeTable, nullptr, CREATE_METHOD_TABLE(ErrorPrototype) };
+const ClassInfo ErrorPrototype::s_info = { "Object"_s, &Base::s_info, &errorPrototypeTable, nullptr, CREATE_METHOD_TABLE(ErrorPrototype) };
 
 /* Source for ErrorPrototype.lut.h
 @begin errorPrototypeTable
@@ -54,7 +54,7 @@ ErrorPrototypeBase::ErrorPrototypeBase(VM& vm, Structure* structure)
 void ErrorPrototypeBase::finishCreation(VM& vm, const String& name)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     putDirectWithoutTransition(vm, vm.propertyNames->name, jsString(vm, name), static_cast<unsigned>(PropertyAttribute::DontEnum));
     putDirectWithoutTransition(vm, vm.propertyNames->message, jsEmptyString(vm), static_cast<unsigned>(PropertyAttribute::DontEnum));
 }
@@ -67,19 +67,19 @@ ErrorPrototype::ErrorPrototype(VM& vm, Structure* structure)
 // ------------------------------ Functions ---------------------------
 
 // ECMA-262 5.1, 15.11.4.4
-EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(errorProtoFuncToString, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     // 1. Let O be the this value.
-    JSValue thisValue = callFrame->thisValue();
+    JSValue thisValue = callFrame->thisValue().toThis(globalObject, ECMAMode::strict());
 
     // 2. If Type(O) is not Object, throw a TypeError exception.
     if (!thisValue.isObject())
         return throwVMTypeError(globalObject, scope);
     JSObject* thisObj = asObject(thisValue);
-    Integrity::auditStructureID(vm, thisObj->structureID());
+    Integrity::auditStructureID(thisObj->structureID());
 
     // Guard against recursion!
     StringRecursionChecker checker(globalObject, thisObj);
@@ -117,11 +117,11 @@ EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(JSGlobalObject* globalObject
 
     // 8. If name is the empty String, return msg.
     if (!nameString.length())
-        return JSValue::encode(message.isString() ? message : jsString(vm, messageString));
+        return JSValue::encode(message.isString() ? message : jsString(vm, WTFMove(messageString)));
 
     // 9. If msg is the empty String, return name.
     if (!messageString.length())
-        return JSValue::encode(name.isString() ? name : jsString(vm, nameString));
+        return JSValue::encode(name.isString() ? name : jsString(vm, WTFMove(nameString)));
 
     // 10. Return the result of concatenating name, ":", a single space character, and msg.
     RELEASE_AND_RETURN(scope, JSValue::encode(jsMakeNontrivialString(globalObject, nameString, ": ", messageString)));

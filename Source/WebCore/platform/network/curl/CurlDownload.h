@@ -2,7 +2,6 @@
  * Copyright (C) 2013 Apple Inc.  All rights reserved.
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
  * Copyright (C) 2017 NAVER Corp.
- * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,21 +33,19 @@
 #include "CurlRequestClient.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
-#include "SharedBuffer.h"
-#include <wtf/Ref.h>
-#include <wtf/Lock.h>
 
 namespace WebCore {
 
 class CurlRequest;
 class ResourceHandle;
+class SharedBuffer;
 
 class WEBCORE_EXPORT CurlDownloadListener {
 public:
-    virtual void didReceiveResponse(uint32_t id, const ResourceResponse&) {}
+    virtual void didReceiveResponse(uint32_t id, const ResourceResponse&) { }
     virtual void didReceiveData(uint32_t id, RefPtr<SharedBuffer>&& buffer) {}
-    virtual void didFinish(uint32_t id) {}
-    virtual void didFail(uint32_t id) {}
+    virtual void didFinish(uint32_t id) { }
+    virtual void didFail(uint32_t id) { }
 };
 
 class CurlDownload final : public ThreadSafeRefCounted<CurlDownload>, public CurlRequestClient {
@@ -59,14 +56,13 @@ public:
     void WEBCORE_EXPORT ref() override { ThreadSafeRefCounted<CurlDownload>::ref(); }
     void WEBCORE_EXPORT deref() override { ThreadSafeRefCounted<CurlDownload>::deref(); }
 
-    void WEBCORE_EXPORT init(CurlDownloadListener&, uint32_t id, const URL&);
-    void WEBCORE_EXPORT init(CurlDownloadListener&, uint32_t id, ResourceHandle* handle, 
-                             const ResourceRequest& request, const ResourceResponse& response);
+    WEBCORE_EXPORT void init(CurlDownloadListener&, uint32_t id, const URL&);
+    WEBCORE_EXPORT void init(CurlDownloadListener&, uint32_t id, ResourceHandle*, const ResourceRequest&, const ResourceResponse&);
 
     void WEBCORE_EXPORT setListener(CurlDownloadListener* listener) { m_listener = listener; }
 
-    void WEBCORE_EXPORT start();
-    bool WEBCORE_EXPORT cancel();
+    WEBCORE_EXPORT void start();
+    WEBCORE_EXPORT bool cancel();
 
     bool WEBCORE_EXPORT downloadsToFile() const { return m_downloadsToFile; }
     void WEBCORE_EXPORT setDownloadsToFile(bool downloadsToFile) { m_downloadsToFile = downloadsToFile; }
@@ -79,11 +75,10 @@ public:
 private:
     Ref<CurlRequest> createCurlRequest(ResourceRequest&);
     void curlDidSendData(CurlRequest&, unsigned long long, unsigned long long) override { }
-    void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) override;
-    void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) override;
-    void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) override;
-
-    void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) override final;
+    WEBCORE_EXPORT void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) override;
+    WEBCORE_EXPORT void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) override;
+    WEBCORE_EXPORT void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) override;
+    WEBCORE_EXPORT void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) override;
 
     bool shouldRedirectAsGET(const ResourceRequest&, bool crossOrigin);
     void willSendRequest();

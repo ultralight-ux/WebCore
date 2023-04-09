@@ -27,12 +27,11 @@ WI.LayersTabContentView = class LayersTabContentView extends WI.ContentBrowserTa
 {
     constructor()
     {
-        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.LayersTabContentView.tabInfo());
-
-        const navigationSidebarPanelConstructor = null;
-        const detailsSidebarPanelConstructors = [WI.LayerDetailsSidebarPanel];
-        const disableBackForward = true;
-        super("layers", "layers", tabBarItem, navigationSidebarPanelConstructor, detailsSidebarPanelConstructors, disableBackForward);
+        super(LayersTabContentView.tabInfo(), {
+            detailsSidebarPanelConstructors: [WI.LayerDetailsSidebarPanel],
+            hideBackForwardButtons: true,
+            disableBackForwardNavigation: true,
+        });
 
         this._layerDetailsSidebarPanel = this.detailsSidebarPanels[0];
         this._layerDetailsSidebarPanel.addEventListener(WI.LayerDetailsSidebarPanel.Event.SelectedLayerChanged, this._detailsSidebarSelectedLayerChanged, this);
@@ -46,14 +45,15 @@ WI.LayersTabContentView = class LayersTabContentView extends WI.ContentBrowserTa
     static tabInfo()
     {
         return {
+            identifier: LayersTabContentView.Type,
             image: "Images/Layers.svg",
-            title: WI.UIString("Layers"),
+            displayName: WI.UIString("Layers", "Layers Tab Name", "Name of Layers Tab"),
         };
     }
 
     static isTabAllowed()
     {
-        return window.LayerTreeAgent && WI.settings.experimentalEnableLayersTab.value;
+        return InspectorBackend.hasDomain("LayerTree");
     }
 
     // Public
@@ -66,9 +66,9 @@ WI.LayersTabContentView = class LayersTabContentView extends WI.ContentBrowserTa
         this._layers3DContentView.selectLayerForNode(node);
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
         this.contentBrowser.showContentView(this._layers3DContentView);
     }

@@ -1,6 +1,6 @@
 #include "config.h"
 #include "CurlSSLHandle.h"
-#include "ResourceLoaderUltralight.h"
+#include "ResourceFileLoader.h"
 #include "StringUltralight.h"
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/platform/Logger.h>
@@ -16,7 +16,7 @@ void CurlSSLHandle::platformInitialize()
     ProfiledMemoryZone(MemoryTag::Resource);
     auto& platform = ultralight::Platform::instance();
     auto config = platform.config();
-    ultralight::RefPtr<ultralight::Buffer> certData = ResourceLoader::openFile("cacert.pem");
+    ultralight::RefPtr<ultralight::Buffer> certData = ResourceFileLoader::openFile("cacert.pem"_s);
     size_t fileSize = 0;
     CertificateInfo::Certificate buffer;
 

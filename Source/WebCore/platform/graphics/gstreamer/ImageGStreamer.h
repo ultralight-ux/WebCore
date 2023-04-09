@@ -32,31 +32,19 @@
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
-#include <Ultralight/private/VideoFrame.h>
-
 namespace WebCore {
 class IntSize;
 
 class ImageGStreamer : public RefCounted<ImageGStreamer> {
 public:
-    static RefPtr<ImageGStreamer> createImage(GstSample* sample)
+    static RefPtr<ImageGStreamer> createImage(GRefPtr<GstSample>&& sample)
     {
-        auto image = adoptRef(new ImageGStreamer(sample));
-#if USE(ULTRALIGHT)
-        if (!image->m_videoFrame)
-            return nullptr;
-#else
-        if (!image->m_image)
-            return nullptr;
-#endif
-
-        return image;
+        return adoptRef(new ImageGStreamer(WTFMove(sample)));
     }
     ~ImageGStreamer();
 
-#if USE(ULTRALIGHT)
-    ultralight::RefPtr<ultralight::VideoFrame> videoFrame() { return m_videoFrame; }
-#else
+    operator bool() const { return !!m_image; }
+
     BitmapImage& image()
     {
         ASSERT(m_image);
@@ -71,24 +59,20 @@ public:
             return FloatRect(m_cropRect);
         return FloatRect(0, 0, m_image->size().width(), m_image->size().height());
     }
-#endif
 
     bool hasAlpha() const { return m_hasAlpha; }
 
 private:
-    ImageGStreamer(GstSample*);
-#if USE(ULTRALIGHT)
-    ultralight::RefPtr<ultralight::VideoFrame> m_videoFrame;
-#else
+    ImageGStreamer(GRefPtr<GstSample>&&);
+    GRefPtr<GstSample> m_sample;
     RefPtr<BitmapImage> m_image;
     FloatRect m_cropRect;
-#endif
-
 #if USE(CAIRO)
     GstVideoFrame m_videoFrame;
     bool m_frameMapped { false };
 #endif
     bool m_hasAlpha { false };
 };
+
 }
 #endif // ENABLE(VIDEO) && USE(GSTREAMER)

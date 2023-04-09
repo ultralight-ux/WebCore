@@ -29,14 +29,24 @@
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE) && PLATFORM(MAC)
 
 #import "WebAccessibilityObjectWrapperMac.h"
+#import <pal/spi/cocoa/AccessibilitySupportSPI.h>
+#import <pal/spi/cocoa/AccessibilitySupportSoftLink.h>
 
 namespace WebCore {
 
-void AXIsolatedObject::initializePlatformProperties(const AXCoreObject& object)
+void AXIsolatedObject::initializePlatformProperties(const Ref<const AXCoreObject>& object, IsRoot)
 {
-    if (object.isScrollView()) {
-        m_platformWidget = object.platformWidget();
-        m_remoteParent = object.remoteParentObject();
+    setProperty(AXPropertyName::HasApplePDFAnnotationAttribute, object->hasApplePDFAnnotationAttribute());
+    setProperty(AXPropertyName::SpeechHint, object->speechHintAttributeValue().isolatedCopy());
+
+    if (object->isWebArea()) {
+        setProperty(AXPropertyName::PreventKeyboardDOMEventDispatch, object->preventKeyboardDOMEventDispatch());
+        setProperty(AXPropertyName::CaretBrowsingEnabled, object->caretBrowsingEnabled());
+    }
+
+    if (object->isScrollView()) {
+        m_platformWidget = object->platformWidget();
+        m_remoteParent = object->remoteParentObject();
     }
 }
 
@@ -48,6 +58,20 @@ RemoteAXObjectRef AXIsolatedObject::remoteParentObject() const
     return is<AXIsolatedObject>(scrollView) ? downcast<AXIsolatedObject>(scrollView)->m_remoteParent.get() : nil;
 }
 
+FloatRect AXIsolatedObject::convertRectToPlatformSpace(const FloatRect& rect, AccessibilityConversionSpace space) const
+{
+    return Accessibility::retrieveValueFromMainThread<FloatRect>([&rect, &space, this]() -> FloatRect {
+        if (auto* axObject = associatedAXObject())
+            return axObject->convertRectToPlatformSpace(rect, space);
+        return { };
+    });
+}
+
+bool AXIsolatedObject::isDetached() const
+{
+    return !wrapper() || [wrapper() axBackingObject] != this;
+}
+
 void AXIsolatedObject::attachPlatformWrapper(AccessibilityObjectWrapper* wrapper)
 {
     [wrapper attachIsolatedObject:this];
@@ -57,6 +81,109 @@ void AXIsolatedObject::attachPlatformWrapper(AccessibilityObjectWrapper* wrapper
 void AXIsolatedObject::detachPlatformWrapper(AccessibilityDetachmentType detachmentType)
 {
     [wrapper() detachIsolatedObject:detachmentType];
+}
+
+AXTextMarkerRangeRef AXIsolatedObject::textMarkerRangeForNSRange(const NSRange& range) const
+{
+    return Accessibility::retrieveAutoreleasedValueFromMainThread<AXTextMarkerRangeRef>([&range, this] () -> RetainPtr<AXTextMarkerRangeRef> {
+        auto* axObject = associatedAXObject();
+        return axObject ? axObject->textMarkerRangeForNSRange(range) : nullptr;
+    });
+}
+
+void AXIsolatedObject::setPreventKeyboardDOMEventDispatch(bool value)
+{
+    ASSERT(!isMainThread());
+    ASSERT(isWebArea());
+
+    performFunctionOnMainThread([&value, this](AXCoreObject* object) {
+        object->setPreventKeyboardDOMEventDispatch(value);
+        setProperty(AXPropertyName::PreventKeyboardDOMEventDispatch, value);
+    });
+}
+
+void AXIsolatedObject::setCaretBrowsingEnabled(bool value)
+{
+    ASSERT(!isMainThread());
+    ASSERT(isWebArea());
+
+    performFunctionOnMainThread([&value, this](AXCoreObject* object) {
+        object->setCaretBrowsingEnabled(value);
+        setProperty(AXPropertyName::CaretBrowsingEnabled, value);
+    });
+}
+
+// The methods in this comment block are intentionally retrieved from the main-thread
+// and not cached because we don't expect AX clients to ever request them.
+IntPoint AXIsolatedObject::clickPoint()
+{
+    ASSERT(_AXGetClientForCurrentRequestUntrusted() != kAXClientTypeVoiceOver);
+
+    return Accessibility::retrieveValueFromMainThread<IntPoint>([this] () -> IntPoint {
+        if (auto* object = associatedAXObject())
+            return object->clickPoint();
+        return { };
+    });
+}
+
+bool AXIsolatedObject::pressedIsPresent() const
+{
+    ASSERT(_AXGetClientForCurrentRequestUntrusted() != kAXClientTypeVoiceOver);
+
+    return Accessibility::retrieveValueFromMainThread<bool>([this] () -> bool {
+        if (auto* object = associatedAXObject())
+            return object->pressedIsPresent();
+        return false;
+    });
+}
+
+Vector<String> AXIsolatedObject::determineDropEffects() const
+{
+    ASSERT(_AXGetClientForCurrentRequestUntrusted() != kAXClientTypeVoiceOver);
+
+    return Accessibility::retrieveValueFromMainThread<Vector<String>>([this] () -> Vector<String> {
+        if (auto* object = associatedAXObject())
+            return object->determineDropEffects();
+        return { };
+    });
+}
+
+int AXIsolatedObject::layoutCount() const
+{
+    ASSERT(_AXGetClientForCurrentRequestUntrusted() != kAXClientTypeVoiceOver);
+
+    return Accessibility::retrieveValueFromMainThread<int>([this] () -> int {
+        if (auto* object = associatedAXObject())
+            return object->layoutCount();
+        return { };
+    });
+}
+
+Vector<String> AXIsolatedObject::classList() const
+{
+    ASSERT(_AXGetClientForCurrentRequestUntrusted() != kAXClientTypeVoiceOver);
+
+    return Accessibility::retrieveValueFromMainThread<Vector<String>>([this] () -> Vector<String> {
+        if (auto* object = associatedAXObject())
+            return object->classList();
+        return { };
+    });
+}
+// End purposely un-cached properties block.
+
+String AXIsolatedObject::descriptionAttributeValue() const
+{
+    return const_cast<AXIsolatedObject*>(this)->getOrRetrievePropertyValue<String>(AXPropertyName::Description);
+}
+
+String AXIsolatedObject::helpTextAttributeValue() const
+{
+    return const_cast<AXIsolatedObject*>(this)->getOrRetrievePropertyValue<String>(AXPropertyName::HelpText);
+}
+
+String AXIsolatedObject::titleAttributeValue() const
+{
+    return const_cast<AXIsolatedObject*>(this)->getOrRetrievePropertyValue<String>(AXPropertyName::TitleAttributeValue);
 }
 
 } // WebCore

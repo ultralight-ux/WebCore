@@ -25,9 +25,11 @@
 
 [
     Conditional=WEB_AUDIO,
+    EnabledBySetting=WebAudioEnabled,
     JSGenerateToJSObject,
+    Exposed=Window
 ] interface BiquadFilterNode : AudioNode {
-    [MayThrowException, EnabledBySetting=ModernUnprefixedWebAudio] constructor (BaseAudioContext context, optional BiquadFilterOptions options);
+    [EnabledBySetting=WebAudioEnabled] constructor (BaseAudioContext context, optional BiquadFilterOptions options);
 
     attribute BiquadFilterType type;
     
@@ -36,5 +38,5 @@
     readonly attribute AudioParam Q; // Quality factor
     readonly attribute AudioParam gain; // in Decibels
 
-    [MayThrowException] void getFrequencyResponse(Float32Array frequencyHz, Float32Array magResponse, Float32Array phaseResponse);
+    undefined getFrequencyResponse(Float32Array frequencyHz, Float32Array magResponse, Float32Array phaseResponse);
 };

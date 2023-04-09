@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,16 +32,18 @@ namespace WebCore {
 
 JSC::JSValue JSPaymentMethodChangeEvent::methodDetails(JSC::JSGlobalObject& lexicalGlobalObject) const
 {
-    return cachedPropertyValue(lexicalGlobalObject, *this, wrapped().cachedMethodDetails(), [this, &lexicalGlobalObject] {
-        return WTF::switchOn(wrapped().methodDetails(), [](JSC::JSValue methodDetails) {
-            return methodDetails ? methodDetails : JSC::jsNull();
-        }, [&lexicalGlobalObject](const PaymentMethodChangeEvent::MethodDetailsFunction& function) {
+    auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject.vm());
+    return cachedPropertyValue(throwScope, lexicalGlobalObject, *this, wrapped().cachedMethodDetails(), [this, &lexicalGlobalObject](JSC::ThrowScope&) {
+        return WTF::switchOn(wrapped().methodDetails(), [](const JSValueInWrappedObject& methodDetails) -> JSC::JSValue {
+            return methodDetails.getValue(JSC::jsNull());
+        }, [&lexicalGlobalObject](const PaymentMethodChangeEvent::MethodDetailsFunction& function) -> JSC::JSValue {
             return function(lexicalGlobalObject).get();
         });
     });
 }
 
-void JSPaymentMethodChangeEvent::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSPaymentMethodChangeEvent::visitAdditionalChildren(Visitor& visitor)
 {
     WTF::switchOn(wrapped().methodDetails(), [&visitor](const JSValueInWrappedObject& methodDetails) {
         methodDetails.visit(visitor);
@@ -50,6 +52,8 @@ void JSPaymentMethodChangeEvent::visitAdditionalChildren(JSC::SlotVisitor& visit
 
     wrapped().cachedMethodDetails().visit(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSPaymentMethodChangeEvent);
 
 } // namespace WebCore
 

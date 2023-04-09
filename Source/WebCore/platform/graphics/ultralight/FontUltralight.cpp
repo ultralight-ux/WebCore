@@ -1,19 +1,22 @@
 #include "config.h"
 #include "FontCascade.h"
+#include "FontCascadeDescription.h"
 #include "NotImplemented.h"
 #include "platform/graphics/BitmapImage.h"
-#include "platform/graphics/ultralight/PlatformContextUltralight.h"
 #include "SurrogatePairAwareTextIterator.h"
+#include "GraphicsContextUltralight.h"
 #include "CharacterProperties.h"
 #include "GlyphBuffer.h"
 #include "FontCache.h"
+#include "DrawGlyphsRecorder.h"
+#include "FloatPoint.h"
+#include "Font.h"
 //#include "HarfBuzzShaper.h"
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Canvas.h>
 #include <Ultralight/private/tracy/Tracy.hpp>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
-#include "FontRenderer.h"
 #include <unicode/normlzr.h>
 #include <math.h>
 #include <memory>
@@ -45,16 +48,13 @@ bool FontCascade::canExpandAroundIdeographsInComplexText()
   return false;
 }
 
-void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
-  unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode smoothing)
+void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBufferGlyph* glyphs,
+  const GlyphBufferAdvance* advances, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode smoothing)
 {
   ProfiledZone;
   WebCore::FontPlatformData& platform_font = const_cast<WebCore::FontPlatformData&>(font.platformData());
-  WebCore::PlatformContextUltralight* platformContext = context.platformContext();
-  PlatformCanvas canvas = platformContext->canvas();
+  auto canvas = context.platformContext();
   platform_font.font()->set_device_scale_hint((float)canvas->DeviceScaleHint());
-  const GlyphBufferGlyph* glyphs = glyphBuffer.glyphs(from);
-  const GlyphBufferAdvance* advances = glyphBuffer.advances(from);
   FT_Face face = platform_font.face();
   FT_GlyphSlot slot = face->glyph;
   FT_Bool use_kerning = FT_HAS_KERNING(face);
@@ -95,17 +95,11 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       WebCore::Color shadow_color;
       context.getShadow(shadow_size, shadow_blur, shadow_color);
 
-      ultralight::Paint paint;
-      paint.color = ToColor(shadow_color);
-
       ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
-      canvas->DrawGlyphs(ultraFont, paint, origin, glyphBuf.data(), glyphBuf.size(), shadow_offset);
+      canvas->DrawGlyphs(ultraFont, shadow_color, origin, glyphBuf.data(), glyphBuf.size(), shadow_offset);
     }
 
-    ultralight::Paint paint;
-    paint.color = ToColor(context.fillColor());
-
-    canvas->DrawGlyphs(ultraFont, paint, origin, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
+    canvas->DrawGlyphs(ultraFont, context.fillColor(), origin, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
     glyphBuf.resize(0);
   }
 }
@@ -206,7 +200,7 @@ const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* original
 			return fallbackFont;
 	}
 
-	if (auto systemFallback = FontCache::singleton().systemFallbackForCharacters(m_fontDescription, baseFont, IsForPlatformFont::No, preferColoredFont ? FontCache::PreferColoredFont::Yes : FontCache::PreferColoredFont::No, characters, length)) {
+	if (auto systemFallback = FontCache::forCurrentThread().systemFallbackForCharacters(m_fontDescription, *baseFont, IsForPlatformFont::No, preferColoredFont ? FontCache::PreferColoredFont::Yes : FontCache::PreferColoredFont::No, characters, length)) {
 		if (systemFallback->canRenderCombiningCharacterSequence(characters, length) && (!preferColoredFont || systemFallback->platformData().isColorBitmapFont()))
 			return systemFallback.get();
 
@@ -216,6 +210,16 @@ const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* original
 	}
 
 	return baseFont;
+}
+
+unsigned FontCascadeDescription::effectiveFamilyCount() const
+{
+  return familyCount();
+}
+
+FontFamilySpecification FontCascadeDescription::effectiveFamilyAt(unsigned index) const
+{
+  return familyAt(index);
 }
 
 void Dump_SizeMetrics(const FT_Size_Metrics* metrics)
@@ -334,6 +338,25 @@ Path Font::platformPathForGlyph(Glyph glyph) const
       result.ensurePlatformPath()->Set(platformPath);
 
   return result;
+}
+
+bool Font::platformSupportsCodePoint(UChar32 character, std::optional<UChar32> variation) const
+{
+  if (FT_Face face = m_platformData.face())
+      return variation ? !!FT_Face_GetCharVariantIndex(face, character, variation.value()) : !!FT_Get_Char_Index(face, character);
+
+  return false;
+}
+
+DrawGlyphsRecorder::DrawGlyphsRecorder(GraphicsContext& owner, float, DeriveFontFromContext deriveFontFromContext)
+    : m_owner(owner)
+    , m_deriveFontFromContext(deriveFontFromContext)
+{
+}
+
+void DrawGlyphsRecorder::drawGlyphs(const Font& font, const GlyphBufferGlyph* glyphs, const GlyphBufferAdvance* advances, unsigned numGlyphs, const FloatPoint& startPoint, FontSmoothingMode smoothingMode)
+{
+  m_owner.drawGlyphsAndCacheResources(font, glyphs, advances, numGlyphs, startPoint, smoothingMode);
 }
 
 } // namespace WebCore

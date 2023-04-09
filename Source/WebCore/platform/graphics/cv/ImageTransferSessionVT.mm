@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Apple Inc. All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,15 +26,16 @@
 #import "config.h"
 #import "ImageTransferSessionVT.h"
 
+#import "CVUtilities.h"
 #import "GraphicsContextCG.h"
 #import "Logging.h"
-#import "MediaSampleAVFObjC.h"
-#import "RemoteVideoSample.h"
+#import "VideoFrameCV.h"
 #import <CoreMedia/CMFormatDescription.h>
 #import <CoreMedia/CMSampleBuffer.h>
+#import <pal/avfoundation/MediaTimeAVFoundation.h>
 
 #if !PLATFORM(MACCATALYST)
-#import <pal/spi/cocoa/IOSurfaceSPI.h>
+#import <wtf/spi/cocoa/IOSurfaceSPI.h>
 #endif
 
 #import "CoreVideoSoftLink.h"
@@ -42,18 +43,9 @@
 #import <pal/cf/CoreMediaSoftLink.h>
 
 namespace WebCore {
-using namespace PAL;
 
-static inline CFStringRef cvPixelFormatOpenGLKey()
-{
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
-    return kCVPixelFormatOpenGLESCompatibility;
-#else
-    return kCVPixelBufferOpenGLCompatibilityKey;
-#endif
-}
-
-ImageTransferSessionVT::ImageTransferSessionVT(uint32_t pixelFormat)
+ImageTransferSessionVT::ImageTransferSessionVT(uint32_t pixelFormat, bool shouldUseIOSurface)
+    : m_shouldUseIOSurface(shouldUseIOSurface)
 {
     VTPixelTransferSessionRef transferSession;
     VTPixelTransferSessionCreate(kCFAllocatorDefault, &transferSession);
@@ -85,29 +77,11 @@ bool ImageTransferSessionVT::setSize(const IntSize& size)
 {
     if (m_size == size && m_outputBufferPool)
         return true;
-
-    NSDictionary* pixelBufferOptions = @{
-        (__bridge NSString *)kCVPixelBufferWidthKey : @(size.width()),
-        (__bridge NSString *)kCVPixelBufferHeightKey : @(size.height()),
-        (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(m_pixelFormat),
-        (__bridge NSString *)cvPixelFormatOpenGLKey() : @YES,
-        (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{ /*empty dictionary*/ },
-    };
-
-    NSDictionary* pixelBufferPoolOptions = @{
-        (__bridge NSString *)kCVPixelBufferPoolMinimumBufferCountKey: @(6)
-    };
-
-    CVPixelBufferPoolRef bufferPool;
-    auto status = CVPixelBufferPoolCreate(kCFAllocatorDefault, (__bridge CFDictionaryRef)pixelBufferPoolOptions, (__bridge CFDictionaryRef)pixelBufferOptions, &bufferPool);
-    ASSERT(!status);
-    if (status != kCVReturnSuccess)
+    auto bufferPool = createCVPixelBufferPool(size.width(), size.height(), m_pixelFormat, 6, false, m_shouldUseIOSurface);
+    if (!bufferPool)
         return false;
-
-    m_outputBufferPool = adoptCF(bufferPool);
+    m_outputBufferPool = WTFMove(*bufferPool);
     m_size = size;
-    m_ioSurfaceBufferAttributes = nullptr;
-
     return true;
 }
 
@@ -119,48 +93,42 @@ RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::convertPixelBuffer(CVPixelBu
     if (!sourceBuffer || !setSize(size))
         return nullptr;
 
-    CVPixelBufferRef outputBuffer = nullptr;
-    auto status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, m_outputBufferPool.get(), &outputBuffer);
-    if (status) {
-        RELEASE_LOG(Media, "ImageTransferSessionVT::convertPixelBuffer, CVPixelBufferPoolCreatePixelBuffer failed with error %d", static_cast<int>(status));
+    auto result = createCVPixelBufferFromPool(m_outputBufferPool.get(), m_maxBufferPoolSize);
+    if (!result) {
+        RELEASE_LOG(Media, "ImageTransferSessionVT::convertPixelBuffer, createCVPixelBufferFromPool failed with error %d", static_cast<int>(result.error()));
         return nullptr;
     }
-    auto result = adoptCF(outputBuffer);
+    auto outputBuffer = WTFMove(*result);
 
-    auto err = VTPixelTransferSessionTransferImage(m_transferSession.get(), sourceBuffer, outputBuffer);
+    auto err = VTPixelTransferSessionTransferImage(m_transferSession.get(), sourceBuffer, outputBuffer.get());
     if (err) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertPixelBuffer, VTPixelTransferSessionTransferImage failed with error %d", static_cast<int>(err));
         return nullptr;
     }
 
-    return result;
+    return outputBuffer;
 }
 
-RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(CMSampleBufferRef sourceBuffer, const IntSize& size)
-{
-    return convertPixelBuffer(CMSampleBufferGetImageBuffer(sourceBuffer), size);
-}
-
-RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::convertCMSampleBuffer(CMSampleBufferRef sourceBuffer, const IntSize& size)
+RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::convertCMSampleBuffer(CMSampleBufferRef sourceBuffer, const IntSize& size, const MediaTime* sampleTime)
 {
     if (!sourceBuffer)
         return nullptr;
 
-    auto description = CMSampleBufferGetFormatDescription(sourceBuffer);
-    auto sourceSize = FloatSize(CMVideoFormatDescriptionGetPresentationDimensions(description, true, true));
-    auto pixelBuffer = static_cast<CVPixelBufferRef>(CMSampleBufferGetImageBuffer(sourceBuffer));
+    auto description = PAL::CMSampleBufferGetFormatDescription(sourceBuffer);
+    auto sourceSize = FloatSize(PAL::CMVideoFormatDescriptionGetPresentationDimensions(description, true, true));
+    auto pixelBuffer = static_cast<CVPixelBufferRef>(PAL::CMSampleBufferGetImageBuffer(sourceBuffer));
     if (size == expandedIntSize(sourceSize) && m_pixelFormat == CVPixelBufferGetPixelFormatType(pixelBuffer))
         return retainPtr(sourceBuffer);
 
     if (!setSize(size))
         return nullptr;
 
-    auto convertedPixelBuffer = createPixelBuffer(sourceBuffer, size);
+    auto convertedPixelBuffer = convertPixelBuffer(pixelBuffer, size);
     if (!convertedPixelBuffer)
         return nullptr;
 
     CMItemCount itemCount = 0;
-    auto status = CMSampleBufferGetSampleTimingInfoArray(sourceBuffer, 1, nullptr, &itemCount);
+    auto status = PAL::CMSampleBufferGetSampleTimingInfoArray(sourceBuffer, 1, nullptr, &itemCount);
     if (status != noErr) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertCMSampleBuffer: CMSampleBufferGetSampleTimingInfoArray failed with error code: %d", static_cast<int>(status));
         return nullptr;
@@ -169,23 +137,31 @@ RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::convertCMSampleBuffer(CMSam
     CMSampleTimingInfo* timeingInfoPtr = nullptr;
     if (itemCount) {
         timingInfoArray.grow(itemCount);
-        status = CMSampleBufferGetSampleTimingInfoArray(sourceBuffer, itemCount, timingInfoArray.data(), nullptr);
+        status = PAL::CMSampleBufferGetSampleTimingInfoArray(sourceBuffer, itemCount, timingInfoArray.data(), nullptr);
         if (status != noErr) {
             RELEASE_LOG(Media, "ImageTransferSessionVT::convertCMSampleBuffer: CMSampleBufferGetSampleTimingInfoArray failed with error code: %d", static_cast<int>(status));
             return nullptr;
+        }
+
+        if (sampleTime) {
+            auto cmTime = PAL::toCMTime(*sampleTime);
+            for (auto& timing : timingInfoArray) {
+                timing.presentationTimeStamp = cmTime;
+                timing.decodeTimeStamp = cmTime;
+            }
         }
         timeingInfoPtr = timingInfoArray.data();
     }
 
     CMVideoFormatDescriptionRef formatDescription = nullptr;
-    status = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, convertedPixelBuffer.get(), &formatDescription);
+    status = PAL::CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, convertedPixelBuffer.get(), &formatDescription);
     if (status != noErr) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertCMSampleBuffer: CMVideoFormatDescriptionCreateForImageBuffer returned: %d", static_cast<int>(status));
         return nullptr;
     }
 
     CMSampleBufferRef resizedSampleBuffer;
-    status = CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, convertedPixelBuffer.get(), formatDescription, timeingInfoPtr, &resizedSampleBuffer);
+    status = PAL::CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, convertedPixelBuffer.get(), formatDescription, timeingInfoPtr, &resizedSampleBuffer);
     CFRelease(formatDescription);
     if (status != noErr) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertCMSampleBuffer: failed to create CMSampleBuffer with error code: %d", static_cast<int>(status));
@@ -211,14 +187,13 @@ RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(CGImageRef
     CVPixelBufferLockBaseAddress(rgbBuffer, 0);
     void* data = CVPixelBufferGetBaseAddress(rgbBuffer);
     auto retainedRGBBuffer = adoptCF(rgbBuffer);
-    auto context = CGBitmapContextCreate(data, imageSize.width(), imageSize.height(), 8, CVPixelBufferGetBytesPerRow(rgbBuffer), sRGBColorSpaceRef(), (CGBitmapInfo) kCGImageAlphaNoneSkipFirst);
+    auto context = adoptCF(CGBitmapContextCreate(data, imageSize.width(), imageSize.height(), 8, CVPixelBufferGetBytesPerRow(rgbBuffer), sRGBColorSpaceRef(), (CGBitmapInfo) kCGImageAlphaNoneSkipFirst));
     if (!context) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::createPixelBuffer: CGBitmapContextCreate returned nullptr");
         return nullptr;
     }
 
-    auto retainedContext = adoptCF(context);
-    CGContextDrawImage(context, CGRectMake(0, 0, imageSize.width(), imageSize.height()), image);
+    CGContextDrawImage(context.get(), CGRectMake(0, 0, imageSize.width(), imageSize.height()), image);
     CVPixelBufferUnlockBaseAddress(rgbBuffer, 0);
 
     return convertPixelBuffer(rgbBuffer, size);
@@ -238,16 +213,16 @@ RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(CVPixe
     }
 
     CMVideoFormatDescriptionRef formatDescription = nullptr;
-    auto status = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)inputBuffer.get(), &formatDescription);
+    auto status = PAL::CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)inputBuffer.get(), &formatDescription);
     if (status) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertPixelBuffer: failed to initialize CMVideoFormatDescription with error code: %d", static_cast<int>(status));
         return nullptr;
     }
 
     CMSampleBufferRef sampleBuffer;
-    auto cmTime = toCMTime(sampleTime);
-    CMSampleTimingInfo timingInfo = { kCMTimeInvalid, cmTime, cmTime };
-    status = CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)inputBuffer.get(), formatDescription, &timingInfo, &sampleBuffer);
+    auto cmTime = PAL::toCMTime(sampleTime);
+    CMSampleTimingInfo timingInfo = { PAL::kCMTimeInvalid, cmTime, cmTime };
+    status = PAL::CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)inputBuffer.get(), formatDescription, &timingInfo, &sampleBuffer);
     CFRelease(formatDescription);
     if (status) {
         RELEASE_LOG(Media, "ImageTransferSessionVT::convertPixelBuffer: failed to initialize CMSampleBuffer with error code: %d", static_cast<int>(status));
@@ -268,82 +243,11 @@ RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(CGImag
 
 #if !PLATFORM(MACCATALYST)
 
-#if PLATFORM(MAC)
-static int32_t roundUpToMacroblockMultiple(int32_t size)
-{
-    return (size + 15) & ~15;
-}
-#endif
-
-CFDictionaryRef ImageTransferSessionVT::ioSurfacePixelBufferCreationOptions(IOSurfaceRef surface)
-{
-    if (m_ioSurfaceBufferAttributes)
-        return m_ioSurfaceBufferAttributes.get();
-
-    m_ioSurfaceBufferAttributes = (__bridge CFDictionaryRef) @{
-        (__bridge NSString *)cvPixelFormatOpenGLKey() : @YES,
-    };
-
-#if PLATFORM(MAC)
-    auto format = IOSurfaceGetPixelFormat(surface);
-    auto width = IOSurfaceGetWidth(surface);
-    auto height = IOSurfaceGetHeight(surface);
-    auto extendedRight = roundUpToMacroblockMultiple(width) - width;
-    auto extendedBottom = roundUpToMacroblockMultiple(height) - height;
-
-    if ((format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
-        && (IOSurfaceGetBytesPerRowOfPlane(surface, 0) >= width + extendedRight)
-        && (IOSurfaceGetBytesPerRowOfPlane(surface, 1) >= width + extendedRight)
-        && (IOSurfaceGetAllocSize(surface) >= (height + extendedBottom) * IOSurfaceGetBytesPerRowOfPlane(surface, 0) * 3 / 2)) {
-            m_ioSurfaceBufferAttributes = (__bridge CFDictionaryRef) @{
-                (__bridge NSString *)kCVPixelBufferOpenGLCompatibilityKey : @YES,
-                (__bridge NSString *)kCVPixelBufferExtendedPixelsRightKey : @(extendedRight),
-                (__bridge NSString *)kCVPixelBufferExtendedPixelsBottomKey : @(extendedBottom)
-            };
-    }
-#else
-    UNUSED_PARAM(surface);
-#endif
-
-    return m_ioSurfaceBufferAttributes.get();
-}
-
-RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(IOSurfaceRef surface)
-{
-    if (!surface)
-        return nullptr;
-
-    CVPixelBufferRef pixelBuffer;
-    auto status = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, ioSurfacePixelBufferCreationOptions(surface), &pixelBuffer);
-    if (status) {
-        RELEASE_LOG(Media, "CVPixelBufferCreateWithIOSurface failed with error code: %d", static_cast<int>(status));
-        return nullptr;
-    }
-    return adoptCF(pixelBuffer);
-}
-
-RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(IOSurfaceRef surface, const IntSize& size)
+RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(IOSurfaceRef surface, const MediaTime &sampleTime, const IntSize &size)
 {
     if (!surface || !setSize(size))
         return nullptr;
-
-    CVPixelBufferRef pixelBuffer;
-    auto status = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, ioSurfacePixelBufferCreationOptions(surface), &pixelBuffer);
-    if (status) {
-        RELEASE_LOG(Media, "CVPixelBufferCreateWithIOSurface failed with error code: %d", static_cast<int>(status));
-        return nullptr;
-    }
-
-    auto retainedBuffer = adoptCF(pixelBuffer);
-    if (m_size == IntSize(CVPixelBufferGetWidth(pixelBuffer), CVPixelBufferGetHeight(pixelBuffer)) && m_pixelFormat == CVPixelBufferGetPixelFormatType(pixelBuffer))
-        return retainedBuffer;
-
-    return convertPixelBuffer(pixelBuffer, size);
-}
-
-RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(IOSurfaceRef surface, const MediaTime& sampleTime, const IntSize& size)
-{
-    auto pixelBuffer = createPixelBuffer(surface, size);
+    auto pixelBuffer = createCVPixelBuffer(surface).value_or(nullptr);
     if (!pixelBuffer)
         return nullptr;
 
@@ -351,54 +255,45 @@ RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(IOSurf
 }
 #endif
 
-RefPtr<MediaSample> ImageTransferSessionVT::convertMediaSample(MediaSample& sample, const IntSize& size)
+RefPtr<VideoFrame> ImageTransferSessionVT::convertVideoFrame(VideoFrame& videoFrame, const IntSize& size)
 {
-    ASSERT(sample.platformSample().type == PlatformSample::CMSampleBufferType);
+    if (size == expandedIntSize(videoFrame.presentationSize()))
+        return &videoFrame;
 
-    if (size == expandedIntSize(sample.presentationSize()))
-        return &sample;
-
-    auto resizedBuffer = convertCMSampleBuffer(sample.platformSample().sample.cmSampleBuffer, size);
+    auto resizedBuffer = convertPixelBuffer(videoFrame.pixelBuffer(), size);
     if (!resizedBuffer)
         return nullptr;
 
-    return MediaSampleAVFObjC::create(resizedBuffer.get(), sample.videoRotation(), sample.videoMirrored());
+    return VideoFrameCV::create(videoFrame.presentationTime(), videoFrame.isMirrored(), videoFrame.rotation(), WTFMove(resizedBuffer));
 }
 
 #if !PLATFORM(MACCATALYST)
-#if ENABLE(MEDIA_STREAM)
-RefPtr<MediaSample> ImageTransferSessionVT::createMediaSample(const RemoteVideoSample& remoteSample)
-{
-    return createMediaSample(remoteSample.surface(), remoteSample.time(), remoteSample.size(), remoteSample.rotation(), remoteSample.mirrored());
-}
-#endif
-
-RefPtr<MediaSample> ImageTransferSessionVT::createMediaSample(IOSurfaceRef surface, const MediaTime& sampleTime, const IntSize& size, MediaSample::VideoRotation rotation, bool mirrored)
+RefPtr<VideoFrame> ImageTransferSessionVT::createVideoFrame(IOSurfaceRef surface, const MediaTime& sampleTime, const IntSize& size, VideoFrame::Rotation rotation, bool mirrored)
 {
     auto sampleBuffer = createCMSampleBuffer(surface, sampleTime, size);
     if (!sampleBuffer)
         return nullptr;
 
-    return MediaSampleAVFObjC::create(sampleBuffer.get(), rotation, mirrored);
+    return VideoFrameCV::create(sampleBuffer.get(), mirrored, rotation);
 }
 #endif
 
-RefPtr<MediaSample> ImageTransferSessionVT::createMediaSample(CGImageRef image, const MediaTime& sampleTime, const IntSize& size, MediaSample::VideoRotation rotation, bool mirrored)
+RefPtr<VideoFrame> ImageTransferSessionVT::createVideoFrame(CGImageRef image, const MediaTime& sampleTime, const IntSize& size, VideoFrame::Rotation rotation, bool mirrored)
 {
     auto sampleBuffer = createCMSampleBuffer(image, sampleTime, size);
     if (!sampleBuffer)
         return nullptr;
 
-    return MediaSampleAVFObjC::create(sampleBuffer.get(), rotation, mirrored);
+    return VideoFrameCV::create(sampleBuffer.get(), mirrored, rotation);
 }
 
-RefPtr<MediaSample> ImageTransferSessionVT::createMediaSample(CMSampleBufferRef buffer, const IntSize& size, MediaSample::VideoRotation rotation, bool mirrored)
+RefPtr<VideoFrame> ImageTransferSessionVT::createVideoFrame(CMSampleBufferRef buffer, const MediaTime& sampleTime, const IntSize& size, VideoFrame::Rotation rotation, bool mirrored)
 {
-    auto sampleBuffer = convertCMSampleBuffer(buffer, size);
+    auto sampleBuffer = convertCMSampleBuffer(buffer, size, &sampleTime);
     if (!sampleBuffer)
         return nullptr;
 
-    return MediaSampleAVFObjC::create(sampleBuffer.get(), rotation, mirrored);
+    return VideoFrameCV::create(sampleBuffer.get(), mirrored, rotation);
 }
 
 } // namespace WebCore

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,6 +45,14 @@ ALWAYS_INLINE constexpr bool isIOS()
 #endif
 }
 
+template<size_t bits, typename Type>
+ALWAYS_INLINE constexpr bool isInt(Type t)
+{
+    constexpr size_t shift = sizeof(Type) * CHAR_BIT - bits;
+    static_assert(sizeof(Type) * CHAR_BIT > shift, "shift is larger than the size of the value");
+    return ((t << shift) >> shift) == t;
+}
+
 ALWAYS_INLINE bool isInt9(int32_t value)
 {
     return value == ((value << 23) >> 23);
@@ -72,6 +80,15 @@ ALWAYS_INLINE bool isValidScaledUImm12(int32_t offset)
 ALWAYS_INLINE bool isValidSignedImm9(int32_t value)
 {
     return isInt9(value);
+}
+
+ALWAYS_INLINE bool isValidSignedImm7(int32_t value, int alignmentShiftAmount)
+{
+    constexpr int32_t disallowedHighBits = 32 - 7;
+    int32_t shiftedValue = value >> alignmentShiftAmount;
+    bool fitsIn7Bits = shiftedValue == ((shiftedValue << disallowedHighBits) >> disallowedHighBits);
+    bool hasCorrectAlignment = value == (shiftedValue << alignmentShiftAmount);
+    return fitsIn7Bits && hasCorrectAlignment;
 }
 
 class ARM64LogicalImmediate {
@@ -295,5 +312,21 @@ private:
 
     int m_value;
 };
+
+ALWAYS_INLINE bool isValidARMThumb2Immediate(int64_t value)
+{
+    if (value < 0)
+        return false;
+    if (value > UINT32_MAX)
+        return false;
+    if (value < 256)
+        return true;
+    // If it can be expressed as an 8-bit number, left sifted by a constant
+    const int64_t mask = (value ^ (value & (value - 1))) * 0xff;
+    if ((value & mask) == value)
+        return true;
+    // FIXME: there are a few more valid forms, see section 4.2 in the Thumb-2 Supplement
+    return false;
+}
 
 } // namespace JSC.

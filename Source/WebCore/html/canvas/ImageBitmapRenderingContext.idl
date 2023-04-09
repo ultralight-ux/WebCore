@@ -23,13 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-[
-    EnabledAtRuntime=ImageBitmap,
-    Exposed=Window,
-    CallTracingCallback=recordCanvasAction,
-] interface ImageBitmapRenderingContext {
-    readonly attribute HTMLCanvasElement canvas;
+#if defined(ENABLE_OFFSCREEN_CANVAS)
+typedef (HTMLCanvasElement or OffscreenCanvas) ImageBitmapCanvas;
+#else
+typedef (HTMLCanvasElement) ImageBitmapCanvas;
+#endif
 
-    [MayThrowException] void transferFromImageBitmap(ImageBitmap? bitmap);
+[
+    Exposed=(Window,Worker),
+    CallTracer=InspectorCanvasCallTracer,
+] interface ImageBitmapRenderingContext {
+    readonly attribute ImageBitmapCanvas canvas;
+
+    undefined transferFromImageBitmap(ImageBitmap? bitmap);
 };
 

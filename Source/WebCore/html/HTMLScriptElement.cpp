@@ -24,11 +24,12 @@
 #include "HTMLScriptElement.h"
 
 #include "Document.h"
+#include "ElementInlines.h"
 #include "Event.h"
 #include "EventNames.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
-#include "RuntimeEnabledFeatures.h"
+#include "Settings.h"
 #include "Text.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/Ref.h>
@@ -84,9 +85,9 @@ void HTMLScriptElement::didFinishInsertingNode()
 }
 
 // https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
-void HTMLScriptElement::setText(const String& value)
+void HTMLScriptElement::setText(String&& value)
 {
-    setTextContent(value);
+    setTextContent(WTFMove(value));
 }
 
 void HTMLScriptElement::setAsync(bool async)
@@ -197,8 +198,8 @@ String HTMLScriptElement::referrerPolicyForBindings() const
 
 ReferrerPolicy HTMLScriptElement::referrerPolicy() const
 {
-    if (RuntimeEnabledFeatures::sharedFeatures().referrerPolicyAttributeEnabled())
-        return parseReferrerPolicy(attributeWithoutSynchronization(referrerpolicyAttr), ReferrerPolicySource::ReferrerPolicyAttribute).valueOr(ReferrerPolicy::EmptyString);
+    if (document().settings().referrerPolicyAttributeEnabled())
+        return parseReferrerPolicy(attributeWithoutSynchronization(referrerpolicyAttr), ReferrerPolicySource::ReferrerPolicyAttribute).value_or(ReferrerPolicy::EmptyString);
     return ReferrerPolicy::EmptyString;
 }
 

@@ -29,11 +29,11 @@
 #include "DOMWindow.h"
 #include "Document.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "ResourceLoadObserver.h"
 #include "SecurityOrigin.h"
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/Optional.h>
 
 namespace WebCore {
 
@@ -60,14 +60,20 @@ UserGestureToken::UserGestureToken(ProcessingUserGestureState state, UserGesture
         return;
 
     for (auto* ancestorFrame = documentFrame->tree().parent(); ancestorFrame; ancestorFrame = ancestorFrame->tree().parent()) {
-        if (auto* ancestorDocument = ancestorFrame->document())
-            m_documentsImpactedByUserGesture.add(ancestorDocument);
+        auto* localAncestor = dynamicDowncast<LocalFrame>(ancestorFrame);
+        if (!localAncestor)
+            continue;
+        if (auto* ancestorDocument = localAncestor->document())
+            m_documentsImpactedByUserGesture.add(*ancestorDocument);
     }
 
     auto& documentOrigin = document->securityOrigin();
-    for (auto* frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
-        auto* frameDocument = frame->document();
-        if (frameDocument && documentOrigin.canAccess(frameDocument->securityOrigin()))
+    for (AbstractFrame* frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
+        auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+        if (!localFrame)
+            continue;
+        auto* frameDocument = localFrame->document();
+        if (frameDocument && documentOrigin.isSameOriginDomain(frameDocument->securityOrigin()))
             m_documentsImpactedByUserGesture.add(*frameDocument);
     }
 }
@@ -89,12 +95,12 @@ void UserGestureToken::setMaximumIntervalForUserGestureForwardingForFetchForTest
     maxIntervalForUserGestureForwardingForFetch = WTFMove(value);
 }
 
-bool UserGestureToken::isValidForDocument(Document& document) const
+bool UserGestureToken::isValidForDocument(const Document& document) const
 {
     return m_documentsImpactedByUserGesture.contains(document);
 }
 
-UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> state, Document* document, UserGestureType gestureType, ProcessInteractionStyle processInteractionStyle)
+UserGestureIndicator::UserGestureIndicator(std::optional<ProcessingUserGestureState> state, Document* document, UserGestureType gestureType, ProcessInteractionStyle processInteractionStyle)
     : m_previousToken { currentToken() }
 {
     ASSERT(isMainThread());
@@ -102,15 +108,19 @@ UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> 
     if (state)
         currentToken() = UserGestureToken::create(state.value(), gestureType, document);
 
-    if (document && currentToken()->processingUserGesture() && state) {
+    if (state && document && currentToken()->processingUserGesture()) {
         document->updateLastHandledUserGestureTimestamp(currentToken()->startTime());
         if (processInteractionStyle == ProcessInteractionStyle::Immediate)
             ResourceLoadObserver::shared().logUserInteractionWithReducedTimeResolution(document->topDocument());
         document->topDocument().setUserDidInteractWithPage(true);
         if (auto* frame = document->frame()) {
             if (!frame->hasHadUserInteraction()) {
-                for (; frame; frame = frame->tree().parent())
-                    frame->setHasHadUserInteraction();
+                for (AbstractFrame *ancestor = frame; ancestor; ancestor = ancestor->tree().parent()) {
+                    auto* localAncestor = dynamicDowncast<LocalFrame>(ancestor);
+                    if (!localAncestor)
+                        continue;
+                    localAncestor->setHasHadUserInteraction();
+                }
             }
         }
 
@@ -157,7 +167,7 @@ RefPtr<UserGestureToken> UserGestureIndicator::currentUserGesture()
     return currentToken();
 }
 
-bool UserGestureIndicator::processingUserGesture(Document* document)
+bool UserGestureIndicator::processingUserGesture(const Document* document)
 {
     if (!isMainThread())
         return false;

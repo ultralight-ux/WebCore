@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2016 Metrological Group B.V.
  * Copyright (C) 2016, 2017, 2018 Igalia S.L
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,6 +26,7 @@
 #include "FloatSize.h"
 #include "GStreamerCommon.h"
 #include "MediaSample.h"
+#include "VideoFrameTimeMetadata.h"
 #include <wtf/text/AtomString.h>
 
 namespace WebCore {
@@ -36,26 +38,22 @@ public:
         return adoptRef(*new MediaSampleGStreamer(WTFMove(sample), presentationSize, trackId));
     }
 
-    static Ref<MediaSampleGStreamer> createFakeSample(GstCaps*, MediaTime pts, MediaTime dts, MediaTime duration, const FloatSize& presentationSize, const AtomString& trackId);
-    static Ref<MediaSampleGStreamer> createImageSample(Vector<uint8_t>&&, unsigned width, unsigned height);
+    static Ref<MediaSampleGStreamer> createFakeSample(GstCaps*, const MediaTime& pts, const MediaTime& dts, const MediaTime& duration, const FloatSize& presentationSize, const AtomString& trackId);
 
     void extendToTheBeginning();
     MediaTime presentationTime() const override { return m_pts; }
     MediaTime decodeTime() const override { return m_dts; }
     MediaTime duration() const override { return m_duration; }
     AtomString trackID() const override { return m_trackId; }
-    void setTrackID(const String& trackId) override { m_trackId = trackId; }
     size_t sizeInBytes() const override { return m_size; }
     FloatSize presentationSize() const override { return m_presentationSize; }
     void offsetTimestampsBy(const MediaTime&) override;
-    void setTimestamps(const MediaTime&, const MediaTime&) override { }
-    bool isDivisable() const override { return false; }
-    std::pair<RefPtr<MediaSample>, RefPtr<MediaSample>> divide(const MediaTime&) override  { return { nullptr, nullptr }; }
+    void setTimestamps(const MediaTime&, const MediaTime&) override;
     Ref<MediaSample> createNonDisplayingCopy() const override;
     SampleFlags flags() const override { return m_flags; }
-    PlatformSample platformSample() override;
+    PlatformSample platformSample() const override;
+    PlatformSample::Type platformSampleType() const override { return PlatformSample::GStreamerSampleType; }
     void dump(PrintStream&) const override;
-    RefPtr<JSC::Uint8ClampedArray> getRGBAImageData() const final;
 
 protected:
     MediaSampleGStreamer(GRefPtr<GstSample>&&, const FloatSize& presentationSize, const AtomString& trackId);

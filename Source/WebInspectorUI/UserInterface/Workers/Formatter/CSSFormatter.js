@@ -25,14 +25,17 @@
 
 CSSFormatter = class CSSFormatter
 {
-    constructor(sourceText, indentString = "    ")
+    constructor(sourceText, builder, indentString = "    ")
     {
         this._success = false;
 
         this._sourceText = sourceText;
 
-        this._builder = new FormatterContentBuilder(indentString);
-        this._builder.setOriginalLineEndings(this._sourceText.lineEndings());
+        this._builder = builder;
+        if (!this._builder) {
+            this._builder = new FormatterContentBuilder(indentString);
+            this._builder.setOriginalLineEndings(this._sourceText.lineEndings());
+        }
 
         this._format();
 
@@ -76,6 +79,8 @@ CSSFormatter = class CSSFormatter
         const removeSpaceBefore = new Set([`,`, `(`, `)`, `}`, `:`, `;`]);
         const removeSpaceAfter = new Set([`(`, `{`, `}`, `,`, `!`, `;`]);
 
+        const whitespaceOnlyRegExp = /^\s*$/;
+
         const inAtRuleRegExp = /^\s*@[a-zA-Z][-a-zA-Z]+/;
         const inAtRuleBeforeParenthesisRegExp = /^\s*@[a-zA-Z][-a-zA-Z]+$/;
         const inAtRuleAfterParenthesisRegExp = /^\s*@[a-zA-Z][-a-zA-Z]+[^("':]*\([^"':]*:/;
@@ -86,188 +91,253 @@ CSSFormatter = class CSSFormatter
         const lastTokenWasOpenParenthesisRegExp = /\(\s*$/;
 
         let depth = 0;
+        let specialSequenceStack = [];
 
-        for (let i = 0; i < this._sourceText.length; ++i) {
-            let c = this._sourceText[i];
+        let index = 0;
+        let current = null;
 
-            let testCurrentLine = (regExp) => regExp.test(this._builder.currentLine);
+        let testCurrentLine = (regExp) => regExp.test(this._builder.currentLine);
 
-            let inSelector = () => {
-                let nextOpenBrace = this._sourceText.indexOf(`{`, i);
-                if (nextOpenBrace !== -1) {
-                    let nextQuote = Infinity;
-                    for (let quoteType of quoteTypes) {
-                        let quoteIndex = this._sourceText.indexOf(quoteType, i);
-                        if (quoteIndex !== -1 && quoteIndex < nextQuote)
-                            nextQuote = quoteIndex;
+        let inSelector = () => {
+            let nextOpenBrace = this._sourceText.indexOf(`{`, index);
+            if (nextOpenBrace !== -1) {
+                let nextQuote = Infinity;
+                for (let quoteType of quoteTypes) {
+                    let quoteIndex = this._sourceText.indexOf(quoteType, index);
+                    if (quoteIndex !== -1 && quoteIndex < nextQuote)
+                        nextQuote = quoteIndex;
+                }
+                if (nextOpenBrace < nextQuote) {
+                    let nextSemicolon = this._sourceText.indexOf(`;`, index);
+                    if (nextSemicolon === -1)
+                        nextSemicolon = Infinity;
+
+                    let nextNewline = this._sourceText.indexOf(`\n`, index);
+                    if (nextNewline === -1)
+                        nextNewline = Infinity;
+
+                    if (nextOpenBrace < Math.min(nextSemicolon, nextNewline))
+                        return true;
+                }
+            }
+
+            if (testCurrentLine(lineStartCouldBePropertyRegExp))
+                return false;
+
+            return true;
+        };
+
+        let inProperty = () => {
+            if (!depth)
+                return false;
+            return !testCurrentLine(inAtRuleRegExp) && !inSelector();
+        };
+
+        let formatBefore = () => {
+            if (this._builder.lastNewlineAppendWasMultiple && current === `}`)
+                this._builder.removeLastNewline();
+
+            if (dedentBefore.has(current))
+                this._builder.dedent();
+
+            if (!this._builder.lastTokenWasNewline && newlineBefore.has(current))
+                this._builder.appendNewline();
+
+            if (!this._builder.lastTokenWasWhitespace && addSpaceBefore.has(current)) {
+                let shouldAddSpaceBefore = () => {
+                    if (current === `(`) {
+                        if (testCurrentLine(inAtSupportsRuleRegExp))
+                            return false;
+                        if (!testCurrentLine(inAtRuleRegExp))
+                            return false;
                     }
-                    if (nextOpenBrace < nextQuote) {
-                        let nextSemicolon = this._sourceText.indexOf(`;`, i);
-                        if (nextSemicolon === -1)
-                            nextSemicolon = Infinity;
+                    return true;
+                };
+                if (shouldAddSpaceBefore())
+                    this._builder.appendSpace();
+            }
 
-                        let nextNewline = this._sourceText.indexOf(`\n`, i);
-                        if (nextNewline === -1)
-                            nextNewline = Infinity;
-
-                        if (nextOpenBrace < Math.min(nextSemicolon, nextNewline))
-                            return true;
+            while (this._builder.lastTokenWasWhitespace && removeSpaceBefore.has(current)) {
+                let shouldRemoveSpaceBefore = () => {
+                    if (current === `:`) {
+                        if (!testCurrentLine(this._builder.currentLine.includes(`(`) ? inAtRuleRegExp : inAtRuleBeforeParenthesisRegExp)) {
+                            if (!inProperty())
+                                return false;
+                        }
                     }
-                }
-
-                if (testCurrentLine(lineStartCouldBePropertyRegExp))
-                    return false;
-
-                return true;
-            };
-
-            let inProperty = () => {
-                if (!depth)
-                    return false;
-                return !testCurrentLine(inAtRuleRegExp) && !inSelector();
-            };
-
-            let formatBefore = () => {
-                if (this._builder.lastNewlineAppendWasMultiple && c === `}`)
-                    this._builder.removeLastNewline();
-
-                if (dedentBefore.has(c))
-                    this._builder.dedent();
-
-                if (!this._builder.lastTokenWasNewline && newlineBefore.has(c))
-                    this._builder.appendNewline();
-
-                if (!this._builder.lastTokenWasWhitespace && addSpaceBefore.has(c)) {
-                    let shouldAddSpaceBefore = () => {
-                        if (c === `(`) {
-                            if (testCurrentLine(inAtSupportsRuleRegExp))
-                                return false;
-                            if (!testCurrentLine(inAtRuleRegExp))
+                    if (current === `(`) {
+                        if (!testCurrentLine(lastTokenWasOpenParenthesisRegExp)) {
+                            if (testCurrentLine(inAtRuleRegExp) && !testCurrentLine(inAtRuleAfterParenthesisRegExp))
                                 return false;
                         }
-                        return true;
-                    };
-                    if (shouldAddSpaceBefore())
-                        this._builder.appendSpace();
-                }
+                    }
+                    return true;
+                };
+                if (!shouldRemoveSpaceBefore())
+                    break;
+                this._builder.removeLastWhitespace();
+            }
+        };
 
-                while (this._builder.lastTokenWasWhitespace && removeSpaceBefore.has(c)) {
-                    let shouldRemoveSpaceBefore = () => {
-                        if (c === `:`) {
-                            if (!testCurrentLine(this._builder.currentLine.includes(`(`) ? inAtRuleRegExp : inAtRuleBeforeParenthesisRegExp)) {
-                                if (!inProperty())
-                                    return false;
-                            }
-                        }
-                        if (c === `(`) {
-                            if (!testCurrentLine(lastTokenWasOpenParenthesisRegExp)) {
-                                if (testCurrentLine(inAtRuleRegExp) && !testCurrentLine(inAtRuleAfterParenthesisRegExp))
-                                    return false;
-                            }
-                        }
-                        return true;
-                    };
-                    if (!shouldRemoveSpaceBefore())
-                        break;
-                    this._builder.removeLastWhitespace();
-                }
-            };
-
-            let formatAfter = () => {
-                while (this._builder.lastTokenWasWhitespace && removeSpaceAfter.has(c)) {
-                    let shouldRemoveSpaceAfter = () => {
-                        if (c === `(`) {
-                            if (!testCurrentLine(lastTokenWasOpenParenthesisRegExp)) {
-                                if (!testCurrentLine(inAtRuleRegExp)) {
-                                    if (!inProperty())
-                                        return false;
-                                }
-                            }
-                        }
-                        return true;
-                    };
-                    if (!shouldRemoveSpaceAfter())
-                        break;
-                    this._builder.removeLastWhitespace();
-                }
-
-                if (!this._builder.lastTokenWasWhitespace && addSpaceAfter.has(c)) {
-                    let shouldAddSpaceAfter = () => {
-                        if (c === `:`) {
-                            if (!testCurrentLine(this._builder.currentLine.includes(`(`) ? inAtRuleRegExp : inAtRuleBeforeParenthesisRegExp)) {
-                                if (!inProperty())
-                                    return false;
-                            }
-                        }
-                        if (c === `)`) {
+        let formatAfter = () => {
+            while (this._builder.lastTokenWasWhitespace && removeSpaceAfter.has(current)) {
+                let shouldRemoveSpaceAfter = () => {
+                    if (current === `(`) {
+                        if (!testCurrentLine(lastTokenWasOpenParenthesisRegExp)) {
                             if (!testCurrentLine(inAtRuleRegExp)) {
                                 if (!inProperty())
                                     return false;
                             }
                         }
-                        return true;
-                    };
-                    if (shouldAddSpaceAfter())
+                    }
+                    return true;
+                };
+                if (!shouldRemoveSpaceAfter())
+                    break;
+                this._builder.removeLastWhitespace();
+            }
+
+            if (!this._builder.lastTokenWasWhitespace && addSpaceAfter.has(current)) {
+                let shouldAddSpaceAfter = () => {
+                    if (current === `:`) {
+                        if (!testCurrentLine(this._builder.currentLine.includes(`(`) ? inAtRuleRegExp : inAtRuleBeforeParenthesisRegExp)) {
+                            if (!inProperty())
+                                return false;
+                        }
+                    }
+                    if (current === `)`) {
+                        if (!testCurrentLine(inAtRuleRegExp)) {
+                            if (!inProperty())
+                                return false;
+                        }
+                    }
+                    return true;
+                };
+                if (shouldAddSpaceAfter())
+                    this._builder.appendSpace();
+            }
+
+            if (indentAfter.has(current))
+                this._builder.indent();
+
+            if (newlineAfter.has(current)) {
+                if (current === `}`)
+                    this._builder.appendMultipleNewlines(2);
+                else
+                    this._builder.appendNewline();
+            }
+        };
+
+        for (; index < this._sourceText.length; ++index) {
+            current = this._sourceText[index];
+
+            let possibleSpecialSequence = null;
+            if (quoteTypes.has(current))
+                possibleSpecialSequence = {type: "quote", startIndex: index, endString: current};
+            else if (current === `/` && this._sourceText[index + 1] === `*`)
+                possibleSpecialSequence = {type: "comment", startIndex: index, endString: `*/`};
+            else if (current === `u` && this._sourceText[index + 1] === `r` && this._sourceText[index + 2] === `l` && this._sourceText[index + 3] === `(`)
+                possibleSpecialSequence = {type: "url", startIndex: index, endString: `)`};
+
+            if (possibleSpecialSequence || specialSequenceStack.length) {
+                let currentSpecialSequence = specialSequenceStack.lastValue;
+
+                if (currentSpecialSequence?.type !== "comment") {
+                    if (possibleSpecialSequence?.type !== "comment") {
+                        let escapeCount = 0;
+                        while (this._sourceText[index - 1 - escapeCount] === "\\")
+                            ++escapeCount;
+                        if (escapeCount % 2)
+                            continue;
+                    }
+
+                    if (possibleSpecialSequence && (!currentSpecialSequence || currentSpecialSequence.type !== possibleSpecialSequence.type || currentSpecialSequence.endString !== possibleSpecialSequence.endString)) {
+                        specialSequenceStack.push(possibleSpecialSequence);
+                        continue;
+                    }
+                }
+
+                if (Array.from(currentSpecialSequence.endString).some((item, i) => index + i < this._sourceText.length && this._sourceText[index - currentSpecialSequence.endString.length + i + 1] !== item))
+                    continue;
+
+                let inComment = specialSequenceStack.some((item) => item.type === "comment");
+
+                specialSequenceStack.pop();
+                if (specialSequenceStack.length)
+                    continue;
+
+                let specialSequenceText = this._sourceText.substring(currentSpecialSequence.startIndex, index + 1);
+
+                let lastSourceNewlineWasMultiple = this._sourceText[currentSpecialSequence.startIndex - 1] === `\n` && this._sourceText[currentSpecialSequence.startIndex - 2] === `\n`;
+                let lastAppendNewlineWasMultiple = this._builder.lastNewlineAppendWasMultiple;
+
+                let commentOnOwnLine = false;
+                if (inComment) {
+                    commentOnOwnLine = testCurrentLine(whitespaceOnlyRegExp);
+
+                    if (!commentOnOwnLine || lastAppendNewlineWasMultiple) {
+                        while (this._builder.lastTokenWasNewline)
+                            this._builder.removeLastNewline();
+                    }
+
+                    if (commentOnOwnLine) {
+                        if (currentSpecialSequence.startIndex > 0 && !this._builder.indented)
+                            this._builder.appendNewline();
+                    } else if (this._builder.currentLine.length && !this._builder.lastTokenWasWhitespace)
                         this._builder.appendSpace();
+
+                    if (this._builder.lastTokenWasNewline && lastSourceNewlineWasMultiple)
+                        this._builder.appendNewline(true);
                 }
 
-                if (indentAfter.has(c))
-                    this._builder.indent();
+                this._builder.appendStringWithPossibleNewlines(specialSequenceText, currentSpecialSequence.startIndex);
 
-                if (newlineAfter.has(c)) {
-                    if (c === `}`)
-                        this._builder.appendMultipleNewlines(2);
-                    else
-                        this._builder.appendNewline();
+                if (inComment) {
+                    if (commentOnOwnLine) {
+                        if (lastAppendNewlineWasMultiple && !lastSourceNewlineWasMultiple)
+                            this._builder.appendMultipleNewlines(2);
+                        else
+                            this._builder.appendNewline();
+                    } else if (!/\s/.test(current)) {
+                        if (!testCurrentLine(inAtRuleRegExp) && !inSelector() && !inProperty())
+                            this._builder.appendNewline();
+                        else
+                            this._builder.appendSpace();
+                    }
                 }
-            };
 
-            let specialSequenceEnd = null;
-            if (quoteTypes.has(c))
-                specialSequenceEnd = c;
-            else if (c === `/` && this._sourceText[i + 1] === `*`)
-                specialSequenceEnd = `*/`;
-            else if (c === `u` && this._sourceText[i + 1] === `r` && this._sourceText[i + 2] === `l` && this._sourceText[i + 3] === `(`)
-                specialSequenceEnd = `)`;
-
-            if (specialSequenceEnd) {
-                let endIndex = i;
-                do {
-                    endIndex = this._sourceText.indexOf(specialSequenceEnd, endIndex + specialSequenceEnd.length);
-                } while (endIndex !== -1 && this._sourceText[endIndex - 1] === `\\`);
-
-                if (endIndex === -1)
-                    endIndex = this._sourceText.length;
-
-                this._builder.appendToken(this._sourceText.substring(i, endIndex + specialSequenceEnd.length), i);
-                i = endIndex + specialSequenceEnd.length - 1; // Account for the iteration of the for loop.
-
-                c = this._sourceText[i];
                 formatAfter();
                 continue;
             }
 
-            if (/\s/.test(c)) {
-                if (c === `\n` && !this._builder.lastTokenWasNewline) {
-                    while (this._builder.lastTokenWasWhitespace)
-                        this._builder.removeLastWhitespace();
-                    if (!removeSpaceAfter.has(this._builder.lastToken))
-                        this._builder.appendNewline();
-                    else
-                        this._builder.appendSpace();
+            if (/\s/.test(current)) {
+                if (current === `\n`) {
+                    if (!this._builder.lastTokenWasNewline) {
+                        while (this._builder.lastTokenWasWhitespace)
+                            this._builder.removeLastWhitespace();
+                        if (!removeSpaceAfter.has(this._builder.lastToken))
+                            this._builder.appendNewline();
+                        else
+                            this._builder.appendSpace();
+                    }
                 } else if (!this._builder.lastTokenWasWhitespace && !removeSpaceAfter.has(this._builder.lastToken))
                     this._builder.appendSpace();
                 continue;
             }
 
-            if (c === `{`)
+            if (current === `{`)
                 ++depth;
-            else if (c === `}`)
+            else if (current === `}`)
                 --depth;
 
             formatBefore();
-            this._builder.appendToken(c, i);
+            this._builder.appendToken(current, index);
             formatAfter();
+        }
+
+        if (specialSequenceStack.length) {
+            let firstSpecialSequence = specialSequenceStack[0];
+            this._builder.appendStringWithPossibleNewlines(this._sourceText.substring(firstSpecialSequence.startIndex), firstSpecialSequence.startIndex);
         }
 
         this._builder.finish();

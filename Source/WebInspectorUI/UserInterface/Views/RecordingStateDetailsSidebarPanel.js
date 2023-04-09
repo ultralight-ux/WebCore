@@ -156,8 +156,7 @@ WI.RecordingStateDetailsSidebarPanel = class RecordingStateDetailsSidebarPanel e
                     }
                 } else if (name === "fillStyle" || name === "strokeStyle" || name === "shadowColor") {
                     let color = WI.Color.fromString(value);
-                    const readOnly = true;
-                    let swatch = new WI.InlineSwatch(WI.InlineSwatch.Type.Color, color, readOnly);
+                    let swatch = new WI.InlineSwatch(WI.InlineSwatch.Type.Color, color, {readOnly: true});
                     value = document.createElement("span");
                     value.append(swatch.element, color.toString());
                 }
@@ -168,8 +167,7 @@ WI.RecordingStateDetailsSidebarPanel = class RecordingStateDetailsSidebarPanel e
                 if (name.startsWith("webkit"))
                     classNames.push("non-standard");
 
-                const hasChildren = false;
-                dataGrid.appendChild(new WI.DataGridNode({name, value}, hasChildren, classNames));
+                dataGrid.appendChild(new WI.DataGridNode({name, value}, {classNames}));
             }
 
             dataGrid.updateLayoutIfNeeded();

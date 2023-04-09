@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 Metrological Group B.V.
+ * Copyright (C) 2020 Igalia S.L.
  * Author: Thibault Saunier <tsaunier@igalia.com>
  * Author: Alejandro G. Castro  <alex@igalia.com>
  *
@@ -21,28 +22,23 @@
 
 #include "config.h"
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER)
 #include "GStreamerVideoCaptureSource.h"
 
+#include "DisplayCaptureManager.h"
 #include "GStreamerCaptureDeviceManager.h"
-#include "MediaSampleGStreamer.h"
 
 #include <gst/app/gstappsink.h>
-#include <webrtc/api/media_stream_interface.h>
-#include <webrtc/api/peer_connection_interface.h>
-#include <webrtc/media/base/video_common.h>
-// #include <webrtc/media/engine/video_capturer.h>
-// #include <webrtc/media/engine/video_capturer_factory.h>
-#include <webrtc/modules/video_capture/video_capture_factory.h>
-#include <webrtc/modules/video_capture/video_capture_defines.h>
 
 namespace WebCore {
 
 GST_DEBUG_CATEGORY(webkit_video_capture_source_debug);
 #define GST_CAT_DEFAULT webkit_video_capture_source_debug
 
-static void initializeGStreamerDebug()
+static void initializeDebugCategory()
 {
+    ensureGStreamerInitialized();
+
     static std::once_flag debugRegisteredFlag;
     std::call_once(debugRegisteredFlag, [] {
         GST_DEBUG_CATEGORY_INIT(webkit_video_capture_source_debug, "webkitvideocapturesource", 0,
@@ -65,38 +61,26 @@ public:
 
 class GStreamerVideoCaptureSourceFactory final : public VideoCaptureFactory {
 public:
-    CaptureSourceOrError createVideoCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
+    CaptureSourceOrError createVideoCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier) final
     {
-        return GStreamerVideoCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalt), constraints);
+        return GStreamerVideoCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalts), constraints);
     }
 private:
     CaptureDeviceManager& videoCaptureDeviceManager() final { return GStreamerVideoCaptureDeviceManager::singleton(); }
 };
 
-VideoCaptureFactory& libWebRTCVideoCaptureSourceFactory()
-{
-    static NeverDestroyed<GStreamerVideoCaptureSourceFactory> factory;
-    return factory.get();
-}
-
 class GStreamerDisplayCaptureSourceFactory final : public DisplayCaptureFactory {
 public:
-    CaptureSourceOrError createDisplayCaptureSource(const CaptureDevice&, const MediaConstraints*) final
+    CaptureSourceOrError createDisplayCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier) final
     {
-        // FIXME: Implement this.
-        return { };
+        auto& manager = GStreamerDisplayCaptureDeviceManager::singleton();
+        return manager.createDisplayCaptureSource(device, WTFMove(hashSalts), constraints);
     }
 private:
-    CaptureDeviceManager& displayCaptureDeviceManager() final { return GStreamerDisplayCaptureDeviceManager::singleton(); }
+    DisplayCaptureManager& displayCaptureDeviceManager() final { return GStreamerDisplayCaptureDeviceManager::singleton(); }
 };
 
-DisplayCaptureFactory& libWebRTCDisplayCaptureSourceFactory()
-{
-    static NeverDestroyed<GStreamerDisplayCaptureSourceFactory> factory;
-    return factory.get();
-}
-
-CaptureSourceOrError GStreamerVideoCaptureSource::create(String&& deviceID, String&& hashSalt, const MediaConstraints* constraints)
+CaptureSourceOrError GStreamerVideoCaptureSource::create(String&& deviceID, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints)
 {
     auto device = GStreamerVideoCaptureDeviceManager::singleton().gstreamerDeviceWithUID(deviceID);
     if (!device) {
@@ -104,8 +88,17 @@ CaptureSourceOrError GStreamerVideoCaptureSource::create(String&& deviceID, Stri
         return CaptureSourceOrError(WTFMove(errorMessage));
     }
 
-    auto source = adoptRef(*new GStreamerVideoCaptureSource(device.value(), WTFMove(hashSalt)));
+    auto source = adoptRef(*new GStreamerVideoCaptureSource(device.value(), WTFMove(hashSalts)));
+    if (constraints) {
+        if (auto result = source->applyConstraints(*constraints))
+            return WTFMove(result->badConstraint);
+    }
+    return CaptureSourceOrError(WTFMove(source));
+}
 
+CaptureSourceOrError GStreamerVideoCaptureSource::createPipewireSource(String&& deviceID, const NodeAndFD& nodeAndFd, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, CaptureDevice::DeviceType deviceType)
+{
+    auto source = adoptRef(*new GStreamerVideoCaptureSource(WTFMove(deviceID), { }, WTFMove(hashSalts), "pipewiresrc", deviceType, nodeAndFd));
     if (constraints) {
         if (auto result = source->applyConstraints(*constraints))
             return WTFMove(result->badConstraint);
@@ -115,64 +108,111 @@ CaptureSourceOrError GStreamerVideoCaptureSource::create(String&& deviceID, Stri
 
 VideoCaptureFactory& GStreamerVideoCaptureSource::factory()
 {
-    return libWebRTCVideoCaptureSourceFactory();
+    static NeverDestroyed<GStreamerVideoCaptureSourceFactory> factory;
+    return factory.get();
 }
 
 DisplayCaptureFactory& GStreamerVideoCaptureSource::displayFactory()
 {
-    return libWebRTCDisplayCaptureSourceFactory();
+    static NeverDestroyed<GStreamerDisplayCaptureSourceFactory> factory;
+    return factory.get();
 }
 
-GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(String&& deviceID, String&& name, String&& hashSalt, const gchar *source_factory)
-    : RealtimeVideoCaptureSource(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
-    , m_capturer(makeUnique<GStreamerVideoCapturer>(source_factory))
+GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(String&& deviceID, AtomString&& name, MediaDeviceHashSalts&& hashSalts, const gchar* sourceFactory, CaptureDevice::DeviceType deviceType, const NodeAndFD& nodeAndFd)
+    : RealtimeVideoCaptureSource(CaptureDevice { WTFMove(deviceID), CaptureDevice::DeviceType::Camera, WTFMove(name) }, WTFMove(hashSalts), { })
+    , m_capturer(makeUnique<GStreamerVideoCapturer>(sourceFactory, deviceType))
+    , m_deviceType(deviceType)
 {
-    initializeGStreamerDebug();
+    initializeDebugCategory();
+    m_capturer->setPipewireNodeAndFD(nodeAndFd);
+    m_capturer->addObserver(*this);
 }
 
-GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(GStreamerCaptureDevice device, String&& hashSalt)
-    : RealtimeVideoCaptureSource(String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt))
+GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(GStreamerCaptureDevice device, MediaDeviceHashSalts&& hashSalts)
+    : RealtimeVideoCaptureSource(device, WTFMove(hashSalts), { })
     , m_capturer(makeUnique<GStreamerVideoCapturer>(device))
+    , m_deviceType(CaptureDevice::DeviceType::Camera)
 {
-    initializeGStreamerDebug();
+    initializeDebugCategory();
+    m_capturer->addObserver(*this);
 }
 
 GStreamerVideoCaptureSource::~GStreamerVideoCaptureSource()
 {
+    m_capturer->removeObserver(*this);
+    if (!m_capturer->pipeline())
+        return;
+    g_signal_handlers_disconnect_by_func(m_capturer->sink(), reinterpret_cast<gpointer>(newSampleCallback), this);
+    m_capturer->stop();
+
+    if (m_capturer->isCapturingDisplay()) {
+        auto& manager = GStreamerDisplayCaptureDeviceManager::singleton();
+        manager.stopSource(persistentID());
+    }
 }
 
 void GStreamerVideoCaptureSource::settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag> settings)
 {
-    if (settings.containsAny({ RealtimeMediaSourceSettings::Flag::Width, RealtimeMediaSourceSettings::Flag::Height }))
-        m_capturer->setSize(size().width(), size().height());
+    bool reconfigure = false;
+    if (settings.containsAny({ RealtimeMediaSourceSettings::Flag::Width, RealtimeMediaSourceSettings::Flag::Height })) {
+        if (m_deviceType == CaptureDevice::DeviceType::Window || m_deviceType == CaptureDevice::DeviceType::Screen)
+            ensureIntrinsicSizeMaintainsAspectRatio();
+
+        if (m_capturer->setSize(size().width(), size().height()))
+            reconfigure = true;
+    }
+
     if (settings.contains(RealtimeMediaSourceSettings::Flag::FrameRate))
-        m_capturer->setFrameRate(frameRate());
+        if (m_capturer->setFrameRate(frameRate()))
+            reconfigure = true;
+
+    if (reconfigure)
+        m_capturer->reconfigure();
+}
+
+void GStreamerVideoCaptureSource::sourceCapsChanged(const GstCaps* caps)
+{
+    auto videoResolution = getVideoResolutionFromCaps(caps);
+    if (!videoResolution)
+        return;
+
+    setIntrinsicSize(IntSize(*videoResolution), false);
+    if (m_deviceType == CaptureDevice::DeviceType::Screen)
+        ensureIntrinsicSizeMaintainsAspectRatio();
 }
 
 void GStreamerVideoCaptureSource::startProducingData()
 {
+    if (m_capturer->pipeline())
+        return;
+
     m_capturer->setupPipeline();
-    m_capturer->setSize(size().width(), size().height());
+
+    if (m_deviceType == CaptureDevice::DeviceType::Camera)
+        m_capturer->setSize(size().width(), size().height());
+
     m_capturer->setFrameRate(frameRate());
+    m_capturer->reconfigure();
     g_signal_connect(m_capturer->sink(), "new-sample", G_CALLBACK(newSampleCallback), this);
     m_capturer->play();
 }
 
-void GStreamerVideoCaptureSource::processNewFrame(Ref<MediaSample>&& sample)
+void GStreamerVideoCaptureSource::processNewFrame(Ref<VideoFrameGStreamer>&& videoFrame)
 {
     if (!isProducingData() || muted())
         return;
 
-    dispatchMediaSampleToObservers(WTFMove(sample));
+    dispatchVideoFrameToObservers(WTFMove(videoFrame), { });
 }
 
 GstFlowReturn GStreamerVideoCaptureSource::newSampleCallback(GstElement* sink, GStreamerVideoCaptureSource* source)
 {
     auto gstSample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
-    auto mediaSample = MediaSampleGStreamer::create(WTFMove(gstSample), WebCore::FloatSize(), String());
+    auto presentationTime = fromGstClockTime(GST_BUFFER_PTS(gst_sample_get_buffer(gstSample.get())));
+    auto videoFrame = VideoFrameGStreamer::create(WTFMove(gstSample), WebCore::FloatSize(), presentationTime);
 
-    source->scheduleDeferredTask([source, sample = WTFMove(mediaSample)] () mutable {
-        source->processNewFrame(WTFMove(sample));
+    source->scheduleDeferredTask([source, videoFrame = WTFMove(videoFrame)] () mutable {
+        source->processNewFrame(WTFMove(videoFrame));
     });
 
     return GST_FLOW_OK;
@@ -180,11 +220,9 @@ GstFlowReturn GStreamerVideoCaptureSource::newSampleCallback(GstElement* sink, G
 
 void GStreamerVideoCaptureSource::stopProducingData()
 {
-    g_signal_handlers_disconnect_by_func(m_capturer->sink(), reinterpret_cast<gpointer>(newSampleCallback), this);
-    m_capturer->stop();
-
     GST_INFO("Reset height and width after stopping source");
     setSize({ 0, 0 });
+    m_capturer->stop();
 }
 
 const RealtimeMediaSourceCapabilities& GStreamerVideoCaptureSource::capabilities()
@@ -233,10 +271,6 @@ void GStreamerVideoCaptureSource::generatePresets()
     GRefPtr<GstCaps> caps = adoptGRef(m_capturer->caps());
     for (unsigned i = 0; i < gst_caps_get_size(caps.get()); i++) {
         GstStructure* str = gst_caps_get_structure(caps.get(), i);
-
-        // Only accept raw video for now.
-        if (!gst_structure_has_name(str, "video/x-raw"))
-            continue;
 
         int32_t width, height;
         if (!gst_structure_get(str, "width", G_TYPE_INT, &width, "height", G_TYPE_INT, &height, nullptr)) {
@@ -292,4 +326,4 @@ void GStreamerVideoCaptureSource::generatePresets()
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC)
+#endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER)

@@ -59,13 +59,15 @@ public:
     // https://bugs.webkit.org/show_bug.cgi?id=78617.
     virtual RenderMathMLOperator* unembellishedOperator() const { return 0; }
 
-    int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
+    LayoutUnit baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
 
 #if ENABLE(DEBUG_MATH_LAYOUT)
     virtual void paint(PaintInfo&, const LayoutPoint&);
 #endif
 
 protected:
+    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
+
     LayoutUnit ruleThicknessFallback() const
     {
         // This function returns a value for the default rule thickness (TeX's \xi_8) to be used as a fallback when we lack a MATH table.
@@ -80,7 +82,7 @@ protected:
 
     static LayoutUnit ascentForChild(const RenderBox& child)
     {
-        return child.firstLineBaseline().valueOr(child.logicalHeight());
+        return child.firstLineBaseline().value_or(child.logicalHeight().toInt());
     }
 
     void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0_lu) override;
@@ -88,7 +90,7 @@ protected:
 
 private:
     bool isRenderMathMLBlock() const final { return true; }
-    const char* renderName() const override { return "RenderMathMLBlock"; }
+    ASCIILiteral renderName() const override { return "RenderMathMLBlock"_s; }
     bool avoidsFloats() const final { return true; }
     bool canDropAnonymousBlockChild() const final { return false; }
     void layoutItems(bool relayoutChildren);
@@ -110,8 +112,8 @@ public:
 
 private:
     bool isRenderMathMLTable() const final { return true; }
-    const char* renderName() const final { return "RenderMathMLTable"; }
-    Optional<int> firstLineBaseline() const final;
+    ASCIILiteral renderName() const final { return "RenderMathMLTable"_s; }
+    std::optional<LayoutUnit> firstLineBaseline() const final;
 
     Ref<MathMLStyle> m_mathMLStyle;
 };

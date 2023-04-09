@@ -25,22 +25,29 @@
 
 WI.CallFrameTreeElement = class CallFrameTreeElement extends WI.GeneralTreeElement
 {
-    constructor(callFrame, isAsyncBoundaryCallFrame)
+    constructor(callFrame, {isAsyncBoundaryCallFrame, isTruncatedBoundaryCallFrame} = {})
     {
         console.assert(callFrame instanceof WI.CallFrame);
 
         let className = WI.CallFrameView.iconClassNameForCallFrame(callFrame);
-        let title = callFrame.functionName || WI.UIString("(anonymous function)");
+        let title = callFrame.displayName;
         const subtitle = null;
         super(["call-frame", className], title, subtitle, callFrame);
 
         this._callFrame = callFrame;
         this._isActiveCallFrame = false;
 
-         if (isAsyncBoundaryCallFrame) {
+        this._isAsyncBoundaryCallFrame = isAsyncBoundaryCallFrame || false;
+         if (this._isAsyncBoundaryCallFrame) {
             this.addClassName("async-boundary");
             this.selectable = false;
          }
+
+        this._isTruncatedBoundaryCallFrame = !!isTruncatedBoundaryCallFrame;
+        if (this._isTruncatedBoundaryCallFrame) {
+            this.addClassName("truncated-boundary");
+            this.selectable = false;
+        }
 
         if (this._callFrame.nativeCode || !this._callFrame.sourceCodeLocation) {
             this.subtitle = "";
@@ -55,12 +62,22 @@ WI.CallFrameTreeElement = class CallFrameTreeElement extends WI.GeneralTreeEleme
             // Set the tooltip on the entire tree element in onattach, once the element is created.
             this.tooltipHandledSeparately = true;
         }
+
+        if (this._callFrame.blackboxed) {
+            this.addClassName("blackboxed");
+            this.tooltipHandledSeparately = true;
+        }
     }
 
     // Public
 
     get callFrame() { return this._callFrame; }
-    get isActiveCallFrame() { return this._isActiveCallFrame; }
+    get isAsyncBoundaryCallFrame() { return this._isAsyncBoundaryCallFrame; }
+
+    get isActiveCallFrame()
+    {
+        return this._isActiveCallFrame;
+    }
 
     set isActiveCallFrame(x)
     {
@@ -84,10 +101,23 @@ WI.CallFrameTreeElement = class CallFrameTreeElement extends WI.GeneralTreeEleme
             if (this._callFrame.isTailDeleted)
                 tailCallSuffix = " " + WI.UIString("(Tail Call)");
             let tooltipPrefix = this.mainTitle + tailCallSuffix + "\n";
-            this._callFrame.sourceCodeLocation.populateLiveDisplayLocationTooltip(this.element, tooltipPrefix);
+
+            let tooltipSuffix = "";
+            if (this._callFrame.blackboxed)
+                tooltipSuffix += "\n\n" + WI.UIString("Script ignored due to blackbox");
+
+            this._callFrame.sourceCodeLocation.populateLiveDisplayLocationTooltip(this.element, tooltipPrefix, tooltipSuffix);
         }
 
         this._updateStatus();
+    }
+
+    populateContextMenu(contextMenu, event)
+    {
+        if (this._callFrame.sourceCodeLocation)
+            WI.appendContextMenuItemsForSourceCode(contextMenu, this._callFrame.sourceCodeLocation);
+
+        super.populateContextMenu(contextMenu, event);
     }
 
     // Private

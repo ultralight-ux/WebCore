@@ -31,6 +31,8 @@
 #include "config.h"
 
 #include "RenderRubyBase.h"
+
+#include "RenderChildIterator.h"
 #include "RenderRubyRun.h"
 #include "RenderRubyText.h"
 #include <wtf/IsoMallocInlines.h>
@@ -60,20 +62,20 @@ RenderRubyRun* RenderRubyBase::rubyRun() const
     return downcast<RenderRubyRun>(parent());
 }
 
-Optional<TextAlignMode> RenderRubyBase::overrideTextAlignmentForLine(bool /* endsWithSoftBreak */) const
+std::optional<TextAlignMode> RenderRubyBase::overrideTextAlignmentForLine(bool /* endsWithSoftBreak */) const
 {
     return TextAlignMode::Justify;
 }
 
 void RenderRubyBase::adjustInlineDirectionLineBounds(int expansionOpportunityCount, float& logicalLeft, float& logicalWidth) const
 {
-    if (rubyRun()->hasOverrideContentLogicalWidth() && firstRootBox() && !firstRootBox()->nextRootBox()) {
+    if (rubyRun()->hasOverridingLogicalWidth() && firstRootBox() && !firstRootBox()->nextRootBox()) {
         logicalLeft += m_initialOffset;
         logicalWidth -= 2 * m_initialOffset;
         return;
     }
 
-    LayoutUnit maxPreferredLogicalWidth = rubyRun() && rubyRun()->hasOverrideContentLogicalWidth() ? rubyRun()->overrideContentLogicalWidth() : this->maxPreferredLogicalWidth();
+    LayoutUnit maxPreferredLogicalWidth = rubyRun() && rubyRun()->hasOverridingLogicalWidth() ? rubyRun()->overridingLogicalWidth() : this->maxPreferredLogicalWidth();
     if (maxPreferredLogicalWidth >= logicalWidth)
         return;
 
@@ -89,6 +91,22 @@ void RenderRubyBase::cachePriorCharactersIfNeeded(const LazyLineBreakIterator& l
     auto* run = rubyRun();
     if (run)
         run->setCachedPriorCharacters(lineBreakIterator.lastCharacter(), lineBreakIterator.secondToLastCharacter());
+}
+
+bool RenderRubyBase::isEmptyOrHasInFlowContent() const
+{
+    auto* firstChild = this->firstChild();
+    if (!firstChild || !is<RenderElement>(*firstChild))
+        return true;
+
+    if (firstChild->isOutOfFlowPositioned())
+        return false;
+
+    for (auto& child : childrenOfType<RenderObject>(*downcast<RenderElement>(firstChild))) {
+        if (!child.isOutOfFlowPositioned())
+            return true;
+    }
+    return false;
 }
 
 } // namespace WebCore

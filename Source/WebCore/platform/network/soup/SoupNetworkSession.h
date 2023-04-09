@@ -23,28 +23,29 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef SoupNetworkSession_h
-#define SoupNetworkSession_h
+#pragma once
 
+#include "SoupNetworkProxySettings.h"
 #include <gio/gio.h>
 #include <glib-object.h>
 #include <pal/SessionID.h>
 #include <wtf/Function.h>
+#include <wtf/HashMap.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/glib/GRefPtr.h>
+#include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
 typedef struct _SoupCache SoupCache;
 typedef struct _SoupCookieJar SoupCookieJar;
 typedef struct _SoupMessage SoupMessage;
-typedef struct _SoupRequest SoupRequest;
 typedef struct _SoupSession SoupSession;
 
 namespace WebCore {
 
 class CertificateInfo;
+class HostTLSCertificateSet;
 class ResourceError;
-struct SoupNetworkProxySettings;
 
 class SoupNetworkSession {
     WTF_MAKE_NONCOPYABLE(SoupNetworkSession); WTF_MAKE_FAST_ALLOCATED;
@@ -57,20 +58,18 @@ public:
     void setCookieJar(SoupCookieJar*);
     SoupCookieJar* cookieJar() const;
 
-    static void setHSTSPersistentStorage(const CString& hstsStorageDirectory);
-    void setupHSTSEnforcer();
+    void setHSTSPersistentStorage(const String& hstsStorageDirectory);
 
     static void clearOldSoupCache(const String& cacheDirectory);
 
-    static void setProxySettings(const SoupNetworkProxySettings&);
-    void setupProxy();
+    void setProxySettings(const SoupNetworkProxySettings&);
 
     static void setInitialAcceptLanguages(const CString&);
     void setAcceptLanguages(const CString&);
 
-    WEBCORE_EXPORT static void setShouldIgnoreTLSErrors(bool);
-    static Optional<ResourceError> checkTLSErrors(const URL&, GTlsCertificate*, GTlsCertificateFlags);
-    static void allowSpecificHTTPSCertificateForHost(const CertificateInfo&, const String& host);
+    WEBCORE_EXPORT void setIgnoreTLSErrors(bool);
+    std::optional<ResourceError> checkTLSErrors(const URL&, GTlsCertificate*, GTlsCertificateFlags);
+    void allowSpecificHTTPSCertificateForHost(const CertificateInfo&, const String& host);
 
     void getHostNamesWithHSTSCache(HashSet<String>&);
     void deleteHSTSCacheForHostNames(const Vector<String>&);
@@ -81,8 +80,9 @@ private:
 
     GRefPtr<SoupSession> m_soupSession;
     PAL::SessionID m_sessionID;
+    bool m_ignoreTLSErrors { false };
+    SoupNetworkProxySettings m_proxySettings;
+    HashMap<String, HostTLSCertificateSet, ASCIICaseInsensitiveHash> m_allowedCertificates;
 };
 
 } // namespace WebCore
-
-#endif

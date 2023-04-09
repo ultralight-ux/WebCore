@@ -23,24 +23,39 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.BreakpointAction = class BreakpointAction
+WI.BreakpointAction = class BreakpointAction extends WI.Object
 {
-    constructor(breakpoint, type, data)
+    constructor(type, {data, emulateUserGesture} = {})
     {
-        console.assert(breakpoint instanceof WI.Breakpoint);
-        console.assert(Object.values(WI.BreakpointAction.Type).includes(type));
+        console.assert(Object.values(WI.BreakpointAction.Type).includes(type), type);
+        console.assert(!data || typeof data === "string", data);
 
-        this._breakpoint = breakpoint;
+        super();
+
         this._type = type;
         this._data = data || null;
         this._id = WI.debuggerManager.nextBreakpointActionIdentifier();
+        this._emulateUserGesture = !!emulateUserGesture;
+    }
+
+    // Static
+
+    static supportsEmulateUserAction()
+    {
+        // COMPATIBILITY (iOS 14): the `emulateUserGesture` property of `Debugger.BreakpointAction` did not exist yet.
+        // Since support can't be tested directly, check for the `options` parameter of `Debugger.setPauseOnExceptions`.
+        // FIXME: Use explicit version checking once <https://webkit.org/b/148680> is fixed.
+        return WI.sharedApp.isWebDebuggable() && InspectorBackend.hasCommand("Debugger.setPauseOnExceptions", "options");
     }
 
     // Import / Export
 
-    static fromJSON(json, breakpoint)
+    static fromJSON(json)
     {
-        return new BreakpointAction(breakpoint, json.type, json.data);
+        return new WI.BreakpointAction(json.type, {
+            data: json.data,
+            emulateUserGesture: json.emulateUserGesture,
+        });
     }
 
     toJSON()
@@ -50,14 +65,31 @@ WI.BreakpointAction = class BreakpointAction
         };
         if (this._data)
             json.data = this._data;
+        if (this._emulateUserGesture)
+            json.emulateUserGesture = this._emulateUserGesture;
         return json;
     }
 
     // Public
 
-    get breakpoint() { return this._breakpoint; }
     get id() { return this._id; }
-    get type() { return this._type; }
+
+    get type()
+    {
+        return this._type;
+    }
+
+    set type(type)
+    {
+        console.assert(Object.values(WI.BreakpointAction.Type).includes(type), type);
+
+        if (type === this._type)
+            return;
+
+        this._type = type;
+
+        this.dispatchEventToListeners(WI.BreakpointAction.Event.Modified);
+    }
 
     get data()
     {
@@ -66,12 +98,29 @@ WI.BreakpointAction = class BreakpointAction
 
     set data(data)
     {
+        console.assert(!data || typeof data === "string", data);
+
         if (this._data === data)
             return;
 
         this._data = data;
 
-        this._breakpoint.breakpointActionDidChange(this);
+        this.dispatchEventToListeners(WI.BreakpointAction.Event.Modified);
+    }
+
+    get emulateUserGesture()
+    {
+        return this._emulateUserGesture;
+    }
+
+    set emulateUserGesture(emulateUserGesture)
+    {
+        if (this._emulateUserGesture === emulateUserGesture)
+            return;
+
+        this._emulateUserGesture = emulateUserGesture;
+
+        this.dispatchEventToListeners(WI.BreakpointAction.Event.Modified);
     }
 
     toProtocol()
@@ -87,4 +136,8 @@ WI.BreakpointAction.Type = {
     Evaluate: "evaluate",
     Sound: "sound",
     Probe: "probe"
+};
+
+WI.BreakpointAction.Event = {
+    Modified: "breakpoint-action-modified",
 };

@@ -33,21 +33,20 @@ class PlaybackSessionInterfaceAVKit;
 }
 
 @interface WebAVMediaSelectionOption : NSObject
-@property (retain) NSString *localizedDisplayName;
+- (instancetype)initWithMediaType:(AVMediaType)type displayName:(NSString *)displayName;
+
+@property (nonatomic, readonly) NSString *localizedDisplayName;
+@property (nonatomic, readonly) AVMediaType mediaType;
+
 @end
 
-WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
-    WebAVMediaSelectionOption *_currentAudioMediaSelectionOption;
-    WebAVMediaSelectionOption *_currentLegibleMediaSelectionOption;
-    BOOL _pictureInPictureInterrupted;
-    BOOL _muted;
-}
+@interface WebAVPlayerController : NSObject
 
 - (void)setAllowsPictureInPicture:(BOOL)allowsPictureInPicture;
 
-@property (retain) AVPlayerController* playerControllerProxy;
-@property (assign) WebCore::PlaybackSessionModel* delegate;
-@property (assign) WebCore::PlaybackSessionInterfaceAVKit* playbackSessionInterface;
+@property (retain) AVPlayerController *playerControllerProxy;
+@property (assign /*weak*/) WebCore::PlaybackSessionModel* delegate;
+@property (assign /*weak*/) WebCore::PlaybackSessionInterfaceAVKit* playbackSessionInterface;
 
 @property (readonly) BOOL canScanForward;
 @property BOOL canScanBackward;
@@ -57,11 +56,14 @@ WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
 @property (readonly) BOOL canSeekFrameBackward;
 @property (readonly) BOOL canSeekFrameForward;
 @property (readonly) BOOL hasContentChapters;
+@property (readonly) BOOL isSeeking;
+@property (readonly) NSTimeInterval seekToTime;
 
 @property BOOL canPlay;
 @property (getter=isPlaying) BOOL playing;
 @property BOOL canPause;
 @property BOOL canTogglePlayback;
+@property double defaultPlaybackRate;
 @property double rate;
 @property BOOL canSeek;
 @property NSTimeInterval contentDuration;
@@ -102,6 +104,13 @@ WEBCORE_EXPORT @interface WebAVPlayerController : NSObject {
 
 @property (NS_NONATOMIC_IOSONLY, retain, readwrite) AVValueTiming *minTiming;
 @property (NS_NONATOMIC_IOSONLY, retain, readwrite) AVValueTiming *maxTiming;
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate fromJavaScript:(BOOL)fromJavaScript;
+- (void)setRate:(double)rate fromJavaScript:(BOOL)fromJavaScript;
+
 @end
+
+Class webAVPlayerControllerClass();
+RetainPtr<WebAVPlayerController> createWebAVPlayerController();
 
 #endif
