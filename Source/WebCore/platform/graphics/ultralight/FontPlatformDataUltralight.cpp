@@ -125,7 +125,7 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
 #ifndef NDEBUG
 String FontPlatformData::description() const
 {
-  return String("FontPlatformDataUltralight");
+  return String("FontPlatformDataUltralight"_s);
 }
 #endif
 
