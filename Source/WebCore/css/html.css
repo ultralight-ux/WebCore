@@ -835,7 +835,7 @@ input:-webkit-autofill, input:-webkit-autofill-strong-password, input:-webkit-au
 input:is([type="radio"], [type="checkbox"]) {
     margin: 3px 2px;
 #if defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY
-    border: initial;
+    border: 1px solid #4c4c4c;
     box-sizing: border-box;
 #else
     padding: initial;
@@ -858,8 +858,8 @@ input:is([type="button"], [type="submit"], [type="reset"]), input[type="file"]::
     align-items: flex-start;
     text-align: center;
     cursor: default;
-#if !(defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY)
     color: ButtonText;
+#if !(defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY)
     padding: 2px 6px 3px 6px;
     border: 2px outset ButtonFace;
     background-color: ButtonFace;
@@ -875,24 +875,8 @@ input:is([type="button"], [type="submit"], [type="reset"]), input[type="file"]::
 }
 
 input:is([type="button"], [type="submit"], [type="reset"]):active, input[type="file"]::file-selector-button:active, button:active {
-#if !(defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY)
     color: ActiveButtonText;
-#else
-    color: -apple-system-blue;
-#endif
 }
-
-#if defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY
-
-input[type="submit"], input[type="submit"]:active,
-button[type="submit"], button[type="submit"]:active,
-button[type="menu"], button[type="menu"]:active {
-    background-color: -apple-system-blue;
-    color: white;
-    font-weight: bold;
-}
-
-#endif
 
 input[type="range"] {
     padding: initial;
@@ -945,8 +929,6 @@ input[readonly], textarea[readonly] {
 }
 #endif
 
-#if !(defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY)
-
 input:is([type="button"], [type="submit"], [type="reset"]):disabled,
 input[type="file"]:disabled::file-selector-button, button:disabled,
 select:disabled, optgroup:disabled, option:disabled,
@@ -954,6 +936,7 @@ select[disabled]>option {
     color: GrayText;
 }
 
+#if !(defined(WTF_PLATFORM_IOS_FAMILY) && WTF_PLATFORM_IOS_FAMILY)
 input:is([type="button"], [type="submit"], [type="reset"]):active, input[type="file"]:active::file-selector-button, button:active {
     border-style: inset;
 }
@@ -961,22 +944,6 @@ input:is([type="button"], [type="submit"], [type="reset"]):active, input[type="f
 input:is([type="button"], [type="submit"], [type="reset"]):active:disabled,
 input[type="file"]:active:disabled::file-selector-button, button:active:disabled {
     border-style: outset;
-}
-
-#else
-
-input[type="file"]:disabled {
-    color: rgba(60, 60, 67, 0.3);
-    opacity: initial;
-}
-
-input:is([type="button"], [type="submit"], [type="reset"]):disabled,
-input[type="file"]:disabled::file-selector-button,
-button:disabled,
-select:disabled {
-    background-color: -apple-system-opaque-secondary-fill-disabled;
-    color: -apple-system-tertiary-label;
-    opacity: initial;
 }
 
 #endif

@@ -117,13 +117,6 @@ public:
         else
             context.clip(border.rect());
 
-        if (isChecked(box)) {
-            ASSERT(style.visitedDependentColor(CSSPropertyBorderTopColor).alpha() % 255 == 0);
-            ASSERT(style.visitedDependentColor(CSSPropertyBorderRightColor).alpha() % 255 == 0);
-            ASSERT(style.visitedDependentColor(CSSPropertyBorderBottomColor).alpha() % 255 == 0);
-            ASSERT(style.visitedDependentColor(CSSPropertyBorderLeftColor).alpha() % 255 == 0);
-        }
-
         return border.rect();
     }
 

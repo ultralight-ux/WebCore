@@ -917,7 +917,12 @@ bool RenderTheme::paintBorderOnly(const RenderBox& box, const PaintInfo& paintIn
         break;
     }
 
+#if USE(ULTRALIGHT)
+    // We want CSS borders to always paint for native controls since we style them in UA stylesheet.
+    return true;
+#else
     return false;
+#endif
 #endif
 }
 
