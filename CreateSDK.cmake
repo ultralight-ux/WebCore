@@ -34,6 +34,10 @@ INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/MIMETypeRegistry.h"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/")
 INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/FileChooser.h"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/SharedTimer.h"
+        DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/MainThreadSharedTimer.h"
+        DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/SQLite"
         DESTINATION "DerivedSources/ForwardingHeaders" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/storage"
