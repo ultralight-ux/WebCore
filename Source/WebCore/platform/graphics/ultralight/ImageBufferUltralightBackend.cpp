@@ -73,6 +73,15 @@ ImageBufferUltralightBackend::ImageBufferUltralightBackend(const Parameters& par
 {
 }
 
+ImageBufferUltralightBackend::~ImageBufferUltralightBackend() {
+    m_context = nullptr;
+    m_bitmap = nullptr;
+    if (m_surface) {
+        auto bitmapSurfaceFactory = ultralight::GetBitmapSurfaceFactory();
+        bitmapSurfaceFactory->DestroySurface(m_surface.release());
+    }
+}
+
 GraphicsContext& ImageBufferUltralightBackend::context() const
 {
     return *m_context;
@@ -81,6 +90,11 @@ GraphicsContext& ImageBufferUltralightBackend::context() const
 void ImageBufferUltralightBackend::flushContext()
 {
     // not implemented
+}
+
+IntSize ImageBufferUltralightBackend::backendSize() const
+{
+    return IntSize(m_bitmap->width(), m_bitmap->height());
 }
 
 RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
@@ -97,107 +111,10 @@ RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCo
     return nullptr;
 }
 
-/*
-static RefPtr<NativeImage> createCroppedImageIfNecessary(RefPtr<NativeImage> image, const IntSize& backendSize)
+void ImageBufferUltralightBackend::clipToMask(GraphicsContext& context, const FloatRect& dest)
 {
-    if (image && (image->platformImage()->bitmap()->width() != static_cast<uint32_t>(backendSize.width()) || image->bitmap()->height() != static_cast<uint32_t>(backendSize.height()))) {
-        auto croppedBitmap = ultralight::Bitmap::Create(backendSize.width(), backendSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB);
-        ultralight::IntRect srcRect = { 0, 0, (int)image->bitmap()->width(), (int)image->bitmap()->height() };
-        ultralight::IntRect dstRect = { 0, 0, backendSize.width(), backendSize.height() };
-        if (!croppedBitmap->DrawBitmap(srcRect, dstRect, image->bitmap(), false))
-            return nullptr;
-
-        return NativeImage::create(ultralight::Image::Create(croppedBitmap, true));
-    }
-
-    return image;
+    static_cast<GraphicsContextUltralight&>(context).platformContext()->SetClip(copyNativeImage(DontCopyBackingStore)->platformImage(), dest);
 }
-
-static RefPtr<Image> createBitmapImageAfterScalingIfNeeded(NativeImagePtr&& image, const IntSize& logicalSize, const IntSize& backendSize, float resolutionScale, PreserveResolution preserveResolution)
-{
-    if (resolutionScale == 1 || preserveResolution == PreserveResolution::Yes)
-        image = createCroppedImageIfNecessary(image.get(), backendSize);
-    else {
-        // FIXME: Need to implement scaled version
-        notImplemented();
-    }
-
-    if (!image)
-        return nullptr;
-
-    return BitmapImage::create(WTFMove(image));
-}
-*/
-
-/*
-RefPtr<Image> ImageBufferUltralightBackend::copyImage(BackingStoreCopy copyBehavior, PreserveResolution preserveResolution) const
-{
-    NativeImagePtr image;
-    if (m_resolutionScale == 1 || preserveResolution == PreserveResolution::Yes)
-        image = copyNativeImage(copyBehavior);
-    else
-        image = copyNativeImage(DontCopyBackingStore);
-    return createBitmapImageAfterScalingIfNeeded(WTFMove(image), m_logicalSize, m_backendSize, m_resolutionScale, preserveResolution);
-}
-*/
-
-/*
-void ImageBufferUltralightBackend::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
-{
-    FloatRect srcRectScaled = srcRect;
-    srcRectScaled.scale(m_resolutionScale);
-
-    if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        destContext.drawNativeImage(image.get(), m_backendSize, destRect, srcRectScaled, options);
-}
-
-void ImageBufferUltralightBackend::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
-{
-    FloatRect adjustedSrcRect = srcRect;
-    adjustedSrcRect.scale(m_resolutionScale);
-
-    if (auto image = copyImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore, PreserveResolution::No))
-        image->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
-}
-*/
-
-/*
-RefPtr<Image> ImageBufferUltralightBackend::sinkIntoImage(PreserveResolution preserveResolution)
-{
-    return createBitmapImageAfterScalingIfNeeded(sinkIntoNativeImage(), m_logicalSize, m_backendSize, m_resolutionScale, preserveResolution);
-}
-*/
-
-/*
-String ImageBufferUltralightBackend::toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const
-{
-    notImplemented();
-    return "data:,"_s;
-}
-
-Vector<uint8_t> ImageBufferUltralightBackend::toData(const String& mimeType, Optional<double> quality) const
-{
-    notImplemented();
-    return {};
-}
-
-Vector<uint8_t> ImageBufferUltralightBackend::toBGRAData() const
-{
-    notImplemented();
-    return {};
-}
-
-RefPtr<ImageData> ImageBufferUltralightBackend::getImageData(AlphaPremultiplication outputFormat, const IntRect& srcRect) const
-{
-    return ImageBufferBackend::getImageData(outputFormat, srcRect, m_bitmap->raw_pixels());
-}
-
-void ImageBufferUltralightBackend::putImageData(AlphaPremultiplication inputFormat, const ImageData& imageData, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
-{
-    ImageBufferBackend::putImageData(inputFormat, imageData, srcRect, destPoint, destFormat, m_bitmap->raw_pixels());
-    m_surface->set_dirty_bounds({ 0, 0, (int)m_surface->width(), (int)m_surface->height() });
-}
-*/
 
 RefPtr<PixelBuffer> ImageBufferUltralightBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator & allocator) const
 {
