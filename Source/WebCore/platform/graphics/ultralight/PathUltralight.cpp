@@ -460,7 +460,7 @@ FloatRect Path::fastBoundingRectSlowCase() const { return boundingRectSlowCase()
 
 bool Path::isEmptySlowCase() const
 {
-    return isNull() || platformPath()->empty();
+    return isNull() || platformPath()->empty() && !platformPath()->has_current_point();
 }
 
 FloatPoint Path::currentPointSlowCase() const
