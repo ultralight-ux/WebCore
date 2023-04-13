@@ -16,7 +16,8 @@ set(CMAKE_SYSTEM_VERSION "10.0.19043")
 set(CMAKE_SYSTEM_PROCESSOR "AMD64")
 set(CMAKE_CROSSCOMPILING "FALSE")
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
-set(PORT "UltralightWin")
+set(PORT "UltralightWin" CACHE STRING "The WebKit port to build.")
+
 
 message(STATUS "MSVC runtime library: '${CMAKE_MSVC_RUNTIME_LIBRARY}'")
 
@@ -38,5 +39,5 @@ msvc_runtime_library_to_msvc_flags(UL_SKIA_CFLAGS ${CMAKE_MSVC_RUNTIME_LIBRARY})
 
 get_filename_component(WIN_PLATFORM_DEFINES_H "win_platform_defines.h" REALPATH BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-#add_cache_flag(CMAKE_C_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")                       
-#add_cache_flag(CMAKE_CXX_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")
+add_cache_flag(CMAKE_C_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")                       
+add_cache_flag(CMAKE_CXX_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")
