@@ -477,9 +477,9 @@ public:
     WEBCORE_EXPORT void setInitialScaleIgnoringContentSize(float);
 
     WEBCORE_EXPORT void screenPropertiesDidChange();
-    void windowScreenDidChange(PlatformDisplayID, std::optional<FramesPerSecond> nominalFramesPerSecond);
-    PlatformDisplayID displayID() const { return m_displayID; }
-    std::optional<FramesPerSecond> displayNominalFramesPerSecond() const { return m_displayNominalFramesPerSecond; }
+    WEBCORE_EXPORT void windowScreenDidChange(PlatformDisplayID, std::optional<FramesPerSecond> nominalFramesPerSecond);
+    WEBCORE_EXPORT PlatformDisplayID displayID() const { return m_displayID; }
+    WEBCORE_EXPORT std::optional<FramesPerSecond> displayNominalFramesPerSecond() const { return m_displayNominalFramesPerSecond; }
 
     // This can return nullopt if throttling reasons result in a frequency less than one, in which case
     // preferredRenderingUpdateInterval provides the frequency.
