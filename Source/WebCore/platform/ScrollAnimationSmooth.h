@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2016 Igalia S.L.
  * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2023 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +30,81 @@
 #include "ScrollAnimation.h"
 
 namespace WebCore {
+
+#if USE(ULTRALIGHT)
+
+class FloatPoint;
+class TimingFunction;
+
+class ScrollAnimationSmooth final : public ScrollAnimation {
+public:
+    ScrollAnimationSmooth(ScrollAnimationClient&);
+    virtual ~ScrollAnimationSmooth();
+
+    bool startAnimatedScrollToDestination(const FloatPoint& fromOffset, const FloatPoint& destinationOffset);
+    bool retargetActiveAnimation(const FloatPoint& newOffset) final;
+
+    std::optional<FloatPoint> destinationOffset() const final { return m_destinationOffset; }
+
+    enum class Curve {
+        Linear,
+        Quadratic,
+        Cubic,
+        Quartic,
+        Bounce
+    };
+
+private:
+    void updateScrollExtents() final;
+    void serviceAnimation(MonotonicTime) final;
+    String debugDescription() const final;
+
+    struct PerAxisData {
+        PerAxisData() = default;
+
+        PerAxisData(float position, int length)
+            : currentPosition(position)
+            , desiredPosition(position)
+            , visibleLength(length)
+        {
+        }
+
+        float currentPosition { 0 };
+        double currentVelocity { 0 };
+
+        double desiredPosition { 0 };
+        double desiredVelocity { 0 };
+
+        double startPosition { 0 };
+        MonotonicTime startTime;
+        double startVelocity { 0 };
+
+        Seconds animationTime;
+        MonotonicTime lastAnimationTime;
+
+        double attackPosition { 0 };
+        Seconds attackTime;
+        Curve attackCurve { Curve::Quadratic };
+
+        double releasePosition { 0 };
+        Seconds releaseTime;
+        Curve releaseCurve { Curve::Quadratic };
+
+        int visibleLength { 0 };
+    };
+
+    bool updatePerAxisData(PerAxisData&, ScrollGranularity, float position);
+    bool animateScroll(PerAxisData&, MonotonicTime currentTime);
+
+    FloatPoint m_destinationOffset;
+
+    PerAxisData m_horizontalData;
+    PerAxisData m_verticalData;
+
+    MonotonicTime m_startTime;
+};
+
+#else
 
 class FloatPoint;
 class TimingFunction;
@@ -60,6 +136,8 @@ private:
 
     RefPtr<TimingFunction> m_timingFunction;
 };
+
+#endif
 
 } // namespace WebCore
 

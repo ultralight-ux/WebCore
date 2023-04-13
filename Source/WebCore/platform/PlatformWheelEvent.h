@@ -165,6 +165,11 @@ public:
     PlatformWheelEventPhase phase() const { return m_phase; }
     PlatformWheelEventPhase momentumPhase() const { return m_momentumPhase; }
 
+#if USE(ULTRALIGHT)
+    void setPhase(PlatformWheelEventPhase phase) { m_phase = phase; }
+    void setMomentumPhase(PlatformWheelEventPhase phase) { m_momentumPhase = phase; }
+#endif
+
 #if ENABLE(KINETIC_SCROLLING)
     bool isGestureStart() const;
     bool isGestureCancel() const;
