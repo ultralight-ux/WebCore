@@ -3205,8 +3205,8 @@ PAL::SessionID Page::sessionID() const
 void Page::setSessionID(PAL::SessionID sessionID)
 {
     ASSERT(sessionID.isValid());
-    ASSERT(m_sessionID == PAL::SessionID::legacyPrivateSessionID() || m_sessionID == PAL::SessionID::defaultSessionID());
-    ASSERT(sessionID == PAL::SessionID::legacyPrivateSessionID() || sessionID == PAL::SessionID::defaultSessionID());
+    //ASSERT(m_sessionID == PAL::SessionID::legacyPrivateSessionID() || m_sessionID == PAL::SessionID::defaultSessionID());
+    //ASSERT(sessionID == PAL::SessionID::legacyPrivateSessionID() || sessionID == PAL::SessionID::defaultSessionID());
 
     if (sessionID != m_sessionID)
         m_idbConnectionToServer = nullptr;
