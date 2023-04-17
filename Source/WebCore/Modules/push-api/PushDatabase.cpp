@@ -335,11 +335,11 @@ WebCore::SQLiteStatementAutoResetScope PushDatabase::bindStatementOnQueue(ASCIIL
     return sql;
 }
 
-static Span<const uint8_t> uuidToSpan(const std::optional<UUID>& uuid)
+static Span<const uint8_t> uuidToSpan(const std::optional<WTF::UUID>& uuid)
 {
     if (!uuid) {
-        // We store a null UUID as a zero-length blob rather than a SQL NULL. This is because the
-        // data store UUID is part of a unique index, and storing the UUID as a SQL NULL doesn't
+        // We store a null WTF::UUID as a zero-length blob rather than a SQL NULL. This is because the
+        // data store WTF::UUID is part of a unique index, and storing the WTF::UUID as a SQL NULL doesn't
         // work well with a unique index (since all SQL NULL values are treated as distinct values).
         //
         // To do this, the span must have zero length and point to a non-nullptr value. This is
@@ -352,12 +352,12 @@ static Span<const uint8_t> uuidToSpan(const std::optional<UUID>& uuid)
     return uuid->toSpan();
 }
 
-static std::optional<UUID> uuidFromSpan(Span<const uint8_t> span)
+static std::optional<WTF::UUID> uuidFromSpan(Span<const uint8_t> span)
 {
     if (span.size() != 16)
         return std::nullopt;
 
-    return UUID(span.first<16>());
+    return WTF::UUID(span.first<16>());
 }
 
 static SQLValue expirationTimeToValue(std::optional<EpochTimeStamp> timestamp)

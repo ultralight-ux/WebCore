@@ -2375,7 +2375,7 @@ JSC_DEFINE_JIT_OPERATION(operationEnumeratorRecoverNameAndGetByVal, EncodedJSVal
 
     JSString* string = enumerator->propertyNameAtIndex(index);
     PropertyName propertyName = string->toIdentifier(globalObject);
-    // This should only really return for TerminationException since we know string is backed by a UUID.
+    // This should only really return for TerminationException since we know string is backed by a WTF::UUID.
     RETURN_IF_EXCEPTION(scope, { });
     JSValue base = JSValue::decode(baseValue);
     JSObject* object = base.toObject(globalObject);

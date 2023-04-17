@@ -106,10 +106,10 @@ private:
 };
 
 template <typename T>
-class UUIDIdentified : public IdentifiedBase<UUID, T> {
+class UUIDIdentified : public IdentifiedBase<WTF::UUID, T> {
 protected:
     UUIDIdentified()
-        : IdentifiedBase<UUID, T>(UUID::createVersion4())
+        : IdentifiedBase<WTF::UUID, T>(WTF::UUID::createVersion4())
     {
     }
 

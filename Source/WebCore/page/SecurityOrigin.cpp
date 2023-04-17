@@ -67,7 +67,7 @@ bool SecurityOrigin::shouldIgnoreHost(const URL& url)
 
 bool SecurityOrigin::shouldUseInnerURL(const URL& url)
 {
-    // FIXME: Blob URLs don't have inner URLs. Their form is "blob:<inner-origin>/<UUID>", so treating the part after "blob:" as a URL is incorrect.
+    // FIXME: Blob URLs don't have inner URLs. Their form is "blob:<inner-origin>/<WTF::UUID>", so treating the part after "blob:" as a URL is incorrect.
     if (url.protocolIsBlob())
         return true;
     UNUSED_PARAM(url);

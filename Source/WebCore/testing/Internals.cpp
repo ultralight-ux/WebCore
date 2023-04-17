@@ -2854,7 +2854,7 @@ String Internals::documentIdentifier(const Document& document) const
 
 bool Internals::isDocumentAlive(const String& documentIdentifier) const
 {
-    auto uuid = UUID::parseVersion4(documentIdentifier);
+    auto uuid = WTF::UUID::parseVersion4(documentIdentifier);
     ASSERT(uuid);
     return uuid ? Document::allDocumentsMap().contains({ *uuid, Process::identifier() }) : false;
 }

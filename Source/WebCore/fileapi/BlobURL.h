@@ -37,7 +37,7 @@ namespace WebCore {
 class SecurityOrigin;
 
 // Blob URLs are of the form
-//     blob:%escaped_origin%/%UUID%
+//     blob:%escaped_origin%/%WTF::UUID%
 // For public urls, the origin of the host page is encoded in the URL value to
 // allow easy lookup of the origin when security checks need to be performed.
 // When loading blobs via ResourceHandle or when reading blobs via FileReader

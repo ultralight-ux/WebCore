@@ -223,6 +223,8 @@ private:
 
 }
 
-using WTF::UUID;
+// Ultralight Note:
+// Disabling this 'using' definition because UUID in global namespace conflicts with definition in WinAPI headers (non-Desktop API)
+//using WTF::UUID;
 using WTF::createVersion4UUIDString;
 using WTF::bootSessionUUIDString;

@@ -6452,7 +6452,7 @@ String Document::originIdentifierForPasteboard() const
     if (origin != "null"_s)
         return origin;
     if (!m_uniqueIdentifier)
-        m_uniqueIdentifier = makeString("null:"_s, UUID::createVersion4());
+        m_uniqueIdentifier = makeString("null:"_s, WTF::UUID::createVersion4());
     return m_uniqueIdentifier;
 }
 

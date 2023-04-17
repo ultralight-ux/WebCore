@@ -3075,7 +3075,7 @@ void GraphicsLayerCA::updateAnimations()
         caAnimationGroup->setDuration(infiniteDuration);
         caAnimationGroup->setAnimations(animations);
 
-        auto animationGroup = LayerPropertyAnimation(WTFMove(caAnimationGroup), makeString("group-"_s, UUID::createVersion4()), property, 0, 0_s);
+        auto animationGroup = LayerPropertyAnimation(WTFMove(caAnimationGroup), makeString("group-"_s, WTF::UUID::createVersion4()), property, 0, 0_s);
         animationGroup.m_beginTime = animationGroupBeginTime;
 
         setAnimationOnLayer(animationGroup);
@@ -3123,7 +3123,7 @@ void GraphicsLayerCA::updateAnimations()
         caAnimation->setFromValue(matrix);
         caAnimation->setToValue(matrix);
 
-        auto animation = LayerPropertyAnimation(WTFMove(caAnimation), makeString("base-transform-"_s, UUID::createVersion4()), property, 0, 0_s);
+        auto animation = LayerPropertyAnimation(WTFMove(caAnimation), makeString("base-transform-"_s, WTF::UUID::createVersion4()), property, 0, 0_s);
         if (delay)
             animation.m_beginTime = currentTime - animationGroupBeginTime;
 

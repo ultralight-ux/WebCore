@@ -475,7 +475,7 @@ static inline bool shouldIgnoreIceCandidate(const RTCIceCandidate& iceCandidate)
         return false;
 
     if (!WTF::isVersion4UUID(StringView { address }.left(address.length() - 6))) {
-        RELEASE_LOG_ERROR(WebRTC, "mDNS candidate is not a Version 4 UUID");
+        RELEASE_LOG_ERROR(WebRTC, "mDNS candidate is not a Version 4 WTF::UUID");
         return true;
     }
     return false;

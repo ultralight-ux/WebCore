@@ -45,7 +45,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) uint32_t contextId;
 
 - (instancetype)initWithFrame:(CGRect)frame;
-- (instancetype)initWithFrame:(CGRect)frame UUID:(NSUUID *)uuid;
+- (instancetype)initWithFrame:(CGRect)frame WTF::UUID:(NSUUID *)uuid;
 - (void)setupRemoteConnectionWithCompletionHandler:(void (^)(NSError * _Nullable error))handler;
 - (void)preparePreviewOfFileAtURL:(NSURL *)url completionHandler:(void (^)(NSError * _Nullable error))handler;
 - (void)setRemoteContext:(uint32_t)contextId;

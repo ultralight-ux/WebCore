@@ -1097,7 +1097,7 @@ String URL::stringCenterEllipsizedToLength(unsigned length) const
 
 URL URL::fakeURLWithRelativePart(StringView relativePart)
 {
-    return URL(makeString("webkit-fake-url://"_s, UUID::createVersion4(), '/', relativePart));
+    return URL(makeString("webkit-fake-url://"_s, WTF::UUID::createVersion4(), '/', relativePart));
 }
 
 URL URL::fileURLWithFileSystemPath(StringView path)

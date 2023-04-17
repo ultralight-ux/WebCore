@@ -480,7 +480,7 @@ void CDMInstanceSessionThunder::requestLicense(LicenseType licenseType, const At
 {
     ASSERT(isMainThread());
 
-    // FIXME: UUID or system ID?
+    // FIXME: WTF::UUID or system ID?
     auto instance = cdmInstanceThunder();
     ASSERT(instance);
     m_initData = InitData(instance->keySystem(), WTFMove(initDataSharedBuffer));

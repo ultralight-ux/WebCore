@@ -154,7 +154,7 @@ void LibraryPathDiagnosticsLogger::logDYLDSharedCacheInfo(void)
 
     auto sharedCacheInfo = JSON::Object::create();
     sharedCacheInfo->setString("Path"_s, FileSystem::realPath(String::fromUTF8(dyld_shared_cache_file_path())));
-    sharedCacheInfo->setString("UUID"_s, uuidToString(uuid));
+    sharedCacheInfo->setString("WTF::UUID"_s, uuidToString(uuid));
 
     logObject({ "SharedCache"_s }, WTFMove(sharedCacheInfo));
 }
@@ -188,14 +188,14 @@ void LibraryPathDiagnosticsLogger::logDynamicLibraryInfo(const String& installNa
 
     uuid_t uuid = { 0 };
     if (!_dyld_get_image_uuid(header, uuid)) {
-        logError("No UUID found for %s", installName.utf8().data());
+        logError("No WTF::UUID found for %s", installName.utf8().data());
         return;
     }
 
     auto libraryObject = JSON::Object::create();
 
     libraryObject->setString("Path"_s, FileSystem::realPath(String::fromUTF8(info.dli_fname)));
-    libraryObject->setString("UUID"_s, uuidToString(uuid));
+    libraryObject->setString("WTF::UUID"_s, uuidToString(uuid));
 
 #if HAVE(SHARED_REGION_SPI)
     libraryObject->setBoolean("InSharedCache"_s, isAddressInSharedRegion(header));
