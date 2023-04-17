@@ -472,9 +472,11 @@ void finalizeMappedFileData(MappedFileData& mappedFileData, size_t bytesSize)
 {
     void* map = const_cast<void*>(mappedFileData.data());
 #if OS(WINDOWS)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     DWORD oldProtection;
     VirtualProtect(map, bytesSize, FILE_MAP_READ, &oldProtection);
     FlushViewOfFile(map, bytesSize);
+#endif
 #else
     // Drop the write permission.
     mprotect(map, bytesSize, PROT_READ);

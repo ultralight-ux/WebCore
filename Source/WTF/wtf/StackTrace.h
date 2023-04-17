@@ -39,7 +39,7 @@
 #include <dlfcn.h>
 #endif
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <windows.h>
 #include <wtf/win/DbgHelperWin.h>
 #endif
@@ -109,7 +109,7 @@ public:
         char** symbols = backtrace_symbols(m_stack.data(), m_stack.size());
         if (!symbols)
             return;
-#elif OS(WINDOWS)
+#elif OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         HANDLE hProc = GetCurrentProcess();
         uint8_t symbolData[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)] = { 0 };
         auto symbolInfo = reinterpret_cast<SYMBOL_INFO*>(symbolData);
@@ -125,7 +125,7 @@ public:
 #if HAVE(BACKTRACE_SYMBOLS)
             if (!name)
                 name = symbols[i];
-#elif OS(WINDOWS)
+#elif OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
             if (!name && DbgHelper::SymFromAddress(hProc, reinterpret_cast<DWORD64>(m_stack[i]), nullptr, symbolInfo))
                 name = symbolInfo->Name;
 #endif

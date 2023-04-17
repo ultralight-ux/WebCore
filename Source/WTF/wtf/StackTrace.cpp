@@ -35,7 +35,7 @@ void WTFGetBacktrace(void** stack, int* size)
 {
 #if HAVE(BACKTRACE)
     *size = backtrace(stack, *size);
-#elif OS(WINDOWS)
+#elif OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     *size = RtlCaptureStackBackTrace(0, *size, stack, nullptr);
 #else
     UNUSED_PARAM(stack);

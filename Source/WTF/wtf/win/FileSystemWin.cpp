@@ -176,7 +176,7 @@ static String storageDirectory(DWORD pathIdentifier)
     buffer.shrink(wcslen(wcharFrom(buffer.data())));
     String directory = String::adopt(WTFMove(buffer));
 
-    directory = pathByAppendingComponent(directory, "appcache\\Ultralight\\" + bundleName());
+    directory = pathByAppendingComponent(directory, makeString("appcache\\Ultralight\\", bundleName()));
     if (!makeAllDirectories(directory))
         return String();
 
