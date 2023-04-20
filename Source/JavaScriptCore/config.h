@@ -36,6 +36,18 @@
 #undef new
 #undef delete
 #include <wtf/FastMalloc.h>
+
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#include <wtf/MemoryProfiler.h>
+#else
+#define ProfileAlloc(ptr, size, name)
+#define ProfileFree(ptr, name)
+#define ProfiledZone
+#define ProfiledMemoryZone(tag)
 #endif
+
+
+#endif // #ifdef __cplusplus
 
 #include <wtf/DisallowCType.h>

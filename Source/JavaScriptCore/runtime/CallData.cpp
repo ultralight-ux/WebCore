@@ -56,6 +56,7 @@ JSValue call(ExecState* exec, JSValue functionObject, JSValue thisValue, const A
 
 JSValue call(ExecState* exec, JSValue functionObject, CallType callType, const CallData& callData, JSValue thisValue, const ArgList& args)
 {
+    ProfiledZone;
     ProfiledMemoryZone(MemoryTag::JavaScript);
     VM& vm = exec->vm();
     ASSERT(callType == CallType::JS || callType == CallType::Host);

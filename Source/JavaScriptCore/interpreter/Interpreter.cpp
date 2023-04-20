@@ -661,6 +661,7 @@ void Interpreter::notifyDebuggerOfExceptionToBeThrown(VM& vm, CallFrame* callFra
 
 JSValue Interpreter::executeProgram(const SourceCode& source, CallFrame* callFrame, JSObject* thisObj)
 {
+    ProfiledZone;
     JSScope* scope = thisObj->globalObject()->globalScope();
     VM& vm = *scope->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
@@ -848,6 +849,7 @@ failedJSONP:
 
 JSValue Interpreter::executeCall(CallFrame* callFrame, JSObject* function, CallType callType, const CallData& callData, JSValue thisValue, const ArgList& args)
 {
+    ProfiledZone;
     VM& vm = callFrame->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
@@ -913,6 +915,7 @@ JSValue Interpreter::executeCall(CallFrame* callFrame, JSObject* function, CallT
 
 JSObject* Interpreter::executeConstruct(CallFrame* callFrame, JSObject* constructor, ConstructType constructType, const ConstructData& constructData, const ArgList& args, JSValue newTarget)
 {
+    ProfiledZone;
     VM& vm = callFrame->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
@@ -987,6 +990,7 @@ JSObject* Interpreter::executeConstruct(CallFrame* callFrame, JSObject* construc
 
 CallFrameClosure Interpreter::prepareForRepeatCall(FunctionExecutable* functionExecutable, CallFrame* callFrame, ProtoCallFrame* protoCallFrame, JSFunction* function, int argumentCountIncludingThis, JSScope* scope, const ArgList& args)
 {
+    ProfiledZone;
     VM& vm = *scope->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     throwScope.assertNoException();
@@ -1012,6 +1016,7 @@ CallFrameClosure Interpreter::prepareForRepeatCall(FunctionExecutable* functionE
 
 JSValue Interpreter::execute(EvalExecutable* eval, CallFrame* callFrame, JSValue thisValue, JSScope* scope)
 {
+    ProfiledZone;
     VM& vm = *scope->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
@@ -1161,6 +1166,7 @@ JSValue Interpreter::execute(EvalExecutable* eval, CallFrame* callFrame, JSValue
 
 JSValue Interpreter::executeModuleProgram(ModuleProgramExecutable* executable, CallFrame* callFrame, JSModuleEnvironment* scope)
 {
+    ProfiledZone;
     VM& vm = *scope->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 

@@ -32,6 +32,7 @@ namespace JSC {
 
 ALWAYS_INLINE JSValue JITCode::execute(VM* vm, ProtoCallFrame* protoCallFrame)
 {
+    ProfiledZone;
     auto scope = DECLARE_THROW_SCOPE(*vm);
     void* entryAddress;
     entryAddress = addressForCall(MustCheckArity).executableAddress();

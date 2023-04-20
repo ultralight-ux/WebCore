@@ -90,6 +90,7 @@ void ScheduledAction::execute(ScriptExecutionContext& context)
 
 void ScheduledAction::executeFunctionInContext(JSGlobalObject* globalObject, JSValue thisValue, ScriptExecutionContext& context)
 {
+    ProfiledZone;
     ASSERT(m_function);
     VM& vm = context.vm();
     JSLockHolder lock(vm);
@@ -125,6 +126,7 @@ void ScheduledAction::executeFunctionInContext(JSGlobalObject* globalObject, JSV
 
 void ScheduledAction::execute(Document& document)
 {
+    ProfiledZone;
     JSDOMWindow* window = toJSDOMWindow(document.frame(), m_isolatedWorld);
     if (!window)
         return;
@@ -141,6 +143,7 @@ void ScheduledAction::execute(Document& document)
 
 void ScheduledAction::execute(WorkerGlobalScope& workerGlobalScope)
 {
+    ProfiledZone;
     // In a Worker, the execution should always happen on a worker thread.
     ASSERT(workerGlobalScope.thread().thread() == &Thread::current());
 
