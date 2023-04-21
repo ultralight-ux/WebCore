@@ -1,13 +1,10 @@
-cmake_minimum_required(VERSION 3.13)
-project(libmimalloc C CXX)
-
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 option(MI_SECURE            "Use full security mitigations (like guard pages, allocation randomization, double-free mitigation, and free-list corruption detection)" OFF)
 option(MI_DEBUG_FULL        "Use full internal heap invariant checking in DEBUG mode (expensive)" OFF)
 option(MI_PADDING           "Enable padding to detect heap block overflow (always on in DEBUG or SECURE mode, or with Valgrind/ASAN)" OFF)
-option(MI_OVERRIDE          "Override the standard malloc interface (e.g. define entry points for malloc() etc)" ON)
+option(MI_OVERRIDE          "Override the standard malloc interface (e.g. define entry points for malloc() etc)" OFF)
 option(MI_XMALLOC           "Enable abort() call on memory allocation failure by default" OFF)
 option(MI_SHOW_ERRORS       "Show error and warning messages by default (only enabled by default in DEBUG mode)" OFF)
 option(MI_TRACK_VALGRIND    "Compile with Valgrind support (adds a small overhead)" OFF)
@@ -15,14 +12,14 @@ option(MI_TRACK_ASAN        "Compile with address sanitizer support (adds a smal
 option(MI_TRACK_ETW         "Compile with Windows event tracing (ETW) support (adds a small overhead)" OFF)
 option(MI_USE_CXX           "Use the C++ compiler to compile the library (instead of the C compiler)" OFF)
 option(MI_SEE_ASM           "Generate assembly files" OFF)
-option(MI_OSX_INTERPOSE     "Use interpose to override standard malloc on macOS" ON)
-option(MI_OSX_ZONE          "Use malloc zone to override standard malloc on macOS" ON)
-option(MI_WIN_REDIRECT      "Use redirection module ('mimalloc-redirect') on Windows if compiling mimalloc as a DLL" ON)
-option(MI_LOCAL_DYNAMIC_TLS "Use slightly slower, dlopen-compatible TLS mechanism (Unix)" OFF)
-option(MI_BUILD_SHARED      "Build shared library" ON)
-option(MI_BUILD_STATIC      "Build static library" ON)
-option(MI_BUILD_OBJECT      "Build object library" ON)
-option(MI_BUILD_TESTS       "Build test executables" ON)
+option(MI_OSX_INTERPOSE     "Use interpose to override standard malloc on macOS" OFF)
+option(MI_OSX_ZONE          "Use malloc zone to override standard malloc on macOS" OFF)
+option(MI_WIN_REDIRECT      "Use redirection module ('mimalloc-redirect') on Windows if compiling mimalloc as a DLL" OFF)
+option(MI_LOCAL_DYNAMIC_TLS "Use slightly slower, dlopen-compatible TLS mechanism (Unix)" ON)
+option(MI_BUILD_SHARED      "Build shared library" OFF)
+option(MI_BUILD_STATIC      "Build static library" OFF)
+option(MI_BUILD_OBJECT      "Build object library" OFF)
+option(MI_BUILD_TESTS       "Build test executables" OFF)
 option(MI_DEBUG_TSAN        "Build with thread sanitizer (needs clang)" OFF)
 option(MI_DEBUG_UBSAN       "Build with undefined-behavior sanitizer (needs clang++)" OFF)
 option(MI_SKIP_COLLECT_ON_EXIT "Skip collecting memory on program exit" OFF)
@@ -524,3 +521,25 @@ if (MI_OVERRIDE)
     endif()
   endif()
 endif()
+
+
+set(mimalloc_SOURCES ${mi_sources})
+set(mimalloc_LIBRARIES ${mi_libraries})
+set(mimalloc_INTERFACE_LIBRARIES mimalloc)
+set(mimalloc_INTERFACE_INCLUDE_DIRECTORIES ${mimalloc_FRAMEWORK_HEADERS_DIR})
+set(mimalloc_INTERFACE_DEPENDENCIES mimalloc_CopyHeaders)
+set(mimalloc_PRIVATE_DEFINITIONS ${mi_defines} MI_STATIC_LIB)
+set(mimalloc_COMPILE_OPTIONS ${mi_cflags})
+set(mimalloc_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+WEBKIT_FRAMEWORK_DECLARE(mimalloc)
+WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
+
+WEBKIT_COPY_FILES(mimalloc_CopyHeaders
+    DESTINATION ${mimalloc_FRAMEWORK_HEADERS_DIR}
+    FILES ${mimalloc_PUBLIC_HEADERS}
+)
+
+WEBKIT_WRAP_SOURCELIST(${mimalloc_SOURCES})
+WEBKIT_FRAMEWORK(mimalloc)
+WEBKIT_FRAMEWORK_TARGET(mimalloc)
