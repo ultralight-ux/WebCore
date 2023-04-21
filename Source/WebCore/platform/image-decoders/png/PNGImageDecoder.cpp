@@ -289,6 +289,7 @@ bool PNGImageDecoder::setFailed()
 
 void PNGImageDecoder::headerAvailable()
 {
+    ProfiledZone;
     png_structp png = m_reader->pngPtr();
     png_infop info = m_reader->infoPtr();
     png_uint_32 width = png_get_image_width(png, info);
@@ -552,6 +553,7 @@ void PNGImageDecoder::pngComplete()
 
 void PNGImageDecoder::decode(bool onlySize, unsigned haltAtFrame, bool allDataReceived)
 {
+    ProfiledZone;
     if (failed())
         return;
 

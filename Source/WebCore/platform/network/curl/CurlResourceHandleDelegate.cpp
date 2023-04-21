@@ -102,6 +102,7 @@ static void handleCookieHeaders(ResourceHandleInternal* d, const ResourceRequest
 
 void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& receivedResponse)
 {
+    ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
     ASSERT(!d()->m_defersLoading);
@@ -148,6 +149,7 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
 
 void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
 {
+    ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
@@ -172,6 +174,7 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceErro
 
 void CurlResourceHandleDelegate::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
 {
+    ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 

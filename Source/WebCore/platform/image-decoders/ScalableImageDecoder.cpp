@@ -250,6 +250,7 @@ Seconds ScalableImageDecoder::frameDurationAtIndex(size_t index) const
 
 NativeImagePtr ScalableImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
 {
+    ProfiledZone;
     LockHolder lockHolder(m_mutex);
     // Zero-height images can cause problems for some ports. If we have an empty image dimension, just bail.
     if (size().isEmpty())

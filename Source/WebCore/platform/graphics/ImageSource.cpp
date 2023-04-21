@@ -96,6 +96,7 @@ bool ImageSource::ensureDecoderAvailable(SharedBuffer* data)
 
 void ImageSource::setData(SharedBuffer* data, bool allDataReceived)
 {
+    ProfiledZone;
     if (!data || !ensureDecoderAvailable(data))
         return;
 
@@ -104,6 +105,7 @@ void ImageSource::setData(SharedBuffer* data, bool allDataReceived)
 
 void ImageSource::resetData(SharedBuffer* data)
 {
+    ProfiledZone;
     m_decoder = nullptr;
     setData(data, isAllDataReceived());
 }

@@ -655,6 +655,7 @@ float GraphicsContext::drawText(const FontCascade& font, const TextRun& run, con
 
 void GraphicsContext::drawGlyphs(const Font& font, const GlyphBuffer& buffer, unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothingMode)
 {
+    ProfiledZone;
     if (paintingDisabled())
         return;
 
@@ -726,6 +727,7 @@ ImageDrawResult GraphicsContext::drawImage(Image& image, const FloatRect& destin
 
 ImageDrawResult GraphicsContext::drawImage(Image& image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& imagePaintingOptions)
 {
+    ProfiledZone;
     if (paintingDisabled())
         return ImageDrawResult::DidNothing;
 
@@ -738,6 +740,7 @@ ImageDrawResult GraphicsContext::drawImage(Image& image, const FloatRect& destin
 
 ImageDrawResult GraphicsContext::drawTiledImage(Image& image, const FloatRect& destination, const FloatPoint& source, const FloatSize& tileSize, const FloatSize& spacing, const ImagePaintingOptions& imagePaintingOptions)
 {
+    ProfiledZone;
     if (paintingDisabled())
         return ImageDrawResult::DidNothing;
 
@@ -751,6 +754,7 @@ ImageDrawResult GraphicsContext::drawTiledImage(Image& image, const FloatRect& d
 ImageDrawResult GraphicsContext::drawTiledImage(Image& image, const FloatRect& destination, const FloatRect& source, const FloatSize& tileScaleFactor,
     Image::TileRule hRule, Image::TileRule vRule, const ImagePaintingOptions& imagePaintingOptions)
 {
+    ProfiledZone;
     if (paintingDisabled())
         return ImageDrawResult::DidNothing;
 
@@ -778,6 +782,7 @@ void GraphicsContext::drawImageBuffer(ImageBuffer& image, const FloatRect& desti
 
 void GraphicsContext::drawImageBuffer(ImageBuffer& image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& imagePaintingOptions)
 {
+    ProfiledZone;
     if (paintingDisabled())
         return;
 
