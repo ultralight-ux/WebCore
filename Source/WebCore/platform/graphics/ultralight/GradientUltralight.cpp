@@ -25,7 +25,6 @@ namespace WebCore {
       [&](const LinearData& data) -> PlatformGradient {
         auto grad = new ultralight::Gradient();
         grad->is_radial = false;
-        grad->num_stops = 0;
         grad->p0 = ultralight::Point(data.point0.x(), data.point0.y());
         grad->p1 = ultralight::Point(data.point1.x(), data.point1.y());
         return grad;
@@ -33,7 +32,6 @@ namespace WebCore {
       [&](const RadialData& data) -> PlatformGradient {
         auto grad = new ultralight::Gradient();
         grad->is_radial = true;
-        grad->num_stops = 0;
         grad->p0 = ultralight::Point(data.point0.x(), data.point0.y());
         grad->p1 = ultralight::Point(data.point1.x(), data.point1.y());
         grad->r0 = data.startRadius;
@@ -58,14 +56,14 @@ namespace WebCore {
 
     size_t num_stops = m_stops.size();
 
-    // Clamp to 12 stops
-    if (num_stops > 12)
-      num_stops = 12;
+    // Reserve capacity ahead of time to reduce reallocations
+    m_gradient->stops.reserve(num_stops);
 
-    m_gradient->num_stops = num_stops;
     for (size_t i = 0; i < num_stops; ++i) {
-      m_gradient->stops[i].stop = m_stops[i].offset;
-      m_gradient->stops[i].color = UltralightRGBA(m_stops[i].color.red(), m_stops[i].color.green(), m_stops[i].color.blue(), m_stops[i].color.alpha());
+      ultralight::GradientStop stop;
+      stop.stop = m_stops[i].offset;
+      stop.color = UltralightRGBA(m_stops[i].color.red(), m_stops[i].color.green(), m_stops[i].color.blue(), m_stops[i].color.alpha());
+      m_gradient->stops.push_back(stop);
     }
 
     return m_gradient;
