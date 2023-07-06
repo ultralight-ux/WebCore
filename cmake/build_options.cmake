@@ -3,7 +3,7 @@ set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/out  CACHE PATH    "The pat
 set(ALLINONE_BUILD OFF                                    CACHE BOOL    "Whether or not we are building all modules monolithically.")
 set(UL_GENERATE_SDK OFF                                   CACHE BOOL    "Whether or not to generate a compressed SDK package from the build.")
 set(UL_ENABLE_STATIC_BUILD OFF                            CACHE BOOL    "Whether or not to link the library statically (otherwise, will be linked dynamically).")
-set(UL_ENABLE_VIDEO ON                                    CACHE BOOL    "Whether or not to enable video/audio via GStreamer/FFmpeg.")
+set(UL_ENABLE_VIDEO OFF                                   CACHE BOOL    "Whether or not to enable video/audio via GStreamer/FFmpeg.")
 set(UL_ENABLE_JIT ON                                      CACHE BOOL    "Whether or not to enable JavaScript Just-In-Time compilation.")
 set(UL_ENABLE_MIMALLOC ON                                 CACHE BOOL    "Whether or not to enable the high-performance mi-malloc allocator.")
 set(UL_ENABLE_TESTS ON                                    CACHE BOOL    "Whether or not to enable test applications.")
