@@ -68,12 +68,9 @@ void GradientImage::drawPattern(GraphicsContext& destContext, const FloatRect& d
     double xScale = fabs(destContextCTM.xScale());
     double yScale = fabs(destContextCTM.yScale());
 #if USE(ULTRALIGHT)
-    // FIXME: Disable upscaling when GPU-backed Canvas is being used due to shader transform math issues
-    auto platformContext = destContext.platformContext();
-    if (!platformContext->canvas()->surface()) {
-        xScale = 1.0;
-        yScale = 1.0;
-    }
+    // FIXME: Disable upscaling due to transform math issues
+    xScale = 1.0;
+    yScale = 1.0;
 #endif
     AffineTransform adjustedPatternCTM = patternTransform;
     adjustedPatternCTM.scale(1.0 / xScale, 1.0 / yScale);
