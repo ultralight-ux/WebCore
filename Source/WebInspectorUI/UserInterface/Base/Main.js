@@ -1717,6 +1717,20 @@ WI._mouseDown = function(event)
 {
     if (WI.toolbar.element.contains(event.target))
         WI._toolbarMouseDown(event);
+
+    if (event.button === 2) { // right-click
+        const contextMenuEvent = new MouseEvent("contextmenu", {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            screenX: event.pageX,
+            screenY: event.pageY,
+            clientX: event.pageX,
+            clientY: event.pageY,
+            ...event
+        });
+        event.target.dispatchEvent(contextMenuEvent);
+    }
 };
 
 WI._mouseMoved = function(event)
