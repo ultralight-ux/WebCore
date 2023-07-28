@@ -1,6 +1,6 @@
 @echo off
 SETLOCAL
-set "VCVARS=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat"
+set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat"
 if "%1"=="release" GOTO CHECKTYPE
 if "%1"=="release_min" GOTO CHECKTYPE
 if "%1"=="release_dbg" GOTO CHECKTYPE
@@ -20,7 +20,7 @@ set "DIRNAME=build_%1_%2"
 set SKIP_BUILD=0
 
 if "%1"=="vs" (
-  set "FLAGS=-G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release"
+  set "FLAGS=-G "Visual Studio 16 2019" -A x64 -DCMAKE_BUILD_TYPE=Release"
   set SKIP_BUILD=1
 )
 if "%1"=="release" (
