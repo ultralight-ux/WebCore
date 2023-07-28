@@ -234,21 +234,26 @@ public:
         ultralight::Gradient gradient;
         if (simulateExponential) {
             constexpr size_t num_samples = 7;
-            gradient.num_stops = num_samples;
+            gradient.stops.reserve(num_samples);
             ultralight::vec4 colorA = UltralightColorGetFloat4(colorPair->color1);
             ultralight::vec4 colorB = UltralightColorGetFloat4(colorPair->color2);
 
             for (size_t i = 0; i < num_samples; ++i) {
                 float t = i / (num_samples - 1.0f);
-                gradient.stops[i].color = sampleExponential(colorA, colorB, t);
-                gradient.stops[i].stop = t;
+                ultralight::GradientStop s;
+                s.color = sampleExponential(colorA, colorB, t);
+                s.stop = t;
+                gradient.stops.push_back(s);
             }
         } else {
-            gradient.num_stops = 2;
-            gradient.stops[0].color = colorPair->color1;
-            gradient.stops[0].stop = 0.0f;
-            gradient.stops[1].color = colorPair->color2;
-            gradient.stops[1].stop = 1.0f;
+            gradient.stops.reserve(2);
+            ultralight::GradientStop s;
+            s.color = colorPair->color1;
+            s.stop = 0.0f;
+            gradient.stops.push_back(s);
+            s.color = colorPair->color2;
+            s.stop = 1.0f;
+            gradient.stops.push_back(s);
         }
         return gradient;
     }
