@@ -89,7 +89,7 @@ GraphicsContext& ImageBufferUltralightBackend::context() const
 
 void ImageBufferUltralightBackend::flushContext()
 {
-    // not implemented
+    static_cast<GraphicsContextUltralight&>(context()).platformContext()->FlushSurface();
 }
 
 IntSize ImageBufferUltralightBackend::backendSize() const

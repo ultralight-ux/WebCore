@@ -250,6 +250,20 @@ void ImageBuffer::flushContext()
     }
 }
 
+#if USE(ULTRALIGHT)
+// Ultralight Canvases may be backed by a GPU texture, so we need to flush the drawing context.
+// CPU-backed Canvases also need to be flushed to ensure pixels are unlocked.
+void ImageBuffer::flushDrawingContext()
+{
+    if (auto* backend = ensureBackendCreated())
+        backend->flushContext();
+}
+#else
+void ImageBuffer::flushDrawingContext()
+{
+}
+#endif
+
 std::unique_ptr<ImageBufferBackend> ImageBuffer::takeBackend()
 {
     return WTFMove(m_backend);

@@ -145,7 +145,7 @@ public:
     WEBCORE_EXPORT virtual void flushContext();
 
     virtual bool prefersPreparationForDisplay() { return false; }
-    virtual void flushDrawingContext() { }
+    virtual void flushDrawingContext();
     virtual bool flushDrawingContextAsync() { return false; }
 
     WEBCORE_EXPORT std::unique_ptr<ImageBufferBackend> takeBackend();
