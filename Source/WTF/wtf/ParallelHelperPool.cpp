@@ -130,7 +130,7 @@ ParallelHelperPool::ParallelHelperPool(CString&& threadName)
 
 ParallelHelperPool::~ParallelHelperPool()
 {
-    RELEASE_ASSERT(m_clients.isEmpty());
+    ASSERT(m_clients.isEmpty());
     
     {
         Locker locker { *m_lock };

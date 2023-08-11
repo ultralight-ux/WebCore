@@ -47,6 +47,7 @@
 #include <wtf/Scope.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/WorkQueue.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -283,10 +284,19 @@ unsigned long long BlobRegistryImpl::blobSize(const URL& url)
     return result;
 }
 
+static WTF::RefPtr<WorkQueue> g_blobUilityQueue;
+
 static WorkQueue& blobUtilityQueue()
 {
-    static auto& queue = WorkQueue::create("org.webkit.BlobUtility", WorkQueue::QOS::Utility).leakRef();
-    return queue;
+    if (!g_blobUilityQueue) {
+        g_blobUilityQueue = WorkQueue::create("org.webkit.BlobUtility", WorkQueue::QOS::Utility);
+        WTF::CallOnShutdown([]() mutable {
+            g_blobUilityQueue = nullptr;
+        },
+            WTF::ShutdownPriority::Highest);
+    }
+
+    return *g_blobUilityQueue.get();
 }
 
 bool BlobRegistryImpl::populateBlobsForFileWriting(const Vector<String>& blobURLs, Vector<BlobForFileWriting>& blobsForWriting)

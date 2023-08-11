@@ -42,6 +42,8 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Threading.h>
 #include <wtf/URL.h>
+#include <wtf/threads/BinarySemaphore.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -68,33 +70,77 @@ inline AsyncFileStream::Internals::Internals(FileStreamClient& client)
 #endif
 }
 
-static void callOnFileThread(Function<void ()>&& function)
+class FileThread {
+public:
+    FileThread()
+        : m_stopping(false)
+    {
+        m_thread = Thread::create("WebCore: AsyncFileStream", [this] {
+            for (;;) {
+                AutodrainedPool pool;
+                auto function = m_queue.waitForMessage();
+                (*function)();
+                if (m_stopping)
+                    break;
+            }
+            m_stopSemaphore.signal();
+        });
+    }
+
+    ~FileThread()
+    {
+        if (m_thread)
+            stop();
+    }
+
+    void stop()
+    {
+        if (m_thread && !m_stopping) {
+            m_stopping = true;
+            auto stopFunc = []() {};
+            m_queue.append(makeUnique<Function<void()>>(WTFMove(stopFunc)));
+            m_stopSemaphore.wait();
+            m_thread->waitForCompletion();
+        }
+
+        m_thread = nullptr;
+    }
+
+    void callOnThread(Function<void()>&& function)
+    {
+        if (m_stopping)
+            return;
+
+        m_queue.append(makeUnique<Function<void()>>(WTFMove(function)));
+    }
+
+protected:
+    std::atomic<bool> m_stopping;
+    BinarySemaphore m_stopSemaphore;
+    RefPtr<Thread> m_thread;
+    MessageQueue<Function<void()>> m_queue;
+};
+
+static FileThread* g_thread = nullptr;
+
+static void callOnFileThread(Function<void()>&& function)
 {
     ASSERT(isMainThread());
     ASSERT(function);
 
-    static NeverDestroyed<MessageQueue<Function<void ()>>> queue;
+    if (!g_thread) {
+        g_thread = new FileThread();
 
-    static std::once_flag createFileThreadOnce;
-    std::call_once(createFileThreadOnce, [] {
-        Thread::create("WebCore: AsyncFileStream", [] {
-            for (;;) {
-                AutodrainedPool pool;
-
-                auto function = queue.get().waitForMessage();
-
-                // This can never be null because we never kill the MessageQueue.
-                ASSERT(function);
-
-                // This can bever be null because we never queue a function that is null.
-                ASSERT(*function);
-
-                (*function)();
+        WTF::CallOnShutdown([]() mutable {
+            if (g_thread) {
+                delete g_thread;
+                g_thread = nullptr;
             }
-        });
-    });
+        },
+            WTF::ShutdownPriority::High);
+    }
 
-    queue.get().append(makeUnique<Function<void ()>>(WTFMove(function)));
+    g_thread->callOnThread(WTFMove(function));
 }
 
 AsyncFileStream::AsyncFileStream(FileStreamClient& client)

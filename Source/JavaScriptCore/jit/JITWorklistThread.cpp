@@ -74,6 +74,14 @@ const char* JITWorklistThread::name() const
 auto JITWorklistThread::poll(const AbstractLocker& locker) -> PollResult
 {
     for (unsigned i = 0; i < static_cast<unsigned>(JITPlan::Tier::Count); ++i) {
+        if (UNLIKELY(m_worklist.m_stopped)) {
+            if (Options::verboseCompilationQueue()) {
+                m_worklist.dump(locker, WTF::dataFile());
+                dataLog(": Thread shutting down\n");
+            }
+            return PollResult::Stop;
+        }
+
         auto& queue = m_worklist.m_queues[i];
         if (queue.isEmpty())
             continue;
@@ -102,10 +110,15 @@ auto JITWorklistThread::poll(const AbstractLocker& locker) -> PollResult
 
 auto JITWorklistThread::work() -> WorkResult
 {
+    if (UNLIKELY(m_worklist.m_stopped))
+        return WorkResult::Stop;
+
     WorkScope workScope(*this);
 
     Locker locker { m_rightToRun };
     {
+        if (UNLIKELY(m_worklist.m_stopped))
+            return WorkResult::Stop;
         Locker locker { *m_worklist.m_lock };
         if (m_plan->stage() == JITPlanStage::Canceled)
             return WorkResult::Continue;

@@ -35,6 +35,7 @@
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
+#include <wtf/Atomics.h>
 
 namespace JSC {
 
@@ -99,6 +100,8 @@ private:
 
     void dump(const AbstractLocker&, PrintStream&) const;
 
+    void stop();
+
     unsigned m_numberOfActiveThreads { 0 };
     std::array<unsigned, static_cast<size_t>(JITPlan::Tier::Count)> m_ongoingCompilationsPerTier { 0, 0, 0 };
     std::array<unsigned, static_cast<size_t>(JITPlan::Tier::Count)> m_maximumNumberOfConcurrentCompilationsPerTier;
@@ -123,6 +126,8 @@ private:
 
     Ref<AutomaticThreadCondition> m_planEnqueued;
     Condition m_planCompiledOrCancelled;
+
+    std::atomic<bool> m_stopped;
 };
 
 } // namespace JSC

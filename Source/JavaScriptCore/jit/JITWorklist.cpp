@@ -35,6 +35,7 @@
 #include "SlotVisitorInlines.h"
 #include "VMInlines.h"
 #include <wtf/CompilationThread.h>
+#include <wtf/Shutdown.h>
 
 namespace JSC {
 
@@ -74,6 +75,9 @@ JITWorklist& JITWorklist::ensureGlobalWorklist()
             auto* worklist = new JITWorklist();
             WTF::storeStoreFence();
             theGlobalJITWorklist = worklist;
+            WTF::CallOnShutdown([]() mutable {
+                theGlobalJITWorklist->stop();
+            });
         });
     return *theGlobalJITWorklist;
 }
@@ -354,6 +358,34 @@ void JITWorklist::removeMatchingPlansForVM(VM& vm, const MatchFunction& matches)
     }
     if (didCancelPlans)
         m_planCompiledOrCancelled.notifyAll();
+}
+
+void JITWorklist::stop()
+{
+    {
+        Locker locker { *m_lock };
+        m_stopped = true;
+        for (unsigned i = m_threads.size(); i--;) {
+            auto& thread = m_threads[i];
+            thread->notify(locker);
+        }
+    }
+    
+    if (m_suspensionLock.isHeld())
+        resumeAllThreads();
+
+    for (unsigned i = m_threads.size(); i--;) {
+        auto& thread = m_threads[i];
+        {
+            Locker locker { *m_lock };
+            if (thread->tryStop(locker))
+                continue;
+        }
+        
+        thread->join();
+    }
+
+    m_threads.clear();
 }
 
 } // namespace JSC

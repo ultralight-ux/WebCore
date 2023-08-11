@@ -58,6 +58,7 @@
 #include <wtf/AutodrainedPool.h>
 #include <wtf/MessageQueue.h>
 #include <wtf/threads/BinarySemaphore.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 using namespace JSC;
@@ -571,28 +572,82 @@ private:
     Thread& m_thread;
 };
 
+class IDBSerializationThread {
+public:
+    IDBSerializationThread()
+        : m_stopping(false)
+    {
+        m_thread = Thread::create("IndexedDB Serialization", [this] {
+            {
+                IDBSerializationContext serializationContext;
+                while (auto function = m_queue.waitForMessage()) {
+                    AutodrainedPool pool;
+                    (*function)(serializationContext.globalObject());
+                    if (m_stopping)
+                        break;
+                }
+            }
+            m_stopSemaphore.signal();
+        });
+    }
+
+    ~IDBSerializationThread()
+    {
+        if (m_thread)
+            stop();
+    }
+
+    void stop()
+    {
+        if (m_thread && !m_stopping) {
+            m_stopping = true;
+            auto stopFunc = [](JSC::JSGlobalObject& globalObject) {};
+            m_queue.append(makeUnique<Function<void(JSC::JSGlobalObject&)>>(WTFMove(stopFunc)));
+            m_stopSemaphore.wait();
+            m_thread->waitForCompletion();
+        }
+
+        m_thread = nullptr;
+    }
+
+    void callOnThreadAndWait(Function<void(JSC::JSGlobalObject&)>&& function)
+    {
+        if (m_stopping)
+            return;
+
+        BinarySemaphore semaphore;
+        auto newFunction = [&semaphore, function = WTFMove(function)](JSC::JSGlobalObject& globalObject) {
+            function(globalObject);
+            semaphore.signal();
+        };
+        m_queue.append(makeUnique<Function<void(JSC::JSGlobalObject&)>>(WTFMove(newFunction)));
+        semaphore.wait();
+    }
+
+protected:
+    std::atomic<bool> m_stopping;
+    BinarySemaphore m_stopSemaphore;
+    RefPtr<Thread> m_thread;
+    MessageQueue<Function<void(JSC::JSGlobalObject&)>> m_queue;
+};
+
+static IDBSerializationThread* g_thread = nullptr;
+
 void callOnIDBSerializationThreadAndWait(Function<void(JSC::JSGlobalObject&)>&& function)
 {
-    static NeverDestroyed<MessageQueue<Function<void(JSC::JSGlobalObject&)>>> queue;
-    static std::once_flag createThread;
+    if (!g_thread) {
+        g_thread = new IDBSerializationThread();
 
-    std::call_once(createThread, [] {
-        Thread::create("IndexedDB Serialization", [] {
-            IDBSerializationContext serializationContext;
-            while (auto function = queue->waitForMessage()) {
-                AutodrainedPool pool;
-                (*function)(serializationContext.globalObject());
+        WTF::CallOnShutdown([]() mutable {
+            if (g_thread) {
+                delete g_thread;
+                g_thread = nullptr;
             }
-        });
-    });
+        },
+            WTF::ShutdownPriority::High);
+    }
 
-    BinarySemaphore semaphore;
-    auto newFuntion = [&semaphore, function = WTFMove(function)](JSC::JSGlobalObject& globalObject) {
-        function(globalObject);
-        semaphore.signal();
-    };
-    queue->append(makeUnique<Function<void(JSC::JSGlobalObject&)>>(WTFMove(newFuntion)));
-    semaphore.wait();
+    g_thread->callOnThreadAndWait(WTFMove(function));
 }
 
 } // namespace WebCore
