@@ -34,6 +34,10 @@
 #include <algorithm>
 #include <utility>
 
+#if !defined(WARN_UNUSED_RETURN)
+#define WARN_UNUSED_RETURN
+#endif
+
 inline void JSRetain(JSClassRef context) { JSClassRetain(context); }
 inline void JSRelease(JSClassRef context) { JSClassRelease(context); }
 inline void JSRetain(JSGlobalContextRef context) { JSGlobalContextRetain(context); }
