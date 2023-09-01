@@ -3115,11 +3115,6 @@ RenderLayerFilters* RenderLayer::filtersForPainting(GraphicsContext& context, Op
 
 GraphicsContext* RenderLayer::setupFilters(GraphicsContext& destinationContext, LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags, const LayoutSize& offsetFromRoot)
 {
-#if USE(ULTRALIGHT)
-    notImplemented(); // TODO, Filter Effects are not implemented in Ultralight
-    return nullptr;
-#endif
-
     auto* paintingFilters = filtersForPainting(destinationContext, paintFlags);
     if (!paintingFilters)
         return nullptr;
