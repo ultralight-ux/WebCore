@@ -291,7 +291,7 @@ public:
     bool logicalScroll(ScrollLogicalDirection, ScrollGranularity);
 
     // Scroll the actual contents of the view (either blitting or invalidating as needed).
-    void scrollContents(const IntSize& scrollDelta);
+    void scrollContents(const IntSize& scrollDelta, const IntSize& scrollDeltaPx);
 
     // This gives us a means of blocking painting on our scrollbars until the first layout has occurred.
     WEBCORE_EXPORT void setScrollbarsSuppressed(bool suppressed, bool repaintOnUnsuppress = false);
@@ -437,7 +437,7 @@ protected:
     void invalidateScrollCornerRect(const IntRect&) final;
 
     // Scroll the content by blitting the pixels.
-    virtual bool scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect) = 0;
+    virtual bool scrollContentsFastPath(const IntSize& scrollDelta, const IntSize& scrollDeltaPx, const IntRect& rectToScroll, const IntRect& clipRect) = 0;
     // Scroll the content by invalidating everything.
     virtual void scrollContentsSlowPath(const IntRect& updateRect);
 
@@ -478,7 +478,7 @@ private:
     IntRect visibleContentRectInternal(VisibleContentRectIncludesScrollbars, VisibleContentRectBehavior) const final;
     WEBCORE_EXPORT IntRect unobscuredContentRectInternal(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
 
-    void completeUpdatesAfterScrollTo(const IntSize& scrollDelta);
+    void completeUpdatesAfterScrollTo(const IntSize& scrollDelta, const IntSize& scrollDeltaPx);
 
     bool setHasScrollbarInternal(RefPtr<Scrollbar>&, ScrollbarOrientation, bool hasBar, bool* contentSizeAffected);
 
@@ -557,12 +557,17 @@ private:
     // between exposed and unobscured areas. The two attributes should eventually be merged.
     IntRect m_fixedVisibleContentRect;
 #endif
+    // Ultralight - we maintain pixel-space copies of these values to support scrolling the backing store by pixels
+    // when fractional DPI scales are used.
     ScrollPosition m_scrollPosition;
+    ScrollPosition m_scrollPositionPx;
     IntPoint m_cachedScrollPosition;
+    IntPoint m_cachedScrollPositionPx;
     IntSize m_fixedLayoutSize;
     IntSize m_contentsSize;
 
     std::optional<IntSize> m_deferredScrollDelta; // Needed for WebKit scrolling
+    std::optional<IntSize> m_deferredScrollDeltaPx;
     std::optional<std::pair<ScrollOffset, ScrollOffset>> m_deferredScrollOffsets; // Needed for platform widget scrolling
 
     IntPoint m_panScrollIconPoint;

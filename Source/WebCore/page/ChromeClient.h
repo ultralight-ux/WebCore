@@ -230,6 +230,12 @@ public:
     virtual IntPoint accessibilityScreenToRootView(const IntPoint&) const = 0;
     virtual IntRect rootViewToAccessibilityScreen(const IntRect&) const = 0;
 
+    // Ultralight - additional methods to support fractional DPI scaling
+    virtual double deviceScale() const = 0;
+    virtual IntPoint rootViewToScreen(const IntPoint&) const = 0;
+    virtual FloatPoint screenToRootView(const FloatPoint&) const = 0;
+    virtual FloatPoint rootViewToScreen(const FloatPoint&) const = 0;
+
     virtual void didFinishLoadingImageForElement(HTMLImageElement&) = 0;
 
     virtual PlatformPageClient platformPageClient() const = 0;

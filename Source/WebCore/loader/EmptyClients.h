@@ -122,6 +122,12 @@ class EmptyChromeClient : public ChromeClient {
     IntPoint accessibilityScreenToRootView(const IntPoint& p) const final { return p; };
     IntRect rootViewToAccessibilityScreen(const IntRect& r) const final { return r; };
 
+    // Ultralight - additional methods to support fractional DPI scaling
+    double deviceScale() const final { return 1.0; }
+    IntPoint rootViewToScreen(const IntPoint& p) const final { return p; }
+    FloatPoint screenToRootView(const FloatPoint& p) const final { return p; }
+    FloatPoint rootViewToScreen(const FloatPoint& p) const final { return p; }
+
     void didFinishLoadingImageForElement(HTMLImageElement&) final { }
 
     PlatformPageClient platformPageClient() const final { return 0; }

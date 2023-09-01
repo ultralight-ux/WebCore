@@ -732,7 +732,7 @@ public:
 private:
     explicit FrameView(Frame&);
 
-    bool scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect) final;
+    bool scrollContentsFastPath(const IntSize& scrollDelta, const IntSize& scrollDeltaPx, const IntRect& rectToScroll, const IntRect& clipRect) final;
     void scrollContentsSlowPath(const IntRect& updateRect) final;
 
     void traverseForPaintInvalidation(NullGraphicsContext::PaintInvalidationReasons);

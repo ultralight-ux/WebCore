@@ -54,7 +54,7 @@ private:
     void addedOrRemovedScrollbar() final;
     void delegatedScrollingModeDidChange() final;
     void updateScrollCorner() final;
-    bool scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect) final;
+    bool scrollContentsFastPath(const IntSize& scrollDelta, const IntSize& scrollDeltaPx, const IntRect& rectToScroll, const IntRect& clipRect) final;
     bool isVerticalDocument() const final;
     bool isFlippedDocument() const final;
     bool shouldDeferScrollUpdateAfterContentSizeChange() final;

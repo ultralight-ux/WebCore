@@ -2175,10 +2175,10 @@ OptionSet<StyleColorOptions> FrameView::styleColorOptions() const
     return { };
 }
 
-bool FrameView::scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect)
+bool FrameView::scrollContentsFastPath(const IntSize& scrollDelta, const IntSize& scrollDeltaPx, const IntRect& rectToScroll, const IntRect& clipRect)
 {
     if (!m_viewportConstrainedObjects || m_viewportConstrainedObjects->isEmptyIgnoringNullReferences()) {
-        m_frame->page()->chrome().scroll(scrollDelta, rectToScroll, clipRect);
+        m_frame->page()->chrome().scroll(scrollDeltaPx, rectToScroll, clipRect);
         return true;
     }
 
@@ -2218,7 +2218,7 @@ bool FrameView::scrollContentsFastPath(const IntSize& scrollDelta, const IntRect
     }
 
     // 1) scroll
-    m_frame->page()->chrome().scroll(scrollDelta, rectToScroll, clipRect);
+    m_frame->page()->chrome().scroll(scrollDeltaPx, rectToScroll, clipRect);
 
     // 2) update the area of fixed objects that has been invalidated
     for (auto& updateRect : regionToUpdate.rects()) {

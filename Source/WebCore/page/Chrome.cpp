@@ -532,6 +532,26 @@ void Chrome::setCursorHiddenUntilMouseMoves(bool hiddenUntilMouseMoves)
     m_client.setCursorHiddenUntilMouseMoves(hiddenUntilMouseMoves);
 }
 
+double Chrome::deviceScale() const
+{
+    return m_client.deviceScale();
+}
+
+IntPoint Chrome::rootViewToScreen(const IntPoint& p) const
+{
+    return m_client.rootViewToScreen(p);
+}
+
+FloatPoint Chrome::screenToRootView(const FloatPoint& p) const
+{
+    return m_client.screenToRootView(p);
+}
+
+FloatPoint Chrome::rootViewToScreen(const FloatPoint& p) const
+{
+    return m_client.rootViewToScreen(p);
+}
+
 RefPtr<ImageBuffer> Chrome::createImageBuffer(const FloatSize& size, RenderingMode renderingMode, RenderingPurpose purpose, float resolutionScale, const DestinationColorSpace& colorSpace, PixelFormat pixelFormat, bool avoidBackendSizeCheck) const
 {
     return m_client.createImageBuffer(size, renderingMode, purpose, resolutionScale, colorSpace, pixelFormat, avoidBackendSizeCheck);

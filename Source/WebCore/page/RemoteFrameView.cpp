@@ -106,7 +106,7 @@ void RemoteFrameView::updateScrollCorner()
 {
 }
 
-bool RemoteFrameView::scrollContentsFastPath(const IntSize&, const IntRect&, const IntRect&)
+bool RemoteFrameView::scrollContentsFastPath(const IntSize&, const IntSize&, const IntRect&, const IntRect&)
 {
     return false;
 }

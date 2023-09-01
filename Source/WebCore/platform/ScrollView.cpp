@@ -466,20 +466,27 @@ void ScrollView::handleDeferredScrollUpdateAfterContentSizeChange()
     ASSERT(static_cast<bool>(m_deferredScrollDelta) != static_cast<bool>(m_deferredScrollOffsets));
 
     if (m_deferredScrollDelta)
-        completeUpdatesAfterScrollTo(m_deferredScrollDelta.value());
+        completeUpdatesAfterScrollTo(m_deferredScrollDelta.value(), m_deferredScrollDeltaPx.value());
     else if (m_deferredScrollOffsets)
         scrollOffsetChangedViaPlatformWidgetImpl(m_deferredScrollOffsets.value().first, m_deferredScrollOffsets.value().second);
     
     m_deferredScrollDelta = std::nullopt;
+    m_deferredScrollDeltaPx = std::nullopt;
     m_deferredScrollOffsets = std::nullopt;
 }
 
 void ScrollView::scrollTo(const ScrollPosition& newPosition)
 {
+    ScrollPosition newPositionPx = newPosition;
+
+    if (hostWindow())
+      newPositionPx = hostWindow()->rootViewToScreen(newPosition);
+
     LOG_WITH_STREAM(Scrolling, stream << "ScrollView::scrollTo " << newPosition << " min: " << minimumScrollPosition() << " max: " << maximumScrollPosition());
 
     IntSize scrollDelta = newPosition - m_scrollPosition;
-    if (scrollDelta.isZero())
+    IntSize scrollDeltaPx = newPositionPx - m_scrollPositionPx;
+    if (scrollDeltaPx.isZero())
         return;
 
     if (platformWidget()) {
@@ -488,6 +495,7 @@ void ScrollView::scrollTo(const ScrollPosition& newPosition)
     }
 
     m_scrollPosition = newPosition;
+    m_scrollPositionPx = newPositionPx;
 
     if (scrollbarsSuppressed())
         return;
@@ -503,16 +511,17 @@ void ScrollView::scrollTo(const ScrollPosition& newPosition)
     if (shouldDeferScrollUpdateAfterContentSizeChange()) {
         ASSERT(!m_deferredScrollDelta);
         m_deferredScrollDelta = scrollDelta;
+        m_deferredScrollDeltaPx = scrollDeltaPx;
         return;
     }
 
-    completeUpdatesAfterScrollTo(scrollDelta);
+    completeUpdatesAfterScrollTo(scrollDelta, scrollDeltaPx);
 }
 
-void ScrollView::completeUpdatesAfterScrollTo(const IntSize& scrollDelta)
+void ScrollView::completeUpdatesAfterScrollTo(const IntSize& scrollDelta, const IntSize& scrollDeltaPx)
 {
     updateLayerPositionsAfterScrolling();
-    scrollContents(scrollDelta);
+    scrollContents(scrollDelta, scrollDeltaPx);
     updateCompositingLayersAfterScrolling();
 }
 
@@ -818,7 +827,7 @@ IntRect ScrollView::rectToCopyOnScroll() const
     return scrollViewRect;
 }
 
-void ScrollView::scrollContents(const IntSize& scrollDelta)
+void ScrollView::scrollContents(const IntSize& scrollDelta, const IntSize& scrollDeltaPx)
 {
     HostWindow* window = hostWindow();
     if (!window)
@@ -846,7 +855,7 @@ void ScrollView::scrollContents(const IntSize& scrollDelta)
 
     if (canBlitOnScroll()) { // The main frame can just blit the WebView window
         // FIXME: Find a way to scroll subframes with this faster path
-        if (!scrollContentsFastPath(-scrollDelta, scrollViewRect, clipRect))
+        if (!scrollContentsFastPath(-scrollDelta, -scrollDeltaPx, scrollViewRect, clipRect))
             scrollContentsSlowPath(updateRect);
     } else { 
         // We need to repaint the entire backing store. Do it now before moving the windowed plugins.
@@ -1300,7 +1309,14 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
         documentDirtyRect.moveBy(-locationOfContents);
 
         if (!paintsEntireContents()) {
-            context.translate(-scrollX(), -scrollY());
+            // Ultralight - this routine has been modified to use the pixel-space scroll position
+            // as the true scroll offset, we map this value to content-space (floating-point) and
+            // use it to translate the context. This is necessary to support fractional DPI scales.
+            FloatPoint scrollPosPixelSnapped = FloatPoint(scrollPosition());
+            if (hostWindow())
+              scrollPosPixelSnapped = hostWindow()->screenToRootView(FloatPoint(m_scrollPositionPx));
+
+            context.translate(-scrollPosPixelSnapped.x(), -scrollPosPixelSnapped.y());
             documentDirtyRect.moveBy(scrollPosition());
 
             context.clip(visibleContentRect(LegacyIOSDocumentVisibleRect));
