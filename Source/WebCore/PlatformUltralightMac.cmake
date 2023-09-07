@@ -5,6 +5,7 @@ add_definitions(-D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
 include(platform/Curl.cmake)
+include(platform/Ultralight.cmake)
 
 if (USE_GSTREAMER)
     include(platform/GStreamer.cmake)
@@ -47,92 +48,16 @@ list(APPEND WebCore_SOURCES
     platform/cf/KeyedEncoderCF.cpp
     platform/cf/SharedBufferCF.cpp
     platform/Cursor.cpp
-    platform/generic/ScrollAnimatorGeneric.cpp
+
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
     platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
-    platform/graphics/ultralight/BitmapImageUltralight.cpp
-    platform/graphics/ultralight/CanvasImage.cpp
-    platform/graphics/ultralight/CanvasImage.h
-    platform/graphics/ultralight/FloatRectUltralight.cpp
-    platform/graphics/ultralight/FontCacheUltralight.cpp
-    platform/graphics/ultralight/FontCustomPlatformData.cpp
-    platform/graphics/ultralight/FontCustomPlatformData.h
-    platform/graphics/ultralight/FontPlatformDataUltralight.cpp
-    platform/graphics/ultralight/FontRenderer.cpp
-    platform/graphics/ultralight/FontRenderer.h
-    platform/graphics/ultralight/FontUltralight.cpp
-    platform/graphics/ultralight/FreeTypeLib.cpp
-    platform/graphics/ultralight/GlyphPageUltralight.cpp
-    platform/graphics/ultralight/GradientUltralight.cpp
-    platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
-    platform/graphics/ultralight/GraphicsContextUltralight.cpp
-    platform/graphics/ultralight/ImageBufferDataUltralight.h
-    platform/graphics/ultralight/ImageBufferUltralight.cpp
-    platform/graphics/ultralight/ImageDecoderUltralight.cpp
-    platform/graphics/ultralight/ImageUltralight.cpp
-    platform/graphics/ultralight/IntRectUltralight.cpp
-    platform/graphics/ultralight/NativeImageUltralight.cpp
-    platform/graphics/ultralight/PathUltralight.cpp
-    platform/graphics/ultralight/PatternUltralight.cpp
-    platform/graphics/ultralight/PlatformContextUltralight.cpp
-    platform/graphics/ultralight/PlatformContextUltralight.h
-    platform/graphics/ultralight/PlatformFontFreeType.cpp
-    platform/graphics/ultralight/PlatformFontFreeType.h
-    platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
-    platform/graphics/ultralight/RefPtrFreeTypeFace.h
-    platform/graphics/ultralight/RefPtrUltralight.cpp
-    platform/graphics/ultralight/RefPtrUltralight.h
-    platform/graphics/ultralight/TransformationMatrixUltralight.cpp
-    platform/graphics/ultralight/UltralightStubs.cpp
-    platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
+   
     platform/LocalizedStrings.cpp
     platform/network/mac/NetworkStateNotifierMac.cpp
-    platform/network/ultralight/CurlSSLHandleUltralight.cpp
+
     platform/ScrollAnimationKinetic.cpp
     platform/ScrollAnimationSmooth.cpp
     platform/text/LocaleNone.cpp
-    platform/ultralight/AXObjectCacheUltralight.cpp
-    platform/ultralight/CryptoDigestUltralight.cpp
-    platform/ultralight/CursorUltralight.cpp
-    platform/ultralight/DNSResolveQueueUltralight.cpp
-    platform/ultralight/DragControllerUltralight.cpp
-    platform/ultralight/DragDataUltralight.cpp
-    platform/ultralight/DragImageUltralight.cpp
-    platform/ultralight/EditorUltralight.cpp
-    platform/ultralight/EventHandlerUltralight.cpp
-    platform/ultralight/EventLoopUltralight.cpp
-    platform/ultralight/FileSystemUltralight.cpp
-    platform/ultralight/FileURLLoader.cpp
-    platform/ultralight/FileURLLoader.h
-    platform/ultralight/GamepadProviderUltralight.cpp
-    platform/ultralight/GamepadProviderUltralight.h
-    platform/ultralight/GamepadUltralight.h
-    platform/ultralight/GamepadUltralight.cpp
-    platform/ultralight/HyphenationUltralight.cpp
-    platform/ultralight/IconUltralight.cpp
-    platform/ultralight/ICUUtils.cpp
-    platform/ultralight/ImageUltralight.cpp
-    platform/ultralight/KeyEventUltralight.cpp
-    platform/ultralight/LocalizedStringsUltralight.cpp
-    platform/ultralight/LoggingUltralight.cpp
-    platform/ultralight/MemoryUtils.cpp
-    platform/ultralight/MIMETypeRegistryUltralight.cpp
-    platform/ultralight/PasteboardUltralight.cpp
-    platform/ultralight/PlatformMouseEventUltralight.cpp
-    platform/ultralight/PlatformScreenUltralight.cpp
-    platform/ultralight/PreserveSymbolsUltralight.cpp
-    platform/ultralight/RenderThemeUltralight.cpp
-    platform/ultralight/ResourceLoaderUltralight.cpp
-    platform/ultralight/ResourceUsageOverlayUltralight.cpp
-    platform/ultralight/ScrollbarThemeUltralight.cpp
-    platform/ultralight/SharedBufferUltralight.cpp
-    platform/ultralight/SoundUltralight.cpp
-    platform/ultralight/SSLKeyGeneratorUltralight.cpp
-    platform/ultralight/SSLKeyGeneratorUltralightMac.mm
-    platform/ultralight/SynchronousLoaderClientUltralight.cpp
-    platform/ultralight/TextBreakIteratorInternalICUUltralight.cpp
-    platform/ultralight/UTFUltralight.cpp
-    platform/ultralight/WidgetUltralight.cpp
 )
 
 if (USE_GSTREAMER)
