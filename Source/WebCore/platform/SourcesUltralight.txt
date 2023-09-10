@@ -34,7 +34,6 @@ platform/ultralight/ResourceFileLoader.h
 platform/ultralight/ResourceUsageOverlayUltralight.cpp
 platform/ultralight/ScrollbarThemeUltralight.cpp
 platform/ultralight/SharedBufferUltralight.cpp
-platform/ultralight/SSLKeyGeneratorUltralightMac.mm
 platform/ultralight/StringUltralight.h
 platform/ultralight/SystemFontDatabaseUltralight.cpp
 platform/ultralight/TextBreakIteratorInternalICUUltralight.cpp

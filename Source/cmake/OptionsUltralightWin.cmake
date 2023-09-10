@@ -9,8 +9,6 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE OFF)
 
 WEBKIT_OPTION_END()
 
-set(WebCore_LIBRARY_TYPE SHARED)
-
 include(UltralightDefinitions)
 
 set(ICU_LIBRARIES icuuc icuin icudt)

@@ -58,7 +58,7 @@ list(APPEND WTF_SOURCES
     cocoa/MemoryFootprintCocoa.cpp
     cocoa/MemoryPressureHandlerCocoa.mm
     cocoa/MachSendRight.cpp
-    cocoa/FileSystemCocoa.mm
+    #cocoa/FileSystemCocoa.mm
     cocoa/URLCocoa.mm
 
     cf/FileSystemCF.cpp
@@ -71,6 +71,7 @@ list(APPEND WTF_SOURCES
     text/cf/StringImplCF.cpp
     text/cf/StringViewCF.cpp
 
+    text/cocoa/StringImplCocoa.mm
     text/cocoa/StringViewCocoa.mm
 	
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp

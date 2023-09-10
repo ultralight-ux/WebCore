@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || OS(DARWIN)
 #include <wtf/cocoa/SoftLinking.h>
 #elif OS(WINDOWS)
 #include <wtf/win/SoftLinking.h>

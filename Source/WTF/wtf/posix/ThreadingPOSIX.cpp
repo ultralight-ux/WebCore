@@ -76,6 +76,12 @@
 #include <mach/thread_switch.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Thread.h>
+#include <Ultralight/private/Isolate.h>
+#endif
+
 namespace WTF {
 
 Thread::~Thread()
@@ -288,7 +294,7 @@ bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> st
     if (threadFactory) {
         ultralight::CreateThreadResult result;
         bool success = threadFactory->CreateThread(name, (ultralight::ThreadType)type,
-            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
+            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)context, result);
         if (success) {
             threadIdentifier = (unsigned int)result.id;
             pthread_t threadHandle = (pthread_t)result.handle;

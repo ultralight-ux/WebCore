@@ -45,6 +45,11 @@ static void languagePreferencesDidChange(CFNotificationCenterRef, void*, CFStrin
 }
 #endif
 
+#if PLATFORM(ULTRALIGHT) && OS(DARWIN)
+bool canMinimizeLanguages() { return false; }
+RetainPtr<CFArrayRef> minimizedLanguagesFromLanguages(CFArrayRef languages) { return languages; }
+#endif
+
 static String httpStyleLanguageCode(CFStringRef language, ShouldMinimizeLanguages shouldMinimizeLanguages)
 {
     RetainPtr<CFStringRef> preferredLanguageCode;

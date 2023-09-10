@@ -1,4 +1,5 @@
 list(APPEND PAL_PUBLIC_HEADERS
+#[===[
     avfoundation/MediaTimeAVFoundation.h
     avfoundation/OutputContext.h
     avfoundation/OutputDevice.h
@@ -146,9 +147,11 @@ list(APPEND PAL_PUBLIC_HEADERS
     system/mac/PopupMenu.h
     system/mac/SystemSleepListenerMac.h
     system/mac/WebPanel.h
+]===]#
 )
 
 list(APPEND PAL_SOURCES
+#[===[
     avfoundation/MediaTimeAVFoundation.cpp
     avfoundation/OutputContext.mm
     avfoundation/OutputDevice.mm
@@ -177,6 +180,11 @@ list(APPEND PAL_SOURCES
     cocoa/SpeechSoftLink.mm
     cocoa/UsageTrackingSoftLink.mm
     cocoa/VisionKitCoreSoftLink.mm
+]===]#
+
+    system/mac/SoundMac.mm
+    crypto/openssl/CryptoDigestOpenSSL.cpp
+    text/mac/KillRingMac.mm
 )
 
 list(APPEND PAL_PRIVATE_INCLUDE_DIRECTORIES

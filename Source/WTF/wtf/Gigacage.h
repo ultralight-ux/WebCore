@@ -29,6 +29,10 @@
 #include <wtf/StdLibExtras.h>
 
 #if USE(SYSTEM_MALLOC)
+#include <mach/vm_param.h>
+#include <mach/vm_types.h>
+#include <wtf/MathExtras.h>
+
 #define GIGACAGE_ENABLED 0
 
 namespace Gigacage {

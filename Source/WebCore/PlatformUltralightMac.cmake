@@ -27,6 +27,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 if (USE_CF)
     list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/cf"
+        "${WEBCORE_DIR}/platform/mac"
     )
 endif ()
 
@@ -43,11 +44,13 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 
 list(APPEND WebCore_SOURCES
     editing/SmartReplaceCF.cpp
-    page/cocoa/ResourceUsageThreadCocoa.mm
+    page/ultralight/ResourceUsageThreadUltralight.cpp
     platform/cf/KeyedDecoderCF.cpp
     platform/cf/KeyedEncoderCF.cpp
     platform/cf/SharedBufferCF.cpp
     platform/Cursor.cpp
+
+    platform/cocoa/SharedBufferCocoa.mm
 
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
     platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
@@ -200,7 +203,7 @@ file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WEBCORE_DIR}/${_directory}/
 endforeach ()
 
 # Write the post-build bash script
-file(WRITE "${BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${DERIVED_SOURCES_WEBCORE_DIR}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
+file(WRITE "${BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${WebCore_DERIVED_SOURCES_DIR}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
 
 # Copy bash scripts over and chmod to executable
 file (COPY "${BUILD_TMP}/preBuild.sh" DESTINATION "${CMAKE_BINARY_DIR}/DerivedSources/WebCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)

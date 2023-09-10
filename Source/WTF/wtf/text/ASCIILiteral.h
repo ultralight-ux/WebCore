@@ -31,6 +31,10 @@
 #include <wtf/Span.h>
 #include <wtf/StdLibExtras.h>
 
+#ifdef __OBJC__
+#import <Foundation/Foundation.h>
+#endif
+
 namespace WTF {
 
 class PrintStream;
