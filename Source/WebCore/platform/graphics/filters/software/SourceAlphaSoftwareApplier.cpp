@@ -30,6 +30,7 @@ namespace WebCore {
 
 bool SourceAlphaSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto resultImage = result.imageBuffer();

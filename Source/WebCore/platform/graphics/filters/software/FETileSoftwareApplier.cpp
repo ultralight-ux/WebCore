@@ -33,6 +33,7 @@ namespace WebCore {
 
 bool FETileSoftwareApplier::apply(const Filter& filter, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto resultImage = result.imageBuffer();

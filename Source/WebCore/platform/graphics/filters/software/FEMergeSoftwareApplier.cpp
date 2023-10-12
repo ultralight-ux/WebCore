@@ -31,6 +31,7 @@ namespace WebCore {
 
 bool FEMergeSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     ASSERT(inputs.size() == m_effect.numberOfEffectInputs());
 
     auto resultImage = result.imageBuffer();

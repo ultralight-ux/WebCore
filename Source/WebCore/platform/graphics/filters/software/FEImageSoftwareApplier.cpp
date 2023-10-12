@@ -34,6 +34,7 @@ namespace WebCore {
 
 bool FEImageSoftwareApplier::apply(const Filter& filter, const FilterImageVector&, FilterImage& result) const
 {
+    ProfiledZone;
     auto resultImage = result.imageBuffer();
     if (!resultImage)
         return false;

@@ -75,6 +75,7 @@ void FilterImageTargetSwitcher::endClipAndDrawSourceImage(GraphicsContext& desti
 
 void FilterImageTargetSwitcher::endDrawSourceImage(GraphicsContext& destinationContext)
 {
+    ProfiledZone;
     if (!m_filter)
         return;
 

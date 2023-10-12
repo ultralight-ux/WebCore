@@ -32,6 +32,7 @@ namespace WebCore {
 
 bool FEFloodSoftwareApplier::apply(const Filter&, const FilterImageVector&, FilterImage& result) const
 {
+    ProfiledZone;
     auto resultImage = result.imageBuffer();
     if (!resultImage)
         return false;

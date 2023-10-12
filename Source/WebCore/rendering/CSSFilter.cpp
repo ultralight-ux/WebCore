@@ -327,6 +327,7 @@ OptionSet<FilterRenderingMode> CSSFilter::supportedFilterRenderingModes() const
 
 RefPtr<FilterImage> CSSFilter::apply(FilterImage* sourceImage, FilterResults& results)
 {
+    ProfiledZone;
     if (!sourceImage)
         return nullptr;
     

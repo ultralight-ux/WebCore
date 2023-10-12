@@ -51,6 +51,7 @@ int FEDisplacementMapSoftwareApplier::yChannelIndex() const
 
 bool FEDisplacementMapSoftwareApplier::apply(const Filter& filter, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
     auto& input2 = inputs[1].get();
 

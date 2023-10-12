@@ -130,6 +130,7 @@ IntOutsets RenderLayerFilters::calculateOutsets(RenderElement& renderer, const F
 
 GraphicsContext* RenderLayerFilters::beginFilterEffect(RenderElement& renderer, GraphicsContext& context, const LayoutRect& filterBoxRect, const LayoutRect& dirtyRect, const LayoutRect& layerRepaintRect)
 {
+    ProfiledZone;
     auto expandedDirtyRect = dirtyRect;
     auto targetBoundingBox = intersection(filterBoxRect, dirtyRect);
 
@@ -196,6 +197,7 @@ GraphicsContext* RenderLayerFilters::beginFilterEffect(RenderElement& renderer, 
 
 void RenderLayerFilters::applyFilterEffect(GraphicsContext& destinationContext)
 {
+    ProfiledZone;
     LOG_WITH_STREAM(Filters, stream << "\nRenderLayerFilters " << this << " applyFilterEffect");
 
     ASSERT(m_targetSwitcher);

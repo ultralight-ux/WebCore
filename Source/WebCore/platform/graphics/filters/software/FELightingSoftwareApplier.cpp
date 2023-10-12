@@ -393,6 +393,7 @@ void FELightingSoftwareApplier::applyPlatform(const LightingData& data)
 
 bool FELightingSoftwareApplier::apply(const Filter& filter, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto destinationPixelBuffer = result.pixelBuffer(AlphaPremultiplication::Premultiplied);

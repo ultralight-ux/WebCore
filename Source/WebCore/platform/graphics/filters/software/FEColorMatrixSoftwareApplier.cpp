@@ -34,6 +34,10 @@
 #include <Accelerate/Accelerate.h>
 #endif
 
+#if PLATFORM(ULTRALIGHT)
+#include <Ultralight/private/FastColorMatrix.h>
+#endif
+
 namespace WebCore {
 
 FEColorMatrixSoftwareApplier::FEColorMatrixSoftwareApplier(const FEColorMatrix& effect)
@@ -186,8 +190,41 @@ void FEColorMatrixSoftwareApplier::applyPlatformAccelerated(PixelBuffer& pixelBu
 }
 #endif
 
+#if PLATFORM(ULTRALIGHT)
+void FEColorMatrixSoftwareApplier::applyPlatformUltralight(PixelBuffer& pixelBuffer) const
+{
+    ProfiledZone;
+    auto width = pixelBuffer.size().width();
+    auto height = pixelBuffer.size().height();
+    auto buffer = ultralight::Bitmap::Create(width, height, ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+        4 * width, pixelBuffer.bytes(), pixelBuffer.sizeInBytes(), false);
+
+    switch (m_effect.type()) {
+    case FECOLORMATRIX_TYPE_UNKNOWN:
+        break;
+
+    case FECOLORMATRIX_TYPE_MATRIX: {
+        auto& mat = m_effect.values();
+        bool lastColumnZero = !mat[4] && !mat[9] && !mat[14] && !mat[19];
+        ultralight::FastColorMatrix(buffer, mat.data(), lastColumnZero);
+        break;
+    }
+
+    case FECOLORMATRIX_TYPE_SATURATE:
+    case FECOLORMATRIX_TYPE_HUEROTATE:
+        ultralight::FastColorMatrix(buffer, m_components);
+        break;
+
+    case FECOLORMATRIX_TYPE_LUMINANCETOALPHA:
+        ultralight::FastLuminanceToAlpha(buffer);
+        break;
+    }
+}
+#endif
+
 void FEColorMatrixSoftwareApplier::applyPlatformUnaccelerated(PixelBuffer& pixelBuffer) const
 {
+    ProfiledZone;
     auto pixelByteLength = pixelBuffer.sizeInBytes();
 
     switch (m_effect.type()) {
@@ -251,11 +288,16 @@ void FEColorMatrixSoftwareApplier::applyPlatform(PixelBuffer& pixelBuffer) const
         return;
     }
 #endif
+#if PLATFORM(ULTRALIGHT)
+    applyPlatformUltralight(pixelBuffer);
+    return;
+#endif
     applyPlatformUnaccelerated(pixelBuffer);
 }
 
 bool FEColorMatrixSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto resultImage = result.imageBuffer();

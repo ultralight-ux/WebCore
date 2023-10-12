@@ -34,6 +34,7 @@ namespace WebCore {
 
 bool FEOffsetSoftwareApplier::apply(const Filter& filter, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto resultImage = result.imageBuffer();

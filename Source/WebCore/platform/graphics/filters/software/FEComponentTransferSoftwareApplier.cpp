@@ -132,6 +132,7 @@ void FEComponentTransferSoftwareApplier::applyPlatform(PixelBuffer& pixelBuffer)
 
 bool FEComponentTransferSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
     
     auto destinationPixelBuffer = result.pixelBuffer(AlphaPremultiplication::Unpremultiplied);

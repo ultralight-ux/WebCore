@@ -295,6 +295,7 @@ void FEConvolveMatrixSoftwareApplier::applyPlatform(PaintingData& paintingData) 
 
 bool FEConvolveMatrixSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto alphaFormat = m_effect.preserveAlpha() ? AlphaPremultiplication::Unpremultiplied : AlphaPremultiplication::Premultiplied;

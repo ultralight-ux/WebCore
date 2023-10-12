@@ -46,6 +46,9 @@ private:
 #if USE(ACCELERATE)
     void applyPlatformAccelerated(PixelBuffer&) const;
 #endif
+#if PLATFORM(ULTRALIGHT)
+    void applyPlatformUltralight(PixelBuffer&) const;
+#endif
     void applyPlatformUnaccelerated(PixelBuffer&) const;
 
     void applyPlatform(PixelBuffer&) const;

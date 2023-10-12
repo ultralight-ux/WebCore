@@ -341,6 +341,7 @@ void FETurbulenceSoftwareApplier::applyPlatform(const IntRect& filterRegion, con
 
 bool FETurbulenceSoftwareApplier::apply(const Filter& filter, const FilterImageVector&, FilterImage& result) const
 {
+    ProfiledZone;
     auto destinationPixelBuffer = result.pixelBuffer(AlphaPremultiplication::Unpremultiplied);
     if (!destinationPixelBuffer)
         return false;

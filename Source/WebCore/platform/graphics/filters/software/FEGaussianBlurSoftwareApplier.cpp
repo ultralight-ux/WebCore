@@ -42,6 +42,12 @@
 #include <wtf/ParallelJobs.h>
 #endif
 
+#if PLATFORM(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#include <Ultralight/private/FastBlur.h>
+#endif
+
 namespace WebCore {
 
 inline void FEGaussianBlurSoftwareApplier::kernelPosition(int blurIteration, unsigned& radius, int& deltaLeft, int& deltaRight)
@@ -75,6 +81,7 @@ inline void FEGaussianBlurSoftwareApplier::kernelPosition(int blurIteration, uns
 // This function only operates on Alpha channel.
 inline void FEGaussianBlurSoftwareApplier::boxBlurAlphaOnly(const PixelBuffer& srcPixelBuffer, PixelBuffer& dstPixelBuffer, unsigned dx, int& dxLeft, int& dxRight, int& stride, int& strideLine, int& effectWidth, int& effectHeight, const int& maxKernelSize)
 {
+    ProfiledZone;
     const uint8_t* srcData = srcPixelBuffer.bytes();
     uint8_t* dstData = dstPixelBuffer.bytes();
     // Memory alignment is: RGBA, zero-index based.
@@ -115,6 +122,7 @@ inline void FEGaussianBlurSoftwareApplier::boxBlurAlphaOnly(const PixelBuffer& s
 
 inline void FEGaussianBlurSoftwareApplier::boxBlur(const PixelBuffer& srcPixelBuffer, PixelBuffer& dstPixelBuffer, unsigned dx, int dxLeft, int dxRight, int stride, int strideLine, int effectWidth, int effectHeight, bool alphaImage, EdgeModeType edgeMode)
 {
+    ProfiledZone;
     const int maxKernelSize = std::min(dxRight, effectWidth);
     if (alphaImage)
         return boxBlurAlphaOnly(srcPixelBuffer, dstPixelBuffer, dx, dxLeft, dxRight, stride, strideLine,  effectWidth, effectHeight, maxKernelSize);
@@ -291,6 +299,7 @@ inline void FEGaussianBlurSoftwareApplier::boxBlurAccelerated(PixelBuffer& ioBuf
 
 inline void FEGaussianBlurSoftwareApplier::boxBlurUnaccelerated(PixelBuffer& ioBuffer, PixelBuffer& tempBuffer, unsigned kernelSizeX, unsigned kernelSizeY, int stride, IntSize& paintSize, bool isAlphaImage, EdgeModeType edgeMode)
 {
+    ProfiledZone;
     int dxLeft = 0;
     int dxRight = 0;
     int dyLeft = 0;
@@ -358,6 +367,7 @@ inline void FEGaussianBlurSoftwareApplier::boxBlurWorker(ApplyParameters* parame
 
 inline void FEGaussianBlurSoftwareApplier::applyPlatform(PixelBuffer& ioBuffer, PixelBuffer& tempBuffer, unsigned kernelSizeX, unsigned kernelSizeY, IntSize& paintSize, bool isAlphaImage, EdgeModeType edgeMode)
 {
+    ProfiledZone;
 #if !USE(ACCELERATE)
     int scanline = 4 * paintSize.width();
     int extraHeight = 3 * kernelSizeY * 0.5f;
@@ -434,6 +444,104 @@ bool FEGaussianBlurSoftwareApplier::apply(const Filter& filter, const FilterImag
 {
     auto& input = inputs[0].get();
 
+#if PLATFORM(ULTRALIGHT)
+    ProfiledZone;
+
+#define USE_FILTER 0
+
+#if USE_FILTER
+
+
+    auto dstImage = result.imageBuffer();
+    if (!dstImage)
+        return false;
+
+    auto srcImage = input.imageBuffer();
+    if (!srcImage)
+        return false;
+
+    auto dstCanvas = dstImage->context().platformContext();
+    auto srcCanvas = srcImage->context().platformContext();
+
+    auto srcRect = input.absoluteImageRect();
+    auto dstRect = result.absoluteImageRectRelativeTo(input);
+    ultralight::Rect ulSrcRect = { srcRect.x(), srcRect.y(), srcRect.maxX(), srcRect.maxY() };
+    ultralight::Rect ulDstRect = { dstRect.x(), dstRect.y(), dstRect.maxX(), dstRect.maxY() };
+
+    auto scaledSigma = filter.scaledByFilterScale(FloatSize({ m_effect.stdDeviationX(), m_effect.stdDeviationY() }));
+
+    auto ulFilter = ultralight::BlurFilter(scaledSigma.width(), scaledSigma.height(), (ultralight::BlurFilter::EdgeMode)m_effect.edgeMode());
+
+    dstCanvas->DrawCanvasWithFilter(srcCanvas, ulFilter, ulSrcRect, ulDstRect, UltralightRGBA(255, 255, 255, 255));
+
+    return true;
+#else
+    if (!m_effect.stdDeviationX() && !m_effect.stdDeviationY())
+        return true;
+
+    auto dstBuffer = result.pixelBuffer(AlphaPremultiplication::Premultiplied);
+    if (!dstBuffer)
+        return false;
+
+    IntSize paintSize = result.absoluteImageRect().size();
+    if (paintSize.width() < 1 || paintSize.height() < 1)
+        return false;
+
+    auto srcBuffer = dstBuffer->createScratchPixelBuffer(paintSize);
+    if (!srcBuffer)
+        return false;
+
+    auto effectDrawingRect = result.absoluteImageRectRelativeTo(input);
+    input.copyPixelBuffer(*srcBuffer, effectDrawingRect);
+
+    auto srcBitmap = ultralight::Bitmap::Create(paintSize.width(), paintSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+        4 * paintSize.width(), srcBuffer->bytes(), srcBuffer->sizeInBytes(), false);
+    auto dstBitmap = ultralight::Bitmap::Create(paintSize.width(), paintSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+        4 * paintSize.width(), dstBuffer->bytes(), dstBuffer->sizeInBytes(), false);
+    auto edgeMode = (ultralight::BlurFilter::EdgeMode)m_effect.edgeMode();
+    auto scaledSigma = filter.scaledByFilterScale(FloatSize({ m_effect.stdDeviationX(), m_effect.stdDeviationY() }));
+
+    auto quality = ultralight::Platform::instance().config().effect_quality;
+    //quality = ultralight::EffectQuality::Low;
+    unsigned int num_passes = quality == ultralight::EffectQuality::High ? 3 : 2;
+    bool half_res = quality == ultralight::EffectQuality::Low;
+
+    // Blur at full resolution and return true if it worked.
+    if (!half_res)
+      return ultralight::FastBlur(srcBitmap, dstBitmap, scaledSigma.width(), num_passes, edgeMode);
+
+    // We're blurring at half resolution, calculate the new sigma.
+    float halfSigma = scaledSigma.width() / 2;
+
+    // If the sigma is <= 1.25, just return true (blur is too small to be noticeable at half resolution).
+    if (halfSigma <= 1.25f)
+      return true;
+
+    auto halfSize = paintSize;
+    halfSize.scale(0.5f);
+
+    if (halfSize.width() < 1 || halfSize.height() < 1)
+      return false;
+
+    auto srcBufferHalf = dstBuffer->createScratchPixelBuffer(halfSize);
+    auto dstBufferHalf = dstBuffer->createScratchPixelBuffer(halfSize);
+    auto srcBitmapHalf = ultralight::Bitmap::Create(halfSize.width(), halfSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+      4 * halfSize.width(), srcBufferHalf->bytes(), srcBufferHalf->sizeInBytes(), false);
+    auto dstBitmapHalf = ultralight::Bitmap::Create(halfSize.width(), halfSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+      4 * halfSize.width(), dstBufferHalf->bytes(), dstBufferHalf->sizeInBytes(), false);
+
+    // Copy the source buffer to half resolution (nearest-neighbor resampling)
+    srcBitmap->Resample(srcBitmapHalf, false);
+
+    // Blur at half resolution.
+    if (!ultralight::FastBlur(srcBitmapHalf, dstBitmapHalf, halfSigma, num_passes, edgeMode))
+      return false;
+
+    // Copy the half-res result to destination buffer (nearest-neighbor resampling).
+    return dstBitmapHalf->Resample(dstBitmap, false);
+
+#endif // USE_FILTER
+#else
     auto destinationPixelBuffer = result.pixelBuffer(AlphaPremultiplication::Premultiplied);
     if (!destinationPixelBuffer)
         return false;
@@ -452,6 +560,7 @@ bool FEGaussianBlurSoftwareApplier::apply(const Filter& filter, const FilterImag
 
     applyPlatform(*destinationPixelBuffer, *tempBuffer, kernelSize.width(), kernelSize.height(), paintSize, result.isAlphaImage(), m_effect.edgeMode());
     return true;
+#endif
 }
 
 } // namespace WebCore

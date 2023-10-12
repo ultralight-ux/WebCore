@@ -143,6 +143,7 @@ void FEMorphologySoftwareApplier::applyPlatform(const PaintingData& paintingData
 
 bool FEMorphologySoftwareApplier::apply(const Filter& filter, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
 
     auto destinationPixelBuffer = result.pixelBuffer(AlphaPremultiplication::Premultiplied);

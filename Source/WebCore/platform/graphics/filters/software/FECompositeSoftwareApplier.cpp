@@ -220,6 +220,7 @@ bool FECompositeSoftwareApplier::applyNonArithmetic(FilterImage& input, FilterIm
 
 bool FECompositeSoftwareApplier::apply(const Filter&, const FilterImageVector& inputs, FilterImage& result) const
 {
+    ProfiledZone;
     auto& input = inputs[0].get();
     auto& input2 = inputs[1].get();
 
