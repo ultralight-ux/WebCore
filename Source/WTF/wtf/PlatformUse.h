@@ -58,6 +58,11 @@
 
 #if PLATFORM(ULTRALIGHT)
 #define USE_ULTRALIGHT 1
+
+#if OS(DARWIN)
+#define USE_FOUNDATION 1
+#define USE_CF 1
+#endif
 #endif
 
 #if PLATFORM(COCOA)

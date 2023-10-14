@@ -7,13 +7,13 @@ namespace WebCore {
 void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCompatibilityMode) {
 #if __APPLE__
     // Can only change type from KeyDown to RawKeyDown or Char, as we lack information for other conversions.
-    ASSERT(m_type == KeyDown);
-    ASSERT(type == RawKeyDown || type == Char);
+    ASSERT(m_type == PlatformEventType::KeyDown);
+    ASSERT(type == PlatformEventType::RawKeyDown || type == PlatformEventType::Char);
     m_type = type;
     if (backwardCompatibilityMode)
         return;
 
-    if (type == RawKeyDown) {
+    if (type == PlatformEventType::RawKeyDown) {
         m_text = String();
         m_unmodifiedText = String();
     } else {

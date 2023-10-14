@@ -425,7 +425,7 @@ void Coder<WebCore::CertificateInfo>::encode(Encoder& encoder, const WebCore::Ce
     auto& certificateChain = certificateInfo.certificateChain();
 
     encoder << certificateInfo.verificationError();
-    encoder << certificateChain.size();
+    encoder << (uint32_t)certificateChain.size();
     for (auto& certificate : certificateChain)
         encoder << certificate;
 }
@@ -437,13 +437,13 @@ std::optional<WebCore::CertificateInfo> Coder<WebCore::CertificateInfo>::decode(
     if (!verificationError)
         return std::nullopt;
 
-    std::optional<size_t> numOfCerts;
+    std::optional<uint32_t> numOfCerts;
     decoder >> numOfCerts;
     if (!numOfCerts)
         return std::nullopt;
 
     WebCore::CertificateInfo::CertificateChain certificateChain;
-    for (size_t i = 0; i < numOfCerts.value(); i++) {
+    for (uint32_t i = 0; i < numOfCerts.value(); i++) {
         std::optional<WebCore::CertificateInfo::Certificate> certificate;
         decoder >> certificate;
         if (!certificate)

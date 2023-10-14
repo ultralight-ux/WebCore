@@ -4,30 +4,44 @@ list(APPEND WTF_PUBLIC_HEADERS
     WeakObjCPtr.h
 
     cf/CFURLExtras.h
+    cf/SpanCF.h
     cf/TypeCastsCF.h
+    cf/VectorCF.h
 
+    cocoa/CrashReporter.h
     cocoa/Entitlements.h
     cocoa/NSURLExtras.h
+    cocoa/RuntimeApplicationChecksCocoa.h
     cocoa/SoftLinking.h
+    cocoa/SpanCocoa.h
+    cocoa/TollFreeBridging.h
+    cocoa/TypeCastsCocoa.h
+    cocoa/VectorCocoa.h
 
     darwin/WeakLinking.h
-
-    mac/AppKitCompatibilityDeclarations.h
 
     spi/cf/CFBundleSPI.h
     spi/cf/CFStringSPI.h
 
     spi/cocoa/CFXPCBridgeSPI.h
+    spi/cocoa/CrashReporterClientSPI.h
+    spi/cocoa/MachVMSPI.h
+    spi/cocoa/NSLocaleSPI.h
+    spi/cocoa/NSObjCRuntimeSPI.h
     spi/cocoa/SecuritySPI.h
     spi/cocoa/objcSPI.h
 
+    spi/darwin/CodeSignSPI.h
     spi/darwin/DataVaultSPI.h
+    spi/darwin/OSVariantSPI.h
+    spi/darwin/ProcessMemoryFootprint.h
     spi/darwin/SandboxSPI.h
     spi/darwin/XPCSPI.h
     spi/darwin/dyldSPI.h
 
     spi/mac/MetadataSPI.h
 
+    text/cf/StringConcatenateCF.h
     text/cf/TextBreakIteratorCF.h
 )
 
@@ -35,16 +49,16 @@ list(APPEND WTF_SOURCES
     generic/MainThreadGeneric.cpp
 	generic/WorkQueueGeneric.cpp
 
+    posix/CPUTimePOSIX.cpp
     posix/FileSystemPOSIX.cpp
     posix/OSAllocatorPOSIX.cpp
     posix/ThreadingPOSIX.cpp
 
     cocoa/AutodrainedPool.cpp
-    cocoa/CPUTimeCocoa.cpp
     cocoa/MemoryFootprintCocoa.cpp
     cocoa/MemoryPressureHandlerCocoa.mm
     cocoa/MachSendRight.cpp
-    cocoa/FileSystemCocoa.mm
+    #cocoa/FileSystemCocoa.mm
     cocoa/URLCocoa.mm
 
     cf/FileSystemCF.cpp
@@ -57,6 +71,7 @@ list(APPEND WTF_SOURCES
     text/cf/StringImplCF.cpp
     text/cf/StringViewCF.cpp
 
+    text/cocoa/StringImplCocoa.mm
     text/cocoa/StringViewCocoa.mm
 	
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp

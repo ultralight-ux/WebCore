@@ -28,7 +28,7 @@
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || (PLATFORM(ULTRALIGHT) && OS(DARWIN))
 #import <CoreFoundation/CoreFoundation.h>
 #import <wtf/RetainPtr.h>
 #endif
@@ -55,7 +55,7 @@ WTF_EXPORT_PRIVATE String displayNameForLanguageLocale(const String&);
 
 Vector<String> platformUserPreferredLanguages(ShouldMinimizeLanguages = ShouldMinimizeLanguages::Yes);
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || (PLATFORM(ULTRALIGHT) && OS(DARWIN))
 bool canMinimizeLanguages();
 WTF_EXPORT_PRIVATE void listenForLanguageChangeNotifications();
 RetainPtr<CFArrayRef> minimizedLanguagesFromLanguages(CFArrayRef);

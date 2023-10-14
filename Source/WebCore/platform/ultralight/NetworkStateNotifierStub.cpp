@@ -4,10 +4,7 @@
 
 namespace WebCore {
 
-void NetworkStateNotifier::updateStateWithoutNotifying()
-{
-    notImplemented();
-}
+
 
 #if USE(GLIB)
 void NetworkStateNotifier::networkChangedCallback(NetworkStateNotifier* networkStateNotifier)
@@ -16,9 +13,16 @@ void NetworkStateNotifier::networkChangedCallback(NetworkStateNotifier* networkS
 }
 #endif
 
+#if !OS(DARWIN)
+void NetworkStateNotifier::updateStateWithoutNotifying()
+{
+    notImplemented();
+}
+
 void NetworkStateNotifier::startObserving()
 {
     notImplemented();
 }
+#endif
 
 }

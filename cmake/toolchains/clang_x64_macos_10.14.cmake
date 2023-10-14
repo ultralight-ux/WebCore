@@ -1,7 +1,7 @@
-if (DEFINED TOOLCHAIN_MACOS_10_14_CLANG_CMAKE)
+if (DEFINED TOOLCHAIN_X64_MACOS_10_14_CMAKE)
   return ()
 else ()
-  set(TOOLCHAIN_MACOS_10_14_CLANG_CMAKE 1)
+  set(TOOLCHAIN_X64_MACOS_10_14_CMAKE 1)
 endif ()
 
 find_program(CMAKE_C_COMPILER /usr/local/opt/llvm@11/bin/clang)
@@ -27,6 +27,9 @@ endif ()
 if (NOT EXISTS ${CMAKE_SYSROOT})
     message(FATAL_ERROR "macOS Platform SDK not found at the following path: ${CMAKE_SYSROOT}")
 endif ()
+
+set(SKIA_CC "/usr/local/opt/llvm@11/bin/clang")
+set(SKIA_CXX "/usr/local/opt/llvm@11/bin/clang++")
 
 # Set up FFmpeg args
 set(UL_FFMPEG_ARGS --target-os=darwin --enable-asm --cpu=haswell --sysroot=${CMAKE_SYSROOT})

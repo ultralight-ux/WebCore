@@ -51,17 +51,14 @@
 namespace WTF {
 
 using ThreadFunction = void (*)(void* argument);
+using ThreadIdentifier = uint32_t;
 
 #if USE(PTHREADS)
 using PlatformThreadHandle = pthread_t;
 using PlatformMutex = pthread_mutex_t;
 using PlatformCondition = pthread_cond_t;
 using ThreadSpecificKey = pthread_key_t;
-#if OS(LINUX)
-using ThreadIdentifier = pid_t;
-#endif
 #elif OS(WINDOWS)
-using ThreadIdentifier = uint32_t;
 using PlatformThreadHandle = HANDLE;
 using PlatformMutex = SRWLOCK;
 using PlatformCondition = CONDITION_VARIABLE;

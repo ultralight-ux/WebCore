@@ -29,7 +29,9 @@
 #import "WebCoreJITOperations.h"
 #import "WebCoreObjCExtras.h"
 #import <JavaScriptCore/InitializeThreading.h>
+#if !PLATFORM(ULTRALIGHT)
 #import <pal/cf/CoreMediaSoftLink.h>
+#endif
 #import <string.h>
 #import <wtf/MainThread.h>
 #import <wtf/cocoa/TypeCastsCocoa.h>
@@ -56,8 +58,10 @@
 
 - (void)dealloc
 {
+#if !PLATFORM(ULTRALIGHT)
     if (WebCoreObjCScheduleDeallocateOnMainThread([WebCoreSharedBufferData class], self))
         return;
+#endif
 
     [super dealloc];
 }
@@ -106,6 +110,7 @@ static void FreeDataSegment(void* refcon, void*, size_t)
     buffer->deref();
 }
 
+#if !PLATFORM(ULTRALIGHT)
 RetainPtr<CMBlockBufferRef> FragmentedSharedBuffer::createCMBlockBuffer() const
 {
     auto segmentToCMBlockBuffer = [] (const DataSegment& segment) -> RetainPtr<CMBlockBufferRef> {
@@ -148,6 +153,7 @@ RetainPtr<CMBlockBufferRef> FragmentedSharedBuffer::createCMBlockBuffer() const
     }
     return blockBuffer;
 }
+#endif
 
 RetainPtr<NSData> SharedBuffer::createNSData() const
 {
