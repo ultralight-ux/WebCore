@@ -11,9 +11,10 @@
 
 namespace WebCore {
 
-TextureMapperUltralight::TextureMapperUltralight()
+TextureMapperUltralight::TextureMapperUltralight(bool use_gpu)
+    : use_gpu_(use_gpu)
 {
-    m_texturePool = std::make_unique<BitmapTexturePool>();
+    m_texturePool = std::make_unique<BitmapTexturePool>(use_gpu_);
 }
 
 TextureMapperUltralight::~TextureMapperUltralight() {}
@@ -34,6 +35,7 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     const FloatRect& target, const TransformationMatrix& modelViewMatrix,
     float opacity, unsigned exposedEdges)
 {
+    ProfiledZone;
     if (!texture.isValid())
         return;
 
@@ -75,6 +77,7 @@ void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
 
 void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const FloatRoundedRect& rect)
 {
+    ProfiledZone;
     auto surface = current_surface_ ? current_surface_ : default_surface_;
     surface->Save();
 
@@ -98,6 +101,7 @@ void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const F
 
 void TextureMapperUltralight::endClip()
 {
+    ProfiledZone;
     auto surface = current_surface_ ? current_surface_ : default_surface_;
     surface->Restore();
 }
@@ -111,7 +115,8 @@ IntRect TextureMapperUltralight::clipBounds()
 
 Ref<BitmapTexture> TextureMapperUltralight::createTexture()
 {
-    BitmapTextureUltralight* texture = new BitmapTextureUltralight();
+    ProfiledZone;
+    BitmapTextureUltralight* texture = new BitmapTextureUltralight(use_gpu_);
     return *adoptRef(texture);
 }
 

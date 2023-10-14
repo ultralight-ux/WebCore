@@ -13,7 +13,7 @@
 
 namespace WebCore {
 
-BitmapTextureUltralight::BitmapTextureUltralight(const BitmapTexture::Flags flags) {
+BitmapTextureUltralight::BitmapTextureUltralight(bool use_gpu, const BitmapTexture::Flags flags) : use_gpu_(use_gpu) {
 }
 
 BitmapTextureUltralight::~BitmapTextureUltralight() {
@@ -24,6 +24,7 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 }
 
 void BitmapTextureUltralight::didReset() {
+  ProfiledZone;
   canvas_size_ = contentSize();
 
   if (canvas_) {
@@ -33,14 +34,21 @@ void BitmapTextureUltralight::didReset() {
     canvas_->Clear();
     return;
   }
+
+  if (!use_gpu_ && !surface_) {
+    // The underlying Surface is guaranteed to be a BitmapSurface.
+    auto bitmapSurfaceFactory = ultralight::GetBitmapSurfaceFactory();
+    surface_.reset(bitmapSurfaceFactory->CreateSurface(canvas_size_.width(), canvas_size_.height()));
+  }
     
   canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
-      canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, nullptr);
+      canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, surface_.get());
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
     const IntRect& targetRect, const IntPoint& offset) {
-    if (!image)
+  ProfiledZone;
+  if (!image)
         return;
 
     if (image->isBitmapImage()) {
@@ -63,6 +71,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
 void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const IntRect& targetRect,
   const IntPoint& offset, float scale) {
+  ProfiledZone;
   IntRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
   ultralight::IntRect scissorRect = { sourceRect.x(), sourceRect.y(), sourceRect.maxX(), sourceRect.maxY() };
@@ -94,12 +103,14 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
 
 void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,
     const IntPoint& offset, int bytesPerLine) {
+  ProfiledZone;
   // not implemented
 }
 
 RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper&,
     const FilterOperations&, bool) {
-    // not implemented
+  ProfiledZone;
+  // not implemented
     return this;
 }
 
