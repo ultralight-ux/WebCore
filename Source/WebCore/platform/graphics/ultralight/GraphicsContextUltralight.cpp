@@ -68,6 +68,7 @@ void GraphicsContextUltralight::restore()
 
 void GraphicsContextUltralight::drawNativeImage(NativeImage& nativeImage, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     auto image = nativeImage.platformImage();
     auto imageRect = FloatRect { {}, imageSize };
     auto normalizedSrcRect = normalizeRect(srcRect);
@@ -118,6 +119,7 @@ bool GraphicsContextUltralight::needsCachedNativeImageInvalidationWorkaround(Ren
 
 void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     if (!patternTransform.isInvertible())
         return;
 
@@ -152,6 +154,7 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
 // Draws a filled rectangle with a stroked border.
 void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThickness)
 {
+    ProfiledZone;
     // FIXME: this function does not handle patterns and gradients like drawPath does, it probably should.
     ASSERT(!rect.isEmpty());
 
@@ -174,6 +177,7 @@ void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThic
 // This is only used to draw borders.
 void GraphicsContextUltralight::drawLine(const FloatPoint& point1, const FloatPoint& point2)
 {
+    ProfiledZone;
     if (strokeStyle() == NoStroke)
         return;
 
@@ -223,6 +227,7 @@ void GraphicsContextUltralight::drawPath(const Path& path)
 
 void GraphicsContextUltralight::fillPath(const Path& path)
 {
+    ProfiledZone;
     if (path.isEmpty())
         return;
 
@@ -241,6 +246,7 @@ void GraphicsContextUltralight::fillPath(const Path& path)
 
 void GraphicsContextUltralight::strokePath(const Path& path)
 {
+    ProfiledZone;
     if (path.isEmpty())
         return;
 
@@ -283,6 +289,7 @@ void GraphicsContextUltralight::strokePath(const Path& path)
 
 void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 {
+    ProfiledZone;
     if (auto fillGradient = this->fillGradient()) {
         save();
         fillGradient->fill(*this, rect);
@@ -295,6 +302,7 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 
 void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& color)
 {
+    ProfiledZone;
     if (hasVisibleShadow()) {
         ShadowBlur contextShadow(dropShadow(), shadowsIgnoreTransforms());
         contextShadow.drawRectShadow(*this, FloatRoundedRect(rect));
@@ -307,6 +315,7 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& col
 
 void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect, const Color& color)
 {
+    ProfiledZone;
     if (hasVisibleShadow()) {
         ShadowBlur contextShadow(dropShadow(), shadowsIgnoreTransforms());
         contextShadow.drawRectShadow(*this, rect);
@@ -319,6 +328,7 @@ void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect
 
 void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, const FloatRoundedRect& roundedHoleRect, const Color& color)
 {
+    ProfiledZone;
     Path path;
     path.addRect(rect);
 
@@ -347,21 +357,25 @@ void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, c
 
 void GraphicsContextUltralight::clip(const FloatRect& rect)
 {
+    ProfiledZone;
     platformContext()->SetClip(rect, false);
 }
 
 void GraphicsContextUltralight::clipOut(const FloatRect& rect)
 {
+    ProfiledZone;
     platformContext()->SetClip(rect, true);
 }
 
 void GraphicsContextUltralight::clipOut(const Path& path)
 {
+    ProfiledZone;
     platformContext()->SetClip(path.platformPath(), ultralight::kFillRule_EvenOdd, true);
 }
 
 void GraphicsContextUltralight::clipPath(const Path& path, WindRule clipRule)
 {
+    ProfiledZone;
     platformContext()->SetClip(path.platformPath(), 
       clipRule == WindRule::EvenOdd ? ultralight::kFillRule_EvenOdd : ultralight::kFillRule_NonZero, false);
 }
@@ -439,6 +453,7 @@ void GraphicsContextUltralight::setMiterLimit(float limit)
 
 void GraphicsContextUltralight::clearRect(const FloatRect& rect)
 {
+    ProfiledZone;
     auto canvas = platformContext();
     canvas->Save();
 
@@ -584,6 +599,7 @@ FloatRect GraphicsContextUltralight::roundToDevicePixels(const FloatRect& rect, 
 
 void GraphicsContextUltralight::drawLinesForText(const FloatPoint& point, float thickness, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle strokeStyle)
 {
+    ProfiledZone;
     if (widths.isEmpty())
         return;
 

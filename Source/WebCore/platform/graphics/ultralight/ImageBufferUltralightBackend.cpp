@@ -21,6 +21,7 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferUltralightBackend);
 
 std::unique_ptr<ImageBufferUltralightBackend> ImageBufferUltralightBackend::create(const Parameters& parameters, const ImageBufferCreationContext&)
 {
+    ProfiledZone;
     ASSERT(parameters.pixelFormat == PixelFormat::BGRA8);
 
     IntSize backendSize = calculateBackendSize(parameters);
@@ -99,6 +100,7 @@ IntSize ImageBufferUltralightBackend::backendSize() const
 
 RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
 {
+    ProfiledZone;
     switch (copyBehavior) {
     case CopyBackingStore:
         return NativeImage::create(ultralight::Image::Create(ultralight::Bitmap::Create(*m_bitmap.get()), true));
@@ -113,17 +115,20 @@ RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCo
 
 void ImageBufferUltralightBackend::clipToMask(GraphicsContext& context, const FloatRect& dest)
 {
+    ProfiledZone;
     static_cast<GraphicsContextUltralight&>(context).platformContext()->SetClip(copyNativeImage(DontCopyBackingStore)->platformImage(), dest);
 }
 
 RefPtr<PixelBuffer> ImageBufferUltralightBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator & allocator) const
 {
+    ProfiledZone;
     return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, m_bitmap->raw_pixels(), allocator);
 }
 
 
 void ImageBufferUltralightBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
+    ProfiledZone;
     ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, m_bitmap->raw_pixels());
     m_surface->set_dirty_bounds({ 0, 0, (int)m_surface->width(), (int)m_surface->height() });
 }

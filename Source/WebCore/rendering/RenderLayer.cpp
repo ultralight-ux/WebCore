@@ -2771,6 +2771,7 @@ bool RenderLayer::isPointInResizeControl(IntPoint localPoint) const
 
 void RenderLayer::paint(GraphicsContext& context, const LayoutRect& damageRect, const LayoutSize& subpixelOffset, OptionSet<PaintBehavior> paintBehavior, RenderObject* subtreePaintRoot, OptionSet<PaintLayerFlag> paintFlags, SecurityOriginPaintPolicy paintPolicy, EventRegionContext* eventRegionContext)
 {
+    ProfiledZone;
     OverlapTestRequestMap overlapTestRequests;
 
     LayerPaintingInfo paintingInfo(this, enclosingIntRect(damageRect), paintBehavior, subpixelOffset, subtreePaintRoot, &overlapTestRequests, paintPolicy == SecurityOriginPaintPolicy::AccessibleOriginOnly);
@@ -2866,7 +2867,8 @@ static inline bool paintForFixedRootBackground(const RenderLayer* layer, OptionS
 
 void RenderLayer::paintLayer(GraphicsContext& context, const LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags)
 {
-    auto shouldContinuePaint = [&] () {
+    ProfiledZone;
+    auto shouldContinuePaint = [&]() {
         return backing()->paintsIntoWindow()
             || backing()->paintsIntoCompositedAncestor()
             || shouldDoSoftwarePaint(this, paintFlags.contains(PaintLayerFlag::PaintingReflection))
@@ -2902,6 +2904,7 @@ void RenderLayer::paintLayer(GraphicsContext& context, const LayerPaintingInfo& 
 
 void RenderLayer::paintLayerWithEffects(GraphicsContext& context, const LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags)
 {
+    ProfiledZone;
     // Non self-painting leaf layers don't need to be painted as their renderer() should properly paint itself.
     if (!isSelfPaintingLayer() && !hasSelfPaintingLayerDescendant())
         return;
@@ -3115,6 +3118,7 @@ RenderLayerFilters* RenderLayer::filtersForPainting(GraphicsContext& context, Op
 
 GraphicsContext* RenderLayer::setupFilters(GraphicsContext& destinationContext, LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags, const LayoutSize& offsetFromRoot)
 {
+    ProfiledZone;
     auto* paintingFilters = filtersForPainting(destinationContext, paintFlags);
     if (!paintingFilters)
         return nullptr;
@@ -3142,6 +3146,7 @@ GraphicsContext* RenderLayer::setupFilters(GraphicsContext& destinationContext, 
 
 void RenderLayer::applyFilters(GraphicsContext& originalContext, const LayerPaintingInfo& paintingInfo, OptionSet<PaintBehavior> behavior, const LayerFragments& layerFragments)
 {
+    ProfiledZone;
     // FIXME: Handle more than one fragment.
     ClipRect backgroundRect = layerFragments.isEmpty() ? ClipRect() : layerFragments[0].backgroundRect;
 
@@ -3154,6 +3159,7 @@ void RenderLayer::applyFilters(GraphicsContext& originalContext, const LayerPain
 
 void RenderLayer::paintLayerContents(GraphicsContext& context, const LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags)
 {
+    ProfiledZone;
     ASSERT(isSelfPaintingLayer() || hasSelfPaintingLayerDescendant());
 
     if (context.detectingContentfulPaint() && context.contentfulPaintDetected())

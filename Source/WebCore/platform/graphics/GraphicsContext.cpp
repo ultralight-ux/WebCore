@@ -133,17 +133,20 @@ void GraphicsContext::endTransparencyLayer()
 
 FloatSize GraphicsContext::drawText(const FontCascade& font, const TextRun& run, const FloatPoint& point, unsigned from, std::optional<unsigned> to)
 {
+    ProfiledZone;
     // Display list recording for text content is done at glyphs level. See GraphicsContext::drawGlyphs.
     return font.drawText(*this, run, point, from, to);
 }
 
 void GraphicsContext::drawGlyphs(const Font& font, const GlyphBufferGlyph* glyphs, const GlyphBufferAdvance* advances, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothingMode)
 {
+    ProfiledZone;
     FontCascade::drawGlyphs(*this, font, glyphs, advances, numGlyphs, point, fontSmoothingMode);
 }
 
 void GraphicsContext::drawDecomposedGlyphs(const Font& font, const DecomposedGlyphs& decomposedGlyphs)
 {
+    ProfiledZone;
     auto positionedGlyphs = decomposedGlyphs.positionedGlyphs();
     FontCascade::drawGlyphs(*this, font, positionedGlyphs.glyphs.data(), positionedGlyphs.advances.data(), positionedGlyphs.glyphs.size(), positionedGlyphs.localAnchor, positionedGlyphs.smoothingMode);
 }
@@ -155,6 +158,7 @@ void GraphicsContext::drawEmphasisMarks(const FontCascade& font, const TextRun& 
 
 void GraphicsContext::drawBidiText(const FontCascade& font, const TextRun& run, const FloatPoint& point, FontCascade::CustomFontNotReadyAction customFontNotReadyAction)
 {
+    ProfiledZone;
     BidiResolver<TextBoxIterator, BidiCharacterRun> bidiResolver;
     bidiResolver.setStatus(BidiStatus(run.direction(), run.directionalOverride()));
     bidiResolver.setPositionIgnoringNestedIsolates(TextBoxIterator(&run, 0));
@@ -212,6 +216,7 @@ IntSize GraphicsContext::compatibleImageBufferSize(const FloatSize& size) const
 
 RefPtr<ImageBuffer> GraphicsContext::createImageBuffer(const FloatSize& size, float resolutionScale, const DestinationColorSpace& colorSpace, std::optional<RenderingMode> renderingMode, std::optional<RenderingMethod> renderingMethod) const
 {
+    ProfiledZone;
     auto bufferOptions = bufferOptionsForRendingMode(renderingMode.value_or(this->renderingMode()));
 
     if (!renderingMethod || *renderingMethod == RenderingMethod::Local)
@@ -223,6 +228,7 @@ RefPtr<ImageBuffer> GraphicsContext::createImageBuffer(const FloatSize& size, fl
 
 RefPtr<ImageBuffer> GraphicsContext::createScaledImageBuffer(const FloatSize& size, const FloatSize& scale, const DestinationColorSpace& colorSpace, std::optional<RenderingMode> renderingMode, std::optional<RenderingMethod> renderingMethod) const
 {
+    ProfiledZone;
     auto expandedScaledSize = scaledImageBufferSize(size, scale);
     if (expandedScaledSize.isEmpty())
         return nullptr;
@@ -243,6 +249,7 @@ RefPtr<ImageBuffer> GraphicsContext::createScaledImageBuffer(const FloatSize& si
 
 RefPtr<ImageBuffer> GraphicsContext::createScaledImageBuffer(const FloatRect& rect, const FloatSize& scale, const DestinationColorSpace& colorSpace, std::optional<RenderingMode> renderingMode, std::optional<RenderingMethod> renderingMethod) const
 {
+    ProfiledZone;
     auto expandedScaledRect = scaledImageBufferRect(rect, scale);
     if (expandedScaledRect.isEmpty())
         return nullptr;
@@ -326,6 +333,7 @@ void GraphicsContext::drawImageBuffer(ImageBuffer& image, const FloatRect& desti
 
 void GraphicsContext::drawImageBuffer(ImageBuffer& image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     InterpolationQualityMaintainer interpolationQualityForThisScope(*this, options.interpolationQuality());
     image.draw(*this, destination, source, options);
 }
@@ -348,6 +356,7 @@ void GraphicsContext::drawConsumingImageBuffer(RefPtr<ImageBuffer> image, const 
 
 void GraphicsContext::drawConsumingImageBuffer(RefPtr<ImageBuffer> image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     if (!image)
         return;
     InterpolationQualityMaintainer interpolationQualityForThisScope(*this, options.interpolationQuality());
@@ -356,6 +365,7 @@ void GraphicsContext::drawConsumingImageBuffer(RefPtr<ImageBuffer> image, const 
 
 void GraphicsContext::drawFilteredImageBuffer(ImageBuffer* sourceImage, const FloatRect& sourceImageRect, Filter& filter, FilterResults& results)
 {
+    ProfiledZone;
     auto result = filter.apply(sourceImage, sourceImageRect, results);
     if (!result)
         return;
@@ -371,6 +381,7 @@ void GraphicsContext::drawFilteredImageBuffer(ImageBuffer* sourceImage, const Fl
 
 void GraphicsContext::drawPattern(ImageBuffer& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     image.drawPattern(*this, destRect, tileRect, patternTransform, phase, spacing, options);
 }
 

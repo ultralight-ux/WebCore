@@ -278,6 +278,7 @@ IntSize ImageBuffer::backendSize() const
 
 RefPtr<NativeImage> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) const
 {
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushDrawingContext();
         return backend->copyNativeImage(copyBehavior);
@@ -287,6 +288,7 @@ RefPtr<NativeImage> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) 
 
 RefPtr<NativeImage> ImageBuffer::copyNativeImageForDrawing(BackingStoreCopy copyBehavior) const
 {
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushDrawingContext();
         return backend->copyNativeImageForDrawing(copyBehavior);
@@ -319,6 +321,7 @@ RefPtr<ImageBuffer> ImageBuffer::sinkIntoBufferForDifferentThread()
 
 RefPtr<Image> ImageBuffer::filteredImage(Filter& filter)
 {
+    ProfiledZone;
     ASSERT(!filter.filterRenderingModes().contains(FilterRenderingMode::GraphicsContext));
 
     auto* backend = ensureBackendCreated();
@@ -341,6 +344,7 @@ RefPtr<Image> ImageBuffer::filteredImage(Filter& filter)
 
 RefPtr<Image> ImageBuffer::filteredImage(Filter& filter, std::function<void(GraphicsContext&)> drawCallback)
 {
+    ProfiledZone;
     std::unique_ptr<FilterTargetSwitcher> targetSwitcher;
 
     if (filter.filterRenderingModes().contains(FilterRenderingMode::GraphicsContext)) {
@@ -390,6 +394,7 @@ RefPtr<NativeImage> ImageBuffer::sinkIntoNativeImage(RefPtr<ImageBuffer> source)
 
 RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, PreserveResolution preserveResolution) const
 {
+    ProfiledZone;
     auto image = copyImageBufferToNativeImage(const_cast<ImageBuffer&>(*this), copyBehavior, preserveResolution);
     if (!image)
         return nullptr;
@@ -398,6 +403,7 @@ RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, PreserveReso
 
 RefPtr<Image> ImageBuffer::sinkIntoImage(RefPtr<ImageBuffer> source, PreserveResolution preserveResolution)
 {
+    ProfiledZone;
     if (!source)
         return nullptr;
     RefPtr<NativeImage> image;
@@ -417,6 +423,7 @@ RefPtr<Image> ImageBuffer::sinkIntoImage(RefPtr<ImageBuffer> source, PreserveRes
 
 void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     FloatRect srcRectScaled = srcRect;
     srcRectScaled.scale(resolutionScale());
 
@@ -429,6 +436,7 @@ void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, 
 
 void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(resolutionScale());
 
@@ -440,6 +448,7 @@ void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& des
 
 void ImageBuffer::drawConsuming(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    ProfiledZone;
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(resolutionScale());
 
@@ -458,6 +467,7 @@ void ImageBuffer::drawConsuming(RefPtr<ImageBuffer> imageBuffer, GraphicsContext
 
 void ImageBuffer::clipToMask(GraphicsContext& destContext, const FloatRect& destRect)
 {
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         flushContext();
         backend->clipToMask(destContext, destRect);
@@ -483,16 +493,19 @@ void ImageBuffer::transformToColorSpace(const DestinationColorSpace& newColorSpa
 
 String ImageBuffer::toDataURL(const String& mimeType, std::optional<double> quality, PreserveResolution preserveResolution) const
 {
+    ProfiledZone;
     return toDataURL(Ref { const_cast<ImageBuffer&>(*this) }, mimeType, quality, preserveResolution);
 }
 
 Vector<uint8_t> ImageBuffer::toData(const String& mimeType, std::optional<double> quality, PreserveResolution preserveResolution) const
 {
+    ProfiledZone;
     return toData(Ref { const_cast<ImageBuffer&>(*this) }, mimeType, quality, preserveResolution);
 }
 
 String ImageBuffer::toDataURL(Ref<ImageBuffer> source, const String& mimeType, std::optional<double> quality, PreserveResolution preserveResolution)
 {
+    ProfiledZone;
     auto encodedData = toData(WTFMove(source), mimeType, quality, preserveResolution);
     if (encodedData.isEmpty())
         return "data:,"_s;
@@ -501,6 +514,7 @@ String ImageBuffer::toDataURL(Ref<ImageBuffer> source, const String& mimeType, s
 
 Vector<uint8_t> ImageBuffer::toData(Ref<ImageBuffer> source, const String& mimeType, std::optional<double> quality, PreserveResolution preserveResolution)
 {
+    ProfiledZone;
     RefPtr<NativeImage> image = MIMETypeRegistry::isJPEGMIMEType(mimeType) ? copyImageBufferToOpaqueNativeImage(WTFMove(source), preserveResolution) : copyImageBufferToNativeImage(WTFMove(source), DontCopyBackingStore, preserveResolution);
     if (!image)
         return { };
@@ -509,6 +523,7 @@ Vector<uint8_t> ImageBuffer::toData(Ref<ImageBuffer> source, const String& mimeT
 
 RefPtr<PixelBuffer> ImageBuffer::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator& allocator) const
 {
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushContext();
         return backend->getPixelBuffer(outputFormat, srcRect, allocator);
@@ -533,6 +548,7 @@ PlatformLayer* ImageBuffer::platformLayer() const
 
 bool ImageBuffer::copyToPlatformTexture(GraphicsContextGL& context, GCGLenum target, PlatformGLObject destinationTexture, GCGLenum internalformat, bool premultiplyAlpha, bool flipY) const
 {
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated())
         return backend->copyToPlatformTexture(context, target, destinationTexture, internalformat, premultiplyAlpha, flipY);
     return false;

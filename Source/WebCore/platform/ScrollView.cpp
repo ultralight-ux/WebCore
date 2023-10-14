@@ -1287,6 +1287,7 @@ void ScrollView::paintPanScrollIcon(GraphicsContext& context)
 
 void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOriginPaintPolicy securityOriginPaintPolicy, EventRegionContext* eventRegionContext)
 {
+    ProfiledZone;
     if (platformWidget()) {
         Widget::paint(context, rect);
         return;
