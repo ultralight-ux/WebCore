@@ -29,8 +29,10 @@
 #include <wtf/StdLibExtras.h>
 
 #if USE(SYSTEM_MALLOC)
+#if OS(DARWIN)
 #include <mach/vm_param.h>
 #include <mach/vm_types.h>
+#endif
 #include <wtf/MathExtras.h>
 
 #define GIGACAGE_ENABLED 0
