@@ -499,7 +499,7 @@ bool FEGaussianBlurSoftwareApplier::apply(const Filter& filter, const FilterImag
     auto dstBitmap = ultralight::Bitmap::Create(paintSize.width(), paintSize.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
         4 * paintSize.width(), dstBuffer->bytes(), dstBuffer->sizeInBytes(), false);
     auto edgeMode = (ultralight::BlurFilter::EdgeMode)m_effect.edgeMode();
-    auto scaledSigma = filter.scaledByFilterScale(FloatSize({ m_effect.stdDeviationX(), m_effect.stdDeviationY() }));
+    auto scaledSigma = filter.scaledByFilterScale(FloatSize((float)m_effect.stdDeviationX(), (float)m_effect.stdDeviationY()));
 
     auto quality = ultralight::Platform::instance().config().effect_quality;
     //quality = ultralight::EffectQuality::Low;
