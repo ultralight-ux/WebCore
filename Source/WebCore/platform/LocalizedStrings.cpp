@@ -105,6 +105,11 @@ RetainPtr<CFStringRef> copyLocalizedString(CFStringRef key)
     ASSERT(isMainThread());
 #endif
 
+#if PLATFORM(ULTRALIGHT)
+    // TODO: Support localized strings.
+    return key;
+#endif
+
     static CFStringRef notFound = CFSTR("localized string not found");
 
 #if PLATFORM(WIN)
