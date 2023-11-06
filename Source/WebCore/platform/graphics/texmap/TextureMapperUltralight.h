@@ -9,8 +9,11 @@ namespace WebCore {
 
 class WEBCORE_EXPORT TextureMapperUltralight : public TextureMapper {
 public:
-    TextureMapperUltralight(bool use_gpu);
+    TextureMapperUltralight(bool use_gpu, double scale);
     virtual ~TextureMapperUltralight();
+
+    double scale() const { return scale_; }
+    void set_scale(double scale) { scale_ = scale; }
 
     void set_default_surface(ultralight::RefPtr<ultralight::Canvas> canvas);
 
@@ -51,6 +54,7 @@ public:
 
 protected:
     bool use_gpu_;
+    double scale_;
     ultralight::RefPtr<ultralight::Canvas> default_surface_;
     ultralight::RefPtr<ultralight::Canvas> current_surface_;
 };

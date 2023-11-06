@@ -11,8 +11,9 @@
 
 namespace WebCore {
 
-TextureMapperUltralight::TextureMapperUltralight(bool use_gpu)
+TextureMapperUltralight::TextureMapperUltralight(bool use_gpu, double scale)
     : use_gpu_(use_gpu)
+    , scale_(scale)
 {
     m_texturePool = std::make_unique<BitmapTexturePool>(use_gpu_);
 }

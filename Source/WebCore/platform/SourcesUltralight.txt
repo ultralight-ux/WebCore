@@ -43,6 +43,8 @@ platform/ultralight/WidgetUltralight.cpp
 
 platform/graphics/ultralight/BitmapImageUltralight.cpp
 platform/graphics/ultralight/ColorUltralight.cpp
+platform/graphics/ultralight/FilterUltralight.cpp
+platform/graphics/ultralight/FilterUltralight.h
 platform/graphics/ultralight/FloatRectUltralight.cpp
 platform/graphics/ultralight/FloatRoundedRectUltralight.cpp
 platform/graphics/ultralight/FontCacheUltralight.cpp

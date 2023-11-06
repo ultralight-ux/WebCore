@@ -5,11 +5,16 @@
 
 #include "FilterOperations.h"
 #include "GraphicsContextUltralight.h"
+#include "TextureMapperUltralight.h"
 #include "Image.h"
 #include "GraphicsLayer.h"
 #include "TextureMapper.h"
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include "FilterUltralight.h"
+#include "FilterImage.h"
+#include "FilterResults.h"
+#include "ImageBufferUltralightBackend.h"
 
 namespace WebCore {
 
@@ -107,11 +112,75 @@ void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,
   // not implemented
 }
 
-RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper&,
-    const FilterOperations&, bool) {
-  ProfiledZone;
-  // not implemented
-    return this;
+inline ultralight::RefPtr<ultralight::Bitmap> ImageBufferToBitmap(ImageBuffer& imageBuffer) {
+  auto imageBufferBackend = static_cast<ImageBufferUltralightBackend*>(imageBuffer.backend());
+  auto bitmap = imageBufferBackend->bitmap();
+  return bitmap;
+}
+
+inline ultralight::RefPtr<ultralight::Bitmap> BitmapTextureToBitmap(BitmapTexture& bitmapTexture) {
+  auto bitmapTextureUltralight = static_cast<BitmapTextureUltralight*>(&bitmapTexture);
+  auto canvas = bitmapTextureUltralight->canvas();
+  canvas->FlushSurface();
+  auto bitmap = static_cast<ultralight::BitmapSurface*>(canvas->surface())->bitmap();
+  return bitmap;
+}
+
+inline GraphicsContextUltralight BitmapTextureToGraphicsContext(BitmapTexture& bitmapTexture) {
+  auto bitmapTextureUltralight = static_cast<BitmapTextureUltralight*>(&bitmapTexture);
+  auto canvas = bitmapTextureUltralight->canvas();
+  return GraphicsContextUltralight(canvas);
+}
+
+inline void CopyBitmaps(ultralight::RefPtr<ultralight::Bitmap> src, ultralight::RefPtr<ultralight::Bitmap> dst) {
+  ultralight::IntRect srcRect = { 0, 0, (int)src->width(), (int)src->height() };
+  ultralight::IntRect dstRect = { 0, 0, (int)dst->width(), (int)dst->height() };
+  if (srcRect.Intersects(dstRect)) {
+    auto rect = srcRect.Intersect(dstRect);
+    dst->DrawBitmap(rect, rect, src, false);
+  }
+}
+
+RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textureMapper,
+  const FilterOperations& filters, bool defersLastFilter)
+{
+    // TODO: Implement GPU pipeline for filters
+    if (use_gpu_)
+      return this;
+
+    ProfiledZone;
+    if (filters.isEmpty())
+      return this;
+
+    TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
+    RefPtr<BitmapTexture> dstSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);
+
+    GraphicsContextUltralight ctx = BitmapTextureToGraphicsContext(*dstSurface);
+
+    double scale = texmapUL.scale();
+
+    FloatRect boundingBox = FloatRect(FloatPoint(), contentSize());
+
+    auto filter = FilterUltralight::create(filters, OptionSet<FilterRenderingMode> { FilterRenderingMode::Software },
+        FloatSize(scale, scale), Filter::ClipOperation::Unite, boundingBox, ctx);
+
+    auto imageBuffer = ImageBuffer::create(boundingBox.size(), RenderingPurpose::LayerBacking, 1.0, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+
+    CopyBitmaps(BitmapTextureToBitmap(*this), ImageBufferToBitmap(*imageBuffer));
+
+    FilterResults results;
+    IntRect absoluteSourceImageRect = enclosingIntRect(boundingBox);
+    auto filterImage = FilterImage::create(boundingBox, boundingBox, absoluteSourceImageRect, *imageBuffer, results.allocator());
+
+    auto resultImage = filter->apply(filterImage.get(), results);
+
+    if (!resultImage)
+      return this;
+
+    auto resultImageBuffer = resultImage->imageBuffer();
+    CopyBitmaps(ImageBufferToBitmap(*resultImageBuffer), BitmapTextureToBitmap(*dstSurface));
+
+    return dstSurface;
 }
 
 } // namespace WebCore

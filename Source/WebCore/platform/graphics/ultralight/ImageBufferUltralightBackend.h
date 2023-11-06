@@ -35,6 +35,9 @@ public:
     RefPtr<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&, const ImageBufferAllocator& = ImageBufferAllocator()) const override;
     void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
 
+    ultralight::Surface* surface() const { return m_surface.get(); }
+    ultralight::RefPtr<ultralight::Bitmap> bitmap() { return m_bitmap; }
+
 protected:
     ImageBufferUltralightBackend(const Parameters& parameters, std::unique_ptr<GraphicsContext>&&, std::unique_ptr<ultralight::Surface>&&, ultralight::RefPtr<ultralight::Bitmap>&&);
 
