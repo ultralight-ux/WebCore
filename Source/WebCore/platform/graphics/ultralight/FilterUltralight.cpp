@@ -21,7 +21,7 @@ RefPtr<FilterUltralight> FilterUltralight::create(const FilterOperations& operat
     bool hasFilterThatMovesPixels = operations.hasFilterThatMovesPixels();
     bool hasFilterThatShouldBeRestrictedBySecurityOrigin = operations.hasFilterThatShouldBeRestrictedBySecurityOrigin();
 
-    auto filter = adoptRef(*new FilterUltralight(filterScale, clipOperation, hasFilterThatMovesPixels, hasFilterThatShouldBeRestrictedBySecurityOrigin));
+    auto filter = adoptRef(*new FilterUltralight(filterScale, clipOperation, hasFilterThatMovesPixels, hasFilterThatShouldBeRestrictedBySecurityOrigin, targetBoundingBox));
 
     if (!filter->buildFilterFunctions(operations, preferredFilterRenderingModes, targetBoundingBox, destinationContext)) {
         LOG_WITH_STREAM(Filters, stream << "FilterUltralight::create: failed to build filters " << operations);
@@ -39,8 +39,8 @@ RefPtr<FilterUltralight> FilterUltralight::create(Vector<Ref<FilterFunction>>&& 
     return adoptRef(new FilterUltralight(WTFMove(functions)));
 }
 
-FilterUltralight::FilterUltralight(const FloatSize& filterScale, ClipOperation clipOperation, bool hasFilterThatMovesPixels, bool hasFilterThatShouldBeRestrictedBySecurityOrigin)
-    : Filter(Filter::Type::CSSFilter, filterScale, clipOperation)
+FilterUltralight::FilterUltralight(const FloatSize& filterScale, ClipOperation clipOperation, bool hasFilterThatMovesPixels, bool hasFilterThatShouldBeRestrictedBySecurityOrigin, const FloatRect& filterRegion)
+    : Filter(Filter::Type::CSSFilter, filterScale, clipOperation, filterRegion)
     , m_hasFilterThatMovesPixels(hasFilterThatMovesPixels)
     , m_hasFilterThatShouldBeRestrictedBySecurityOrigin(hasFilterThatShouldBeRestrictedBySecurityOrigin)
 {

@@ -28,7 +28,7 @@ public:
     FilterStyleVector createFilterStyles(const FilterStyle& sourceStyle) const final;
 
 private:
-    FilterUltralight(const FloatSize& filterScale, ClipOperation, bool hasFilterThatMovesPixels, bool hasFilterThatShouldBeRestrictedBySecurityOrigin);
+    FilterUltralight(const FloatSize& filterScale, ClipOperation, bool hasFilterThatMovesPixels, bool hasFilterThatShouldBeRestrictedBySecurityOrigin, const FloatRect& filterRegion);
     FilterUltralight(Vector<Ref<FilterFunction>>&&);
 
     bool buildFilterFunctions(const FilterOperations&, OptionSet<FilterRenderingMode> preferredFilterRenderingModes, const FloatRect& targetBoundingBox, const GraphicsContext& destinationContext);

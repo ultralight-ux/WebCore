@@ -162,7 +162,7 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
     FloatRect boundingBox = FloatRect(FloatPoint(), contentSize());
 
     auto filter = FilterUltralight::create(filters, OptionSet<FilterRenderingMode> { FilterRenderingMode::Software },
-        FloatSize(scale, scale), Filter::ClipOperation::Unite, boundingBox, ctx);
+        FloatSize(scale, scale), Filter::ClipOperation::Intersect, boundingBox, ctx);
 
     auto imageBuffer = ImageBuffer::create(boundingBox.size(), RenderingPurpose::LayerBacking, 1.0, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
 

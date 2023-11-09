@@ -26,8 +26,28 @@ void TextureMapperUltralight::set_default_surface(
     default_surface_ = canvas;
 }
 
-void TextureMapperUltralight::drawBorder(const Color&, float borderWidth,
-    const FloatRect&, const TransformationMatrix&) {}
+void TextureMapperUltralight::drawBorder(const Color& color, float borderThickness,
+    const FloatRect& rect, const TransformationMatrix& modelViewMatrix)
+{
+    if (!current_surface_)
+        return;
+
+    // We do a fill of four rects to simulate the stroke of a border.
+    FloatRect rects[4] = {
+        FloatRect(rect.x(), rect.y(), rect.width(), borderThickness),
+        FloatRect(rect.x(), rect.maxY() - borderThickness, rect.width(), borderThickness),
+        FloatRect(rect.x(), rect.y() + borderThickness, borderThickness, rect.height() - 2 * borderThickness),
+        FloatRect(rect.maxX() - borderThickness, rect.y() + borderThickness, borderThickness, rect.height() - 2 * borderThickness)
+    };
+
+    current_surface_->Save();
+    current_surface_->Transform(modelViewMatrix);
+
+    for (size_t i = 0; i < 4; ++i)
+        current_surface_->DrawRect(rects[i], color);
+
+    current_surface_->Restore();
+}
 
 void TextureMapperUltralight::drawNumber(int number, const Color&,
     const FloatPoint&, const TransformationMatrix&) {}
