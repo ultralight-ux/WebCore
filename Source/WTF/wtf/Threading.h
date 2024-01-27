@@ -371,9 +371,6 @@ protected:
 #if OS(DARWIN)
     mach_port_t m_platformThread { MACH_PORT_NULL };
 #elif USE(PTHREADS)
-#if OS(LINUX)
-    ThreadIdentifier m_id { 0 };
-#endif
     PlatformRegisters* m_platformRegisters { nullptr };
     unsigned m_suspendCount { 0 };
 #endif

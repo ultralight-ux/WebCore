@@ -4,14 +4,15 @@ list(APPEND WTF_SOURCES
     generic/MainThreadGeneric.cpp
 	generic/WorkQueueGeneric.cpp
 
+    posix/CPUTimePOSIX.cpp
     posix/FileSystemPOSIX.cpp
     posix/OSAllocatorPOSIX.cpp
     posix/ThreadingPOSIX.cpp
 	
 	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
-	
-    unix/CPUTimeUnix.cpp
+    
     unix/LanguageUnix.cpp
+    # unix/LoggingUnix.cpp
     unix/UniStdExtrasUnix.cpp
 )
 
@@ -29,7 +30,8 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND WTF_SOURCES
         linux/CurrentProcessMemoryStatus.cpp
         linux/MemoryFootprintLinux.cpp
-        linux/MemoryPressureHandlerLinux.cpp
+        linux/RealTimeThreads.cpp
+        unix/MemoryPressureHandlerUnix.cpp
     )
 else ()
     list(APPEND WTF_SOURCES
