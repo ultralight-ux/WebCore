@@ -29,6 +29,7 @@
 
 #include "config.h"
 #include <wtf/WorkQueue.h>
+#include <wtf/MonotonicTime.h>
 
 #include <wtf/threads/BinarySemaphore.h>
 
