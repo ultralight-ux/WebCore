@@ -445,7 +445,7 @@ WEBKIT_EXECUTABLE(LLIntOffsetsExtractor)
 # LLIntOffsetsExtractor matches, no output is generated. To make this target consistent and avoid
 # running this command for every build, we artificially update LLIntAssembly.h's mtime (using touch)
 # after every asm.rb run.
-if (MSVC AND NOT ENABLE_C_LOOP)
+if (CMAKE_C_COMPILER_ID MATCHES "MSVC" AND NOT ENABLE_C_LOOP)
     set(LLIntOutput LowLevelInterpreterWin.asm)
     set(OFFLINE_ASM_ARGS --assembler=MASM)
 else ()
@@ -471,13 +471,20 @@ add_custom_command(
 # since it is used in the add_library() call at the end of this file.
 if (MSVC AND NOT ENABLE_C_LOOP)
     enable_language(ASM_MASM)
+
     if (CMAKE_SIZEOF_VOID_P EQUAL 4)
         # Win32 needs /safeseh with assembly, but Win64 does not.
         set(MASM_EXECUTABLE ml)
-        set(LLINT_MASM_FLAGS /safeseh /c /Fo)
+        set(LLINT_MASM_FLAGS /safeseh /c /nologo /Fo)
     else ()
-        set(MASM_EXECUTABLE ml64)
-        set(LLINT_MASM_FLAGS /c /Fo)
+        set(MASM_EXECUTABLE ${CMAKE_ASM_MASM_COMPILER})
+        set(LLINT_MASM_FLAGS /c /nologo /Fo)
+
+        if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(MASM_EXECUTABLE uasm64)
+            set(LLINT_MASM_FLAGS -win64 -Zp8 /c /nologo /Fo)
+        endif ()
+        
     endif ()
     add_custom_command(
         OUTPUT ${JavaScriptCore_DERIVED_SOURCES_DIR}/LowLevelInterpreterWin.obj
@@ -1443,9 +1450,8 @@ if (WTF_CPU_X86_64)
         add_custom_command(
             OUTPUT ${JavaScriptCore_DERIVED_SOURCES_DIR}/JITStubsMSVC64.obj
             MAIN_DEPENDENCY ${JAVASCRIPTCORE_DIR}/jit/JITStubsMSVC64.asm
-            COMMAND ml64 -nologo -c -Fo ${JavaScriptCore_DERIVED_SOURCES_DIR}/JITStubsMSVC64.obj ${JAVASCRIPTCORE_DIR}/jit/JITStubsMSVC64.asm
+            COMMAND ${MASM_EXECUTABLE} ${LLINT_MASM_FLAGS} ${JavaScriptCore_DERIVED_SOURCES_DIR}/JITStubsMSVC64.obj ${JAVASCRIPTCORE_DIR}/jit/JITStubsMSVC64.asm
             VERBATIM)
-
         list(APPEND JavaScriptCore_SOURCES ${JavaScriptCore_DERIVED_SOURCES_DIR}/JITStubsMSVC64.obj)
     endif ()
 endif ()

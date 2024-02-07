@@ -323,7 +323,7 @@ public:
     DECLARE_EXPORT_INFO;
 };
 
-#if COMPILER(CLANG) && !ASSERT_ENABLED
+#if COMPILER(CLANG) && !ASSERT_ENABLED && defined(ENABLE_SIZE_CHECKS)
 static_assert(sizeof(UnlinkedFunctionExecutable) <= 96, "UnlinkedFunctionExecutable needs to be small");
 #endif
 

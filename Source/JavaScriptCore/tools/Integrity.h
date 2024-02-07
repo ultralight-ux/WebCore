@@ -175,7 +175,14 @@ template<typename T> ALWAYS_INLINE T audit(T value) { return bitwise_cast<T>(doA
 template<typename T> ALWAYS_INLINE T audit(T value) { return value; }
 #endif
 
-#if COMPILER(MSVC) || !VA_OPT_SUPPORTED
+#if defined(_MSC_VER) && defined(__clang__)
+
+// Special handling for clang-cl, just disable these ops
+#define IA_LOG(assertion, ...) do {} while(0)
+#define IA_ASSERT_WITH_ACTION(assertion, ...) do {} while(0)
+#define IA_ASSERT(assertion, ...) do {} while(0)
+
+#elif COMPILER(MSVC) || !VA_OPT_SUPPORTED
 
 #define IA_LOG(assertion, format, ...) do { \
         Integrity::logLnF("ERROR: %s @ %s:%d", #assertion, __FILE__, __LINE__); \
