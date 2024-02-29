@@ -11,7 +11,7 @@ if (NOT TARGET WebKit::WebCore)
         # Should add Apple libraries here when https://bugs.webkit.org/show_bug.cgi?id=205085 lands
         INTERFACE_LINK_LIBRARIES "WebKit::WTF;WebKit::JavaScriptCore"
     )
-    set(WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR "${CMAKE_BINARY_DIR}/../include/private")
+    set(WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR "${PROJECT_BINARY_DIR}/../include/private")
     target_include_directories(WebKit::WebCore INTERFACE
         ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR}
     )

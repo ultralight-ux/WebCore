@@ -11,7 +11,7 @@ if (NOT TARGET WebKit::JavaScriptCore)
         IMPORTED_IMPLIB ${WEBKIT_LIBRARIES_LINK_DIR}/JavaScriptCore${DEBUG_SUFFIX}.lib
         INTERFACE_LINK_LIBRARIES "WebKit::WTF;ICU::data;ICU::i18n;ICU::uc;Apple::CoreFoundation"
     )
-    set(JavaScriptCore_FRAMEWORK_HEADERS_DIR "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore")
+    set(JavaScriptCore_FRAMEWORK_HEADERS_DIR "${PROJECT_BINARY_DIR}/../include/private/JavaScriptCore")
     set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS_DIR ${JavaScriptCore_FRAMEWORK_HEADERS_DIR})
 
     target_include_directories(WebKit::JavaScriptCore INTERFACE

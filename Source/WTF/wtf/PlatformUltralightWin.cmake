@@ -38,6 +38,16 @@ list(APPEND WTF_LIBRARIES
 
 list(APPEND WTF_INCLUDE_DIRECTORIES
     ${ULTRALIGHTCORE_DIR}/include
+    ${WEBKIT_LIBRARIES_DIR}/include
+)
+
+list(APPEND WTF_PUBLIC_HEADERS
+    text/win/WCharStringExtras.h
+
+    win/DbgHelperWin.h
+    win/GDIObject.h
+    win/SoftLinking.h
+    win/Win32Handle.h
 )
 
 list(APPEND WTF_LIBRARIES
@@ -75,8 +85,8 @@ if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRe
   endif()
 endif()
 
-set(WTF_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/wtf/preBuild.cmd")
-file(WRITE "${WTF_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WTF_DIR}/wtf/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf\" >nul 2>nul\n@xcopy /y /s /d /f \"${DERIVED_SOURCES_DIR}/wtf/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf\" >nul 2>nul\n")
-file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WTF)
+#set(WTF_PRE_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/wtf/preBuild.cmd")
+#file(WRITE "${WTF_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WTF_DIR}/wtf/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf\" >nul 2>nul\n@xcopy /y /s /d /f \"${DERIVED_SOURCES_DIR}/wtf/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf\" >nul 2>nul\n")
+#file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WTF)
 
 set(WTF_OUTPUT_NAME WTF${DEBUG_SUFFIX})

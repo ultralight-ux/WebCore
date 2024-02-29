@@ -85,7 +85,7 @@ if (NOT LOOKUP_FRAMEWORK-NOTFOUND)
 endif ()
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/libwebrtc/PrivateHeaders"
+    "${PROJECT_BINARY_DIR}/libwebrtc/PrivateHeaders"
     "${CMAKE_SOURCE_DIR}/Source/ThirdParty/libwebrtc/Source"
     "${WEBCORE_DIR}/Modules/webauthn/apdu"
     "${WEBCORE_DIR}/accessibility/isolatedtree/mac"
@@ -861,6 +861,6 @@ list(APPEND WebCoreTestSupport_IDL_FILES
     testing/MockWebAuthenticationConfiguration.idl
 )
 
-if (NOT EXISTS ${CMAKE_BINARY_DIR}/WebCore/WebKitAvailability.h)
-    file(COPY platform/cocoa/WebKitAvailability.h DESTINATION ${CMAKE_BINARY_DIR}/WebCore)
+if (NOT EXISTS ${PROJECT_BINARY_DIR}/WebCore/WebKitAvailability.h)
+    file(COPY platform/cocoa/WebKitAvailability.h DESTINATION ${PROJECT_BINARY_DIR}/WebCore)
 endif ()

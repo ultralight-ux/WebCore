@@ -12,8 +12,8 @@ if (USE_GSTREAMER)
 endif ()
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/../include/private"
-    "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
+    "${PROJECT_BINARY_DIR}/../include/private"
+    "${PROJECT_BINARY_DIR}/../include/private/JavaScriptCore"
     "${WEBCORE_DIR}/platform/graphics/egl"
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
@@ -71,14 +71,14 @@ list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
     ${WEBCORE_DIR}/css/themeWinQuirks.css
 )
 
-list(APPEND WebCore_LIBRARIES
+list(APPEND WebCore_PRIVATE_LIBRARIES
     brotlicommon
     brotlidec
     brotlienc
     crypto
-    freetype
-    harfbuzz
-    harfbuzz-icu
+    freetype.lib
+    harfbuzz.lib
+    harfbuzz-icu.lib
     jpeg-static
     libcurl
     libpng16_static
@@ -92,7 +92,7 @@ list(APPEND WebCore_LIBRARIES
 )
 
 if (NOT UWP_PLATFORM)
-    list(APPEND WebCore_LIBRARIES
+    list(APPEND WebCore_PRIVATE_LIBRARIES
         bcrypt
         comctl32
         crypt32
@@ -109,7 +109,7 @@ if (NOT UWP_PLATFORM)
 endif ()
 
 if (USE_GSTREAMER)
-    list(APPEND WebCore_LIBRARIES
+    list(APPEND WebCore_PRIVATE_LIBRARIES
         gstreamer-full-1.0
     )
 endif ()
@@ -136,16 +136,17 @@ if (EXISTS ${WEBKIT_LIBRARIES_DIR}/cacert.pem)
     )
 endif ()
 
-file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
+#file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
 
-set(WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/WebCore/preBuild.cmd")
-file(WRITE "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WEBCORE_DIR}/ForwardingHeaders/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
-foreach (_directory ${WebCore_FORWARDING_HEADERS_DIRECTORIES})
-    file(APPEND "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /d /f \"${WEBCORE_DIR}/${_directory}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
-endforeach ()
+#set(WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/preBuild.cmd")
+#file(WRITE "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WEBCORE_DIR}/ForwardingHeaders/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
+#file(APPEND "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WEBCORE_DIR}/config.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
+#foreach (_directory ${WebCore_FORWARDING_HEADERS_DIRECTORIES})
+#    file(APPEND "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /d /f \"${WEBCORE_DIR}/${_directory}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
+#endforeach ()
 
-set(WebCore_POST_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/WebCore/postBuild.cmd")
-file(WRITE "${WebCore_POST_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WebCore_DERIVED_SOURCES_DIR}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
+#set(WebCore_POST_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/postBuild.cmd")
+#file(WRITE "${WebCore_POST_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WebCore_DERIVED_SOURCES_DIR}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore\" >nul 2>nul\n")
 
 set(WebCore_OUTPUT_NAME
     WebCore${DEBUG_SUFFIX}
@@ -165,7 +166,7 @@ if (UWP_PLATFORM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FI \"${WEBCORE_DIR}/UWPDefs.h\"")
 endif ()
 
-list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})
-list(APPEND WebCore_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
+list(APPEND WebCore_PRIVATE_LIBRARIES WTF${DEBUG_SUFFIX})
+list(APPEND WebCore_PRIVATE_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
 #list(APPEND WebCore_LIBRARIES UltralightCore)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF${DEBUG_SUFFIX})

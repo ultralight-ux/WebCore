@@ -14,7 +14,7 @@ if (EXISTS "${TOOLS_DIR}/glib/apply-build-revision-to-files.py")
     )
 endif ()
 
-install(FILES "${CMAKE_BINARY_DIR}/Source/JavaScriptCore/javascriptcoregtk-${WEBKITGTK_API_VERSION}.pc"
+install(FILES "${PROJECT_BINARY_DIR}/Source/JavaScriptCore/javascriptcoregtk-${WEBKITGTK_API_VERSION}.pc"
         DESTINATION "${LIB_INSTALL_DIR}/pkgconfig"
 )
 

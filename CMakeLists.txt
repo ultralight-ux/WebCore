@@ -11,7 +11,7 @@ if (POLICY CMP0058)
 endif ()
 
 if (POLICY CMP0038)
-    cmake_policy(SET CMP0038 OLD)
+#    cmake_policy(SET CMP0038 OLD)
 endif ()
 
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.1")
@@ -20,10 +20,14 @@ endif()
 
 include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/Source/cmake")
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/Source/cmake")
 
 get_filename_component(WEBCORE_ROOT "./" REALPATH)
+get_filename_component(WEBCORE_BINARY_DIR "${PROJECT_BINARY_DIR}" REALPATH)
 
+set(WEBCORE_ROOT "${WEBCORE_ROOT}" CACHE INTERNAL "" FORCE)
+set(WEBCORE_BINARY_DIR "${WEBCORE_BINARY_DIR}" CACHE INTERNAL "" FORCE)
+    
 set(ENABLE_WEBCORE ON)
 set(ENABLE_WEBKIT OFF)
 set(ENABLE_TOOLS OFF)
@@ -106,13 +110,17 @@ option(SHOULD_INSTALL_JS_SHELL "generate an installation rule to install the bui
 # -----------------------------------------------------------------------------
 # Default output directories, which can be overwritten by ports
 #------------------------------------------------------------------------------
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if (NOT ALLINONE_BUILD)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+endif ()
 
 # -----------------------------------------------------------------------------
 # Common configuration
 #------------------------------------------------------------------------------
+find_package (Python3)
+
 include(WebKitCommon)
 
 # -----------------------------------------------------------------------------

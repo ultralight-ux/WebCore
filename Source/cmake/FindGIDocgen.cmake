@@ -165,7 +165,7 @@ function(GI_DOCGEN namespace toml)
         )
     endif ()
 
-    set(contentdir "${CMAKE_BINARY_DIR}/GIDocgenGenerated/${namespace}")
+    set(contentdir "${PROJECT_BINARY_DIR}/GIDocgenGenerated/${namespace}")
 
     get_property(gir_path TARGET "gir-${namespace}" PROPERTY GI_GIR_PATH)
     set(toml_path "${contentdir}.toml")
@@ -178,7 +178,7 @@ function(GI_DOCGEN namespace toml)
     if (NOT package)
         set(package "${namespace}")
     endif ()
-    set(outdir "${CMAKE_BINARY_DIR}/Documentation/${package}")
+    set(outdir "${PROJECT_BINARY_DIR}/Documentation/${package}")
 
     set(docdeps "${toml_path};${gir_path}")
     foreach (item IN LISTS opt_CONTENT_TEMPLATES)
@@ -191,7 +191,7 @@ function(GI_DOCGEN namespace toml)
     list(APPEND common_flags
         --quiet
         --config "${toml_path}"
-        --add-include-path "${CMAKE_BINARY_DIR}"
+        --add-include-path "${PROJECT_BINARY_DIR}"
     )
 
     # Documentation generation.

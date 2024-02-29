@@ -3,7 +3,7 @@ project(mimalloc-test C CXX)
 
 # Set default build type
 if (NOT CMAKE_BUILD_TYPE)
-  if ("${CMAKE_BINARY_DIR}" MATCHES ".*(D|d)ebug$")
+  if ("${PROJECT_BINARY_DIR}" MATCHES ".*(D|d)ebug$")
     message(STATUS "No build type selected, default to *** Debug ***")
     set(CMAKE_BUILD_TYPE "Debug")
   else()

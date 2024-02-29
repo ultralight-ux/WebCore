@@ -11,7 +11,7 @@ if (NOT TARGET WebKit::WTF)
         IMPORTED_IMPLIB ${WEBKIT_LIBRARIES_LINK_DIR}/WTF${DEBUG_SUFFIX}.lib
         INTERFACE_LINK_LIBRARIES "ICU::data;ICU::i18n;ICU::uc;Apple::CoreFoundation"
     )
-    set(WTF_FRAMEWORK_HEADERS_DIR "${CMAKE_BINARY_DIR}/../include/private/WTF")
+    set(WTF_FRAMEWORK_HEADERS_DIR "${PROJECT_BINARY_DIR}/../include/private/WTF")
     target_include_directories(WebKit::WTF INTERFACE
         ${WTF_FRAMEWORK_HEADERS_DIR}
     )

@@ -12,5 +12,6 @@ add_subdirectory(JavaScriptCore)
 add_subdirectory(SQLite)
 add_subdirectory(WebInspectorUI)
 add_subdirectory(WebCore)
+add_subdirectory(CopySDK)
 
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()

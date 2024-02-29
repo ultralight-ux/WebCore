@@ -435,13 +435,13 @@ macro(CREATE_CONFIGURATION_HEADER)
     endforeach ()
     set(_file_contents "${_file_contents}\n#endif /* CMAKECONFIG_H */\n")
 
-    file(WRITE "${CMAKE_BINARY_DIR}/cmakeconfig.h.tmp" "${_file_contents}")
+    file(WRITE "${PROJECT_BINARY_DIR}/cmakeconfig.h.tmp" "${_file_contents}")
     execute_process(COMMAND ${CMAKE_COMMAND}
         -E copy_if_different
-        "${CMAKE_BINARY_DIR}/cmakeconfig.h.tmp"
-        "${CMAKE_BINARY_DIR}/cmakeconfig.h"
+        "${PROJECT_BINARY_DIR}/cmakeconfig.h.tmp"
+        "${PROJECT_BINARY_DIR}/cmakeconfig.h"
     )
-    file(REMOVE "${CMAKE_BINARY_DIR}/cmakeconfig.h.tmp")
+    file(REMOVE "${PROJECT_BINARY_DIR}/cmakeconfig.h.tmp")
 endmacro()
 
 macro(WEBKIT_CHECK_HAVE_INCLUDE _variable _header)

@@ -60,9 +60,9 @@ set(JAVASCRIPTCORE_HEADERS
 
 INSTALL(FILES ${JAVASCRIPTCORE_HEADERS} DESTINATION "include/JavaScriptCore/")
 
-INSTALL(FILES "${CMAKE_SOURCE_DIR}/cacert.pem" DESTINATION "bin/resources/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/cacert.pem" DESTINATION "bin/resources/")
 
-set(WEBINSPECTORUI_DIR "${CMAKE_SOURCE_DIR}/Source/WebInspectorUI")
+set(WEBINSPECTORUI_DIR "${PROJECT_SOURCE_DIR}/Source/WebInspectorUI")
 
 INSTALL(DIRECTORY "${WEBINSPECTORUI_DIR}/UserInterface/" DESTINATION "inspector")
 INSTALL(FILES "${WEBINSPECTORUI_DIR}/Localizations/en.lproj/localizedStrings.js"
@@ -152,8 +152,9 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 set(INSTALL_DIR ${PROJECT_BINARY_DIR}/out)
+set(TARGET_NAME create_sdk_webcore)
     
-add_custom_target(create_sdk ALL "${CMAKE_COMMAND}" 
+add_custom_target(${TARGET_NAME} ALL "${CMAKE_COMMAND}" 
     -D CMAKE_INSTALL_PREFIX:string=${INSTALL_DIR}
     -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_install.cmake" 
     DEPENDS WebCore) 
@@ -193,7 +194,7 @@ execute_process(
 if (APPLE)
   if (NOT ${BUILD_DBG})
     # Strip non-essential symbols from dylib in release build on macOS
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND strip -u -r bin/libWebCore.dylib
         WORKING_DIRECTORY ${INSTALL_DIR}
     )
@@ -203,23 +204,23 @@ endif ()
 set(PKG_FILENAME "webcore-bin-${GIT_COMMIT_HASH}-${PLATFORM}-${ARCHITECTURE}.7z")
 
 if (NOT UL_GENERATE_SDK)
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, SDK generation was disabled."
     )
 elseif (NOT GIT_STATUS STREQUAL "")
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, working directory has been modified."
     )
 elseif (NOT GIT_CHERRY STREQUAL "")
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, branch needs to be pushed to remote repository."
     )
 else ()
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E tar "cf" ${PROJECT_BINARY_DIR}/${PKG_FILENAME} --format=7zip -- .
         WORKING_DIRECTORY ${INSTALL_DIR}
     )
-    add_custom_command(TARGET create_sdk POST_BUILD
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Created release archive: ${PROJECT_BINARY_DIR}/${PKG_FILENAME}"
     )
 endif ()

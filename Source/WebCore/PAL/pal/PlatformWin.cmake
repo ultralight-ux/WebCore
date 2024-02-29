@@ -9,7 +9,7 @@ list(APPEND PAL_SOURCES
 )
 
 list(APPEND PAL_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/../include/private"
+    "${PROJECT_BINARY_DIR}/../include/private"
 )
 
 if (${WTF_PLATFORM_WIN_CAIRO})

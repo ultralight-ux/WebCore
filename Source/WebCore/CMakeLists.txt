@@ -15,7 +15,7 @@ list(APPEND WebCore_UNIFIED_SOURCE_LIST_FILES
 )
 
 set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}"
+    "${PROJECT_BINARY_DIR}"
     "${WebCore_DERIVED_SOURCES_DIR}"
     "${WEBCORE_DIR}"
     "${WEBCORE_DIR}/Modules/WebGPU"
@@ -1754,7 +1754,7 @@ set(WebCore_PLUG_INS_RESOURCES
     ${WEBCORE_DIR}/Resources/plugIns.js
 )
 
-set(WebCore_LIBRARIES
+set(WebCore_PRIVATE_LIBRARIES
     ${LIBXML2_LIBRARIES}
     ${LIBXSLT_LIBRARIES}
     ${SQLITE_LIBRARIES}
@@ -2629,7 +2629,7 @@ endif ()
 
 WEBKIT_FRAMEWORK(WebCore)
 
-add_dependencies(WebCore UltralightCoreBin)
+add_dependencies(WebCore UltralightCore)
 
 if (USE_GSTREAMER)
     add_dependencies(WebCore GStreamerBin)
@@ -2706,4 +2706,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     endif()
 endif ()
 
-include(${PROJECT_SOURCE_DIR}/CreateSDK.cmake)
+if (NOT ALLINONE_BUILD)
+    include(${PROJECT_SOURCE_DIR}/CreateSDK.cmake)
+endif ()

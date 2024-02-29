@@ -25,7 +25,7 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
         set(ENABLE_WEBKIT OFF)
     endif ()
 
-    if (NOT DEFINED ENABLE_TOOLS AND EXISTS "${CMAKE_SOURCE_DIR}/Tools")
+    if (NOT DEFINED ENABLE_TOOLS AND EXISTS "${PROJECT_SOURCE_DIR}/Tools")
         set(ENABLE_TOOLS ON)
     endif ()
 
@@ -172,9 +172,11 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     # -----------------------------------------------------------------------------
     # Default output directories, which can be overwritten by ports
     #------------------------------------------------------------------------------
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    if (NOT ALLINONE_BUILD)
+        set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+    endif ()
 
     # -----------------------------------------------------------------------------
     # Find common packages (used by all ports)

@@ -5,8 +5,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
-include_directories("${CMAKE_BINARY_DIR}/DerivedSources/ForwardingHeaders"
-                    "${CMAKE_BINARY_DIR}/DerivedSources"
+include_directories("${PROJECT_BINARY_DIR}/DerivedSources/ForwardingHeaders"
+                    "${PROJECT_BINARY_DIR}/DerivedSources"
                     "${WEBKIT_LIBRARIES_DIR}/include")
 
 link_directories("${WEBKIT_LIBRARIES_DIR}/lib")

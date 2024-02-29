@@ -12,7 +12,7 @@ set(linguas
 set(GETTEXT_MSGMERGE_EXECUTABLE :)
 
 set(domain WebKitGTK-${WEBKITGTK_API_VERSION})
-set(build_directory ${CMAKE_BINARY_DIR}/Source/WebCore/platform/gtk/po)
+set(build_directory ${PROJECT_BINARY_DIR}/Source/WebCore/platform/gtk/po)
 set(pot_file ${build_directory}/${domain}.pot)
 set(potfiles_file ${build_directory}/POTFILES)
 

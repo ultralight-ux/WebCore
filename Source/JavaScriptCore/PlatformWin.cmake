@@ -8,7 +8,7 @@ list(APPEND JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS
 )
 
 list(APPEND JavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
-    ${CMAKE_BINARY_DIR}/../include/private
+    ${PROJECT_BINARY_DIR}/../include/private
 )
 
 if (USE_CF)

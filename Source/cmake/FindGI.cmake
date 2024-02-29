@@ -245,8 +245,8 @@ function(GI_INTROSPECT namespace nsversion header)
 
     set(gir_deps)
     set(gir_name "${namespace}-${nsversion}")
-    set(gir_path "${CMAKE_BINARY_DIR}/${gir_name}.gir")
-    set(typ_path "${CMAKE_BINARY_DIR}/${gir_name}.typelib")
+    set(gir_path "${PROJECT_BINARY_DIR}/${gir_name}.gir")
+    set(typ_path "${PROJECT_BINARY_DIR}/${gir_name}.typelib")
 
     set(scanner_flags)
     if (GI_HAVE_SOURCES_TOP_DIRS)
@@ -379,7 +379,7 @@ function(GI_INTROSPECT namespace nsversion header)
         DEPENDS "${gir_path}"
         VERBATIM
         COMMAND "${GI_COMPILER_EXE}"
-            "--includedir=${CMAKE_BINARY_DIR}"
+            "--includedir=${PROJECT_BINARY_DIR}"
             "--output=${typ_path}"
             "${gir_path}"
     )

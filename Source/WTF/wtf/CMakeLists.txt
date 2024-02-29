@@ -160,6 +160,7 @@ set(WTF_PUBLIC_HEADERS
     MediaTime.h
     MemoryFootprint.h
     MemoryPressureHandler.h
+    MemoryProfiler.h
     MessageQueue.h
     MetaAllocator.h
     MetaAllocatorHandle.h
@@ -577,7 +578,7 @@ set(WTF_SOURCES
 )
 
 set(WTF_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}"
+    "${PROJECT_BINARY_DIR}"
     "${WTF_DERIVED_SOURCES_DIR}"
     "${WTF_DIR}"
     "${WTF_DIR}/wtf"
@@ -609,7 +610,7 @@ list(APPEND WTF_SOURCES
 set(WTF_SYSTEM_INCLUDE_DIRECTORIES
     ${ICU_INCLUDE_DIRS}
 )
-list(APPEND WTF_LIBRARIES
+list(APPEND WTF_PRIVATE_LIBRARIES
     ${ICU_DATA_LIBRARIES}
     ${ICU_I18N_LIBRARIES}
     ${ICU_LIBRARIES}
@@ -669,8 +670,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     )
 endif ()
 
-add_dependencies(WTF WebCoreDeps)
-add_dependencies(WTF UltralightCoreBin)
+add_dependencies(WTF WebCore-deps)
+add_dependencies(WTF UltralightCore)
 
 if (USE_GSTREAMER)
     add_dependencies(WTF GStreamerBin)

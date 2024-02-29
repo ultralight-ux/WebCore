@@ -1,8 +1,8 @@
 add_definitions(/bigobj -D__STDC_CONSTANT_MACROS)
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/../include/private"
-    "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
+    "${PROJECT_BINARY_DIR}/../include/private"
+    "${PROJECT_BINARY_DIR}/../include/private/JavaScriptCore"
     "${WEBCORE_DIR}/accessibility/win"
     "${WEBCORE_DIR}/page/win"
     "${WEBCORE_DIR}/platform/graphics/egl"

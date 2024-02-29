@@ -102,13 +102,13 @@ endmacro()
 macro(WEBKIT_FRAMEWORK_DECLARE _target)
     # add_library() without any source files triggers CMake warning
     # Addition of dummy "source" file does not result in any changes in generated build.ninja file
-    add_library(${_target} ${${_target}_LIBRARY_TYPE} "${CMAKE_BINARY_DIR}/cmakeconfig.h")
+    add_library(${_target} ${${_target}_LIBRARY_TYPE} "${PROJECT_BINARY_DIR}/cmakeconfig.h")
 endmacro()
 
 macro(WEBKIT_LIBRARY_DECLARE _target)
     # add_library() without any source files triggers CMake warning
     # Addition of dummy "source" file does not result in any changes in generated build.ninja file
-    add_library(${_target} ${${_target}_LIBRARY_TYPE} "${CMAKE_BINARY_DIR}/cmakeconfig.h")
+    add_library(${_target} ${${_target}_LIBRARY_TYPE} "${PROJECT_BINARY_DIR}/cmakeconfig.h")
 
     if (${_target}_LIBRARY_TYPE STREQUAL "OBJECT")
         list(APPEND ${_target}_INTERFACE_LIBRARIES $<TARGET_OBJECTS:${_target}>)
@@ -116,7 +116,7 @@ macro(WEBKIT_LIBRARY_DECLARE _target)
 endmacro()
 
 macro(WEBKIT_EXECUTABLE_DECLARE _target)
-    add_executable(${_target} "${CMAKE_BINARY_DIR}/cmakeconfig.h")
+    add_executable(${_target} "${PROJECT_BINARY_DIR}/cmakeconfig.h")
 endmacro()
 
 # Private macro for setting the properties of a target.
@@ -399,7 +399,7 @@ macro(WEBKIT_WRAP_EXECUTABLE _target)
         set(_wrapped_target_name ${_target}Lib)
     endif ()
 
-    add_library(${_wrapped_target_name} SHARED "${CMAKE_BINARY_DIR}/cmakeconfig.h")
+    add_library(${_wrapped_target_name} SHARED "${PROJECT_BINARY_DIR}/cmakeconfig.h")
 
     _WEBKIT_TARGET_LINK_FRAMEWORK(${_target})
     _WEBKIT_TARGET(${_target} ${_wrapped_target_name})
@@ -422,7 +422,7 @@ macro(WEBKIT_WRAP_EXECUTABLE _target)
 endmacro()
 
 macro(WEBKIT_CREATE_FORWARDING_HEADER _target_directory _file)
-    get_filename_component(_source_path "${CMAKE_SOURCE_DIR}/Source/" ABSOLUTE)
+    get_filename_component(_source_path "${PROJECT_SOURCE_DIR}/Source/" ABSOLUTE)
     get_filename_component(_absolute "${_file}" ABSOLUTE)
     get_filename_component(_name "${_file}" NAME)
     set(_target_filename "${_target_directory}/${_name}")
@@ -455,7 +455,7 @@ macro(WEBKIT_CREATE_FORWARDING_HEADERS _framework)
         foreach (_file ${_files})
             file(READ "${_file}" _content)
             string(REGEX MATCH "^#include \"([^\"]*)\"" _matched ${_content})
-            if (_matched AND NOT EXISTS "${CMAKE_SOURCE_DIR}/Source/${CMAKE_MATCH_1}")
+            if (_matched AND NOT EXISTS "${PROJECT_SOURCE_DIR}/Source/${CMAKE_MATCH_1}")
                file(REMOVE "${_file}")
             endif ()
         endforeach ()
@@ -522,6 +522,48 @@ function(WEBKIT_MAKE_FORWARDING_HEADERS framework)
 endfunction()
 
 function(WEBKIT_COPY_FILES target_name)
+    set(options FLATTENED)
+    set(oneValueArgs DESTINATION)
+    set(multiValueArgs FILES)
+    cmake_parse_arguments(opt "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(files ${opt_FILES})
+
+    # Define the path for the intermediate file
+    set(paths_file "${PROJECT_BINARY_DIR}/BatchCopy/${target_name}_paths.txt")
+    file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/BatchCopy")
+    file(WRITE ${paths_file} "")
+
+    # Prepare the content for the intermediate file
+    set(paths_content "")
+    set(dst_files)
+    foreach (file IN LISTS files)
+        if (IS_ABSOLUTE ${file})
+            set(src_file ${file})
+        else ()
+            set(src_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+        endif ()
+        if (opt_FLATTENED)
+            get_filename_component(filename ${file} NAME)
+            set(dst_file ${opt_DESTINATION}/${filename})
+        else ()
+            get_filename_component(file_dir ${file} DIRECTORY)
+            file(MAKE_DIRECTORY ${opt_DESTINATION}/${file_dir})
+            set(dst_file ${opt_DESTINATION}/${file})
+        endif ()
+        file(APPEND ${paths_file} "${src_file};${dst_file}\n")
+        list(APPEND dst_files ${dst_file})
+    endforeach ()
+
+    # Use CMake's COMMAND to call the Python script with the intermediate file
+    add_custom_command(OUTPUT ${dst_files}
+        COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE} ${WEBCORE_ROOT}/scripts/batch_copy.py ${paths_file}
+        COMMENT "Copying files for target: (${target_name})"
+        VERBATIM
+    )
+    add_custom_target(${target_name} ALL DEPENDS ${dst_files})
+endfunction()
+
+function(WEBKIT_COPY_FILES_OLD target_name)
     set(options FLATTENED)
     set(oneValueArgs DESTINATION)
     set(multiValueArgs FILES)

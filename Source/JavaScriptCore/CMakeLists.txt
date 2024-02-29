@@ -13,7 +13,7 @@ set(JavaScriptCore_INCLUDE_DIRECTORIES
 )
 
 set(JavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}"
+    "${PROJECT_BINARY_DIR}"
     "${JAVASCRIPTCORE_DIR}"
     "${JAVASCRIPTCORE_DIR}/API"
     "${JAVASCRIPTCORE_DIR}/assembler"
@@ -445,7 +445,7 @@ WEBKIT_EXECUTABLE(LLIntOffsetsExtractor)
 # LLIntOffsetsExtractor matches, no output is generated. To make this target consistent and avoid
 # running this command for every build, we artificially update LLIntAssembly.h's mtime (using touch)
 # after every asm.rb run.
-if (CMAKE_C_COMPILER_ID MATCHES "MSVC" AND NOT ENABLE_C_LOOP)
+if (MSVC AND NOT ENABLE_C_LOOP)
     set(LLIntOutput LowLevelInterpreterWin.asm)
     set(OFFLINE_ASM_ARGS --assembler=MASM)
 else ()
