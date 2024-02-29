@@ -361,10 +361,22 @@ void GraphicsContextUltralight::clip(const FloatRect& rect)
     platformContext()->SetClip(rect, false);
 }
 
+void GraphicsContextUltralight::clipRoundedRect(const FloatRoundedRect& rrect)
+{
+	ProfiledZone;
+	platformContext()->SetClip(rrect, false);
+}
+
 void GraphicsContextUltralight::clipOut(const FloatRect& rect)
 {
     ProfiledZone;
     platformContext()->SetClip(rect, true);
+}
+
+void GraphicsContextUltralight::clipOutRoundedRect(const FloatRoundedRect& rrect)
+{
+    ProfiledZone;
+    platformContext()->SetClip(rrect, true);
 }
 
 void GraphicsContextUltralight::clipOut(const Path& path)
