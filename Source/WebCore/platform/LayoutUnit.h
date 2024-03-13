@@ -801,9 +801,28 @@ inline int floorToInt(LayoutUnit value)
     return value.floor();
 }
 
+inline bool isWholeNumber(float value)
+{
+    // Calculate the difference from the nearest integer
+    float diff = std::fabs(value - std::round(value));
+
+    // Check if the difference is within the specified tolerance
+    return diff < 1e-5f;
+}
+
 inline float roundToDevicePixel(LayoutUnit value, float pixelSnappingFactor, bool needsDirectionalRounding = false)
 {
     double valueToRound = value.toDouble();
+
+#if USE(ULTRALIGHT)
+    // ULTRALIGHT ADDITION:
+    // WebKit typically only supports device scales with integer ratios (1x, 2x, 3x, etc) but we've expanded that to support
+    // non-integer ratios (1.5x, 2.5x, etc). This means that pixelSnappingFactor can be a non-integer value. In this case,
+    // we only perform pixel snapping if the pixelSnappingFactor is a whole number to avoid deforming the layout.
+    if (!isWholeNumber(pixelSnappingFactor))
+        return (float)valueToRound;
+#endif
+
     if (needsDirectionalRounding)
         valueToRound -= LayoutUnit::epsilon() / (2 * kFixedPointDenominator);
 

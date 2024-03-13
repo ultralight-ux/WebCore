@@ -36,7 +36,7 @@
 #include "TimingFunction.h"
 #include <wtf/text/TextStream.h>
 
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
 
 static double baseRate = 120;
 static Seconds tickTime = 1_s / baseRate;
@@ -250,32 +250,32 @@ static inline void getAnimationParametersForGranularity(ScrollGranularity granul
         repeatMinimumSustainTime = baseTickTime * 20;
         attackTime = baseTickTime * 20;
         releaseTime = baseTickTime * 20;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
+        maximumCoastTime = 0_s;
         break;
     case ScrollGranularity::Line:
         animationTime = baseTickTime * 10;
         repeatMinimumSustainTime = baseTickTime * 7;
         attackTime = baseTickTime * 3;
         releaseTime = baseTickTime * 3;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
+        maximumCoastTime = baseTickTime * 3;
         break;
     case ScrollGranularity::Page:
         animationTime = baseTickTime * 30;
         repeatMinimumSustainTime = baseTickTime * 20;
         attackTime = baseTickTime * 10;
         releaseTime = baseTickTime * 10;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
+        maximumCoastTime = 0_s;
         break;
     case ScrollGranularity::Pixel:
-        animationTime = baseTickTime * 20;
-        repeatMinimumSustainTime = baseTickTime * 16;
-        attackTime = baseTickTime * 10;
-        releaseTime = baseTickTime * 10;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        animationTime = baseTickTime * 10;
+        repeatMinimumSustainTime = baseTickTime * 7;
+        attackTime = baseTickTime * 3;
+        releaseTime = baseTickTime * 3;
+        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
+        maximumCoastTime = baseTickTime * 3;
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -420,7 +420,7 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
 
 namespace WebCore {
 
-static const float animationSpeed { 1000.0f };
+static const float animationSpeed { 1500.0f };
 static const Seconds maxAnimationDuration { 200_ms };
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)

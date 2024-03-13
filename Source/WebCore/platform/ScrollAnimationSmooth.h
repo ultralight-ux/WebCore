@@ -31,7 +31,7 @@
 
 namespace WebCore {
 
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
 
 class FloatPoint;
 class TimingFunction;
