@@ -159,6 +159,20 @@ if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRe
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
         set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
     endif ()
+
+    if (COMPILER_IS_CLANG_CL)
+        add_compile_options(
+            -O3                             # Aggressive optimization.
+            -fvectorize                     # Enable vectorization.
+            -ffast-math                     # Allow "unsafe" floating-point optimizations.
+            /Ob2                            # Inline expansion: any suitable function.
+            /fp:fast                        # Fast floating-point model.
+            /cgthreads8                     # Specify the number of threads for codegen.
+            -march=nehalem                  # Optimize for nehalem archictecture.
+            -funroll-loops                  # Unroll loops where beneficial.
+            -flto=thin
+        )
+    endif ()
   endif()
 endif()
 
