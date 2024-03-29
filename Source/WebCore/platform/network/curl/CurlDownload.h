@@ -42,6 +42,7 @@ class SharedBuffer;
 
 class WEBCORE_EXPORT CurlDownloadListener {
 public:
+    virtual ~CurlDownloadListener() = default;
     virtual void didReceiveResponse(uint32_t id, const ResourceResponse&) { }
     virtual void didReceiveData(uint32_t id, RefPtr<SharedBuffer>&& buffer) {}
     virtual void didFinish(uint32_t id) { }

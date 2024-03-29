@@ -40,6 +40,7 @@ class SharedBuffer;
 
 class CurlRequestClient {
 public:
+    virtual ~CurlRequestClient() = default;
     virtual void ref() = 0;
     virtual void deref() = 0;
 
