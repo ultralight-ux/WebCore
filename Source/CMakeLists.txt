@@ -2,9 +2,7 @@
 # Add module directories
 # -----------------------------------------------------------------------------
 # FIXME: Port bmalloc to Windows. https://bugs.webkit.org/show_bug.cgi?id=143310
-if (NOT WIN32)
-    add_subdirectory(bmalloc)
-endif ()
+#add_subdirectory(bmalloc)
 
 add_subdirectory(mimalloc)
 add_subdirectory(WTF)
