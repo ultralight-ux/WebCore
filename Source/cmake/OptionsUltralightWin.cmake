@@ -11,7 +11,9 @@ WEBKIT_OPTION_END()
 
 include(UltralightDefinitions)
 
-set(ICU_LIBRARIES icuuc icuin icudt)
+set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/icuin.lib
+                  ${WEBKIT_LIBRARIES_DIR}/lib/icuuc.lib
+                  ${WEBKIT_LIBRARIES_DIR}/lib/icudt.lib)
 
 if (MSVC)
     add_definitions(

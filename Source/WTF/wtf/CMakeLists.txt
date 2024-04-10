@@ -673,6 +673,13 @@ endif ()
 add_dependencies(WTF WebCore-deps)
 add_dependencies(WTF UltralightCore)
 
+add_custom_command(
+    TARGET WTF
+    PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Building WTF..."
+    DEPENDS "${WEBKIT_LIBRARIES_DIR}/include/unicode/ustring.h"
+)
+
 if (USE_GSTREAMER)
     add_dependencies(WTF GStreamerBin)
 endif ()

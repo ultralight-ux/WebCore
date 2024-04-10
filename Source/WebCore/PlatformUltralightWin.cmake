@@ -72,23 +72,23 @@ list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
 )
 
 list(APPEND WebCore_PRIVATE_LIBRARIES
-    brotlicommon
-    brotlidec
-    brotlienc
-    crypto
-    freetype.lib
-    harfbuzz.lib
-    harfbuzz-icu.lib
-    jpeg-static
-    libcurl
-    libpng16_static
-    nghttp2_static
+    "${WEBKIT_LIBRARIES_DIR}/lib/libcurl.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/brotlidec.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/brotlienc.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/brotlicommon.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/harfbuzz-icu.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/harfbuzz.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/freetype.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/jpeg-static.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/nghttp2_static.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libpng16_static.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/ssl.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/tls.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/crypto.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/xml2.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/xslt.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/zlibstatic.lib"
     sqlite3
-    ssl
-    tls
-    xml2
-    xslt
-    zlibstatic
 )
 
 if (NOT UWP_PLATFORM)

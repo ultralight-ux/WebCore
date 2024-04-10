@@ -505,6 +505,8 @@ else ()
         ${JavaScriptCore_DERIVED_SOURCES_DIR}/${LLIntOutput})
 endif ()
 
+add_dependencies(LowLevelInterpreterLib WebCore-deps)
+
 # WebAssembly generator
 
 macro(GENERATE_PYTHON _generator _additional_deps _input _output)

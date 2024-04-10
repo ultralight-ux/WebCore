@@ -158,24 +158,23 @@ find_library(APPKIT AppKit) # used for NSBeep in PAL
 find_library(SYSCONFIG SystemConfiguration) # used in NetworkStateNotifierMac
 
 list(APPEND WebCore_PRIVATE_LIBRARIES
-    brotlicommon
-    brotlidec
-    brotlienc
-    bz2
-    crypto
-    curl
-    freetype
-    harfbuzz
-    harfbuzz-icu
-    jpeg
-    nghttp2_static
-    png16
+    "${WEBKIT_LIBRARIES_DIR}/lib/libcurl.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlidec.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlienc.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlicommon.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libharfbuzz-icu.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libharfbuzz.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libfreetype.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libjpeg.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libnghttp2_static.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libpng16.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libssl.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libtls.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libcrypto.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libxml2.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libxslt.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libz.a"
     sqlite3
-    ssl
-    tls
-    xml2
-    xslt
-    z
     ${ACCELERATE}
     ${APPKIT}
     ${SYSCONFIG}
