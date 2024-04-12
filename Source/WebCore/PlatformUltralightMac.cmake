@@ -175,6 +175,7 @@ list(APPEND WebCore_PRIVATE_LIBRARIES
     "${WEBKIT_LIBRARIES_DIR}/lib/libxslt.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libz.a"
     sqlite3
+    bz2 # TODO: needed by freetype?
     ${ACCELERATE}
     ${APPKIT}
     ${SYSCONFIG}
