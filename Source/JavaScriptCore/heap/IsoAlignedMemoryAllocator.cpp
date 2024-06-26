@@ -74,7 +74,23 @@ void* IsoAlignedMemoryAllocator::tryReallocateMemory(void*, size_t)
 #if USE(ULTRALIGHT)
 void* IsoAlignedMemoryAllocator::tryMallocBlock()
 {
-    return OSAllocator::reserveAndCommit(MarkedBlock::blockSize, MarkedBlock::blockSize);
+#if OS(WINDOWS)
+    // Memory allocated by VirtualAlloc is always zeroed.
+    void* p = OSAllocator::reserveAndCommit(MarkedBlock::blockSize, MarkedBlock::blockSize);
+#else
+    void* p = nullptr;
+    if (MarkedBlock::blockSize > pageSize()) {
+        p = OSAllocator::tryReserveUncommittedAligned(MarkedBlock::blockSize, MarkedBlock::blockSize);
+    } else {
+        p = OSAllocator::tryReserveUncommitted(MarkedBlock::blockSize);
+    }
+
+    RELEASE_ASSERT(p);
+    OSAllocator::commit(p, MarkedBlock::blockSize, true, false);
+    memset(p, 0, MarkedBlock::blockSize);
+#endif
+
+    return p;
 }
 
 void IsoAlignedMemoryAllocator::freeBlock(void* block)
