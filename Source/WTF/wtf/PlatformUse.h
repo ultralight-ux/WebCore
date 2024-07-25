@@ -97,7 +97,7 @@
 #define USE_SOUP 1
 #endif
 
-#if PLATFORM(GTK) || PLATFORM(WPE)
+#if PLATFORM(GTK) || PLATFORM(WPE) || PLATFORM(ULTRALIGHT)
 #define USE_WEBP 1
 #endif
 
