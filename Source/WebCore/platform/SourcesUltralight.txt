@@ -62,6 +62,8 @@ platform/graphics/ultralight/ImageBufferUltralightBackend.cpp
 platform/graphics/ultralight/ImageBufferUltralightBackend.h
 platform/graphics/ultralight/ImageBufferUtilitiesUltralight.cpp
 platform/graphics/ultralight/ImageBufferUtilitiesUltralight.h
+platform/graphics/ultralight/ImageSourceImage.cpp
+platform/graphics/ultralight/ImageSourceImage.h
 platform/graphics/ultralight/NativeImageUltralight.cpp
 platform/graphics/ultralight/PathUltralight.cpp
 platform/graphics/ultralight/PlatformFontFreeType.cpp

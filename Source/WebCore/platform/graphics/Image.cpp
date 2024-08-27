@@ -47,6 +47,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include "ImageSourceImage.h"
+#endif
+
 namespace WebCore {
 
 Image::Image(ImageObserver* observer)
@@ -83,6 +87,11 @@ RefPtr<Image> Image::create(ImageObserver& observer)
         return nullptr;
 #endif
     }
+
+#if USE(ULTRALIGHT)
+    if (ImageSourceImage::matchesResource(mimeType, url))
+        return ImageSourceImage::create(&observer);
+#endif
 
     return BitmapImage::create(&observer);
 }

@@ -97,6 +97,9 @@ public:
     virtual bool isPDFDocumentImage() const { return false; }
     virtual bool isCanvasImage() const { return false; }
     virtual bool isCustomPaintImage() const { return false; }
+#if USE(ULTRALIGHT)
+    virtual bool isImageSourceImage() const { return false; }
+#endif
 
     bool drawsSVGImage() const { return isSVGImage() || isSVGImageForContainer(); }
 

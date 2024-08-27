@@ -52,6 +52,14 @@ public:
         return std::unique_ptr<ImageBackingStore>(new ImageBackingStore(other));
     }
 
+#if USE(ULTRALIGHT)
+    // Create from an existing ultralight::Image (for ultralight::ImageSource)
+    static std::unique_ptr<ImageBackingStore> create(const IntSize& size, PlatformImagePtr image)
+    {
+        return std::unique_ptr<ImageBackingStore>(new ImageBackingStore(size, image));
+    }
+#endif
+
     PlatformImagePtr image() const;
 
     bool setSize(const IntSize& size)
@@ -209,10 +217,36 @@ private:
         , m_premultiplyAlpha(other.m_premultiplyAlpha)
     {
         ASSERT(!m_size.isEmpty() && !isOverSize(m_size));
+#if USE(ULTRALIGHT)
+        if (other.m_isNativeImage) {
+            m_image = other.m_image;
+            m_frameRect = other.m_frameRect;
+            m_pixels = nullptr;
+            m_pixelsPtr = nullptr;
+            m_isNativeImage = true;
+            return;
+        }
+#endif
         Vector<uint8_t> buffer { other.m_pixels->data(), other.m_pixels->size() };
         m_pixels = FragmentedSharedBuffer::DataSegment::create(WTFMove(buffer));
         m_pixelsPtr = reinterpret_cast<uint32_t*>(const_cast<uint8_t*>(m_pixels->data()));
     }
+
+#if USE(ULTRALIGHT)
+    // Create from an existing ultralight::Image (for ultralight::ImageSource)
+    ImageBackingStore(const IntSize& size, PlatformImagePtr image)
+        : m_size(size)
+        , m_premultiplyAlpha(true)
+        , m_image(image)
+    {
+        ASSERT(!m_size.isEmpty() && !isOverSize(m_size));
+        m_frameRect = IntRect(IntPoint(), m_size);
+        // We don't allocate any pixels, as we will use the ultralight::Image directly
+        m_pixels = nullptr;
+        m_pixelsPtr = nullptr;
+        m_isNativeImage = true;
+    }
+#endif
 
     bool inBounds(const IntPoint& point) const
     {
@@ -245,6 +279,9 @@ private:
     bool m_premultiplyAlpha { true };
     mutable bool m_pixelsDirty { false };
     mutable PlatformImagePtr m_image;
+#if USE(ULTRALIGHT)
+    bool m_isNativeImage { false };
+#endif
 };
 
 }
