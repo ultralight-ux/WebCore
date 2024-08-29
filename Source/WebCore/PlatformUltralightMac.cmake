@@ -56,7 +56,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
    
     platform/LocalizedStrings.cpp
-    platform/network/mac/NetworkStateNotifierMac.cpp
 
     platform/ScrollAnimationKinetic.cpp
     platform/ScrollAnimationSmooth.cpp
