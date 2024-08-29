@@ -60,11 +60,14 @@ public:
 
     virtual String extraQuirksStyleSheet() override
     {
+        auto& config = ultralight::Platform::instance().config();
+        WTF::String configStylesheet = Convert(config.user_stylesheet);
+
         WTF::String platformStylesheet;
 #if !OS(DARWIN)
         platformStylesheet = String(themeWinQuirksUserAgentStyleSheet, sizeof(themeWinQuirksUserAgentStyleSheet));
 #endif
-        return platformStylesheet;
+        return platformStylesheet + configStylesheet;
     }
 
 #if ENABLE(VIDEO)
