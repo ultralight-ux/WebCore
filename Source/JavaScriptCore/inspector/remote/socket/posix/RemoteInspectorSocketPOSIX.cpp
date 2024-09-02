@@ -180,6 +180,56 @@ bool isValid(PlatformSocketType socket)
 
 bool isListening(PlatformSocketType socket)
 {
+#if OS(DARWIN)
+    // On macOS, the SO_ACCEPTCONN socket option is not reliably supported.
+    // Instead, we use a combination of getsockopt() to check the socket type
+    // and a non-blocking accept() call to determine if the socket is listening.
+    // This approach is more reliable on macOS and doesn't change the socket's state.
+
+    // First, verify that this is a SOCK_STREAM socket (only these can listen)
+    int type;
+    socklen_t typeLen = sizeof(type);
+    if (getsockopt(socket, SOL_SOCKET, SO_TYPE, &type, &typeLen) == -1) {
+        LOG_ERROR("getsockopt(SO_TYPE) error (errno = %d)", errno);
+        return false;
+    }
+    
+    if (type != SOCK_STREAM)
+        return false;
+    
+    // Save the current socket flags
+    int currentFlags = fcntl(socket, F_GETFL);
+    if (currentFlags == -1) {
+        LOG_ERROR("fcntl(F_GETFL) error (errno = %d)", errno);
+        return false;
+    }
+
+    // Set the socket to non-blocking mode temporarily
+    if (fcntl(socket, F_SETFL, currentFlags | O_NONBLOCK) == -1) {
+        LOG_ERROR("fcntl(F_SETFL) error (errno = %d)", errno);
+        return false;
+    }
+
+    // Attempt a non-blocking accept()
+    int tempSocket = ::accept(socket, nullptr, nullptr);
+    
+    // Restore the original socket flags
+    if (fcntl(socket, F_SETFL, currentFlags) == -1) {
+        LOG_ERROR("fcntl(F_SETFL) restore error (errno = %d)", errno);
+    }
+
+    if (tempSocket >= 0) {
+        // accept() succeeded, meaning the socket is listening and a connection was pending
+        close(tempSocket);
+        return true;
+    } else if (errno == EWOULDBLOCK || errno == EAGAIN) {
+        // accept() would block, meaning the socket is listening but no connection is pending
+        return true;
+    }
+
+    // Any other error suggests the socket is not in a listening state
+    return false;
+#else
     int out;
     socklen_t outSize = sizeof(out);
     if (getsockopt(socket, SOL_SOCKET, SO_ACCEPTCONN, &out, &outSize) != -1)
@@ -187,6 +237,7 @@ bool isListening(PlatformSocketType socket)
 
     LOG_ERROR("getsockopt(SO_ACCEPTCONN) error (errno = %d)", errno);
     return false;
+#endif
 }
 
 std::optional<uint16_t> getPort(PlatformSocketType socket)

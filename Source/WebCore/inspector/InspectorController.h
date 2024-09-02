@@ -77,7 +77,7 @@ public:
     WEBCORE_EXPORT void show();
 
     WEBCORE_EXPORT void setInspectorFrontendClient(InspectorFrontendClient*);
-    unsigned inspectionLevel() const;
+    WEBCORE_EXPORT unsigned inspectionLevel() const;
     void didClearWindowObjectInWorld(Frame&, DOMWrapperWorld&);
 
     WEBCORE_EXPORT void dispatchMessageFromFrontend(const String& message);

@@ -2,6 +2,10 @@
 #include "JavaScriptCore/JavaScript.h"
 #include "JavaScriptCore/JSTypedArray.h"
 #include <pal/SessionID.h>
+#if ENABLE(REMOTE_INSPECTOR)
+#include <JavaScriptCore/RemoteInspector.h>
+#include <JavaScriptCore/RemoteInspectorServer.h>
+#endif
 
 namespace WebCore {
 
@@ -36,6 +40,9 @@ WEBCORE_EXPORT void PreserveSymbols() {
   auto _3 = PAL::SessionID::generateEphemeralSessionID();
   auto _4 = PAL::SessionID::generatePersistentSessionID();
   PAL::SessionID::enableGenerationProtection();
+#if ENABLE(REMOTE_INSPECTOR)
+  auto _5 = Inspector::RemoteInspectorServer::singleton().start("0.0.0.0", 9999);
+#endif
 }
 
 }
