@@ -523,7 +523,8 @@ void GraphicsContextUltralight::strokeRect(const FloatRect& rect, float width)
     Path path;
     path.addRect(rect);
 
-    platformContext()->StrokePath(path.ensurePlatformPath(), strokeColor(), width);
+    //platformContext()->StrokePath(path.ensurePlatformPath(), strokeColor(), width);
+    strokePath(path);
     // TODO, handle shadow state
 }
 
