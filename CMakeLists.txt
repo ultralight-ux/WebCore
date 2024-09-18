@@ -119,7 +119,7 @@ endif ()
 # -----------------------------------------------------------------------------
 # Common configuration
 #------------------------------------------------------------------------------
-find_package (Python3)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 include(WebKitCommon)
 
