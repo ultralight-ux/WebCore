@@ -184,35 +184,39 @@ list(APPEND WebCore_PRIVATE_LIBRARIES
     ${SECURITY_LIBRARY}
 )
 
+#list(APPEND WebCore_LINK_OPTIONS
+#    -Wl,-exported_symbols_list,${WEBCORE_DIR}/webcore_exports_macos.txt
+#)
+
 if (USE_GSTREAMER)
     list(APPEND WebCore_PRIVATE_LIBRARIES
         gstreamer-full-1.0
     )
 endif ()
 
-file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
+#file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
 
-set(BUILD_TMP "${PROJECT_BINARY_DIR}/tmp/")
-file(MAKE_DIRECTORY "${BUILD_TMP}")
+#set(BUILD_TMP "${PROJECT_BINARY_DIR}/tmp/")
+#file(MAKE_DIRECTORY "${BUILD_TMP}")
 
-set(WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/preBuild.sh")
-set(WebCore_POST_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/postBuild.sh")
+#set(WebCore_PRE_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/preBuild.sh")
+#set(WebCore_POST_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/WebCore/postBuild.sh")
 
 # Write the pre-build bash script
-file(WRITE "${BUILD_TMP}/preBuild.sh" "#!/bin/bash\ncp -R ${WEBCORE_DIR}/ForwardingHeaders/ ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
-foreach (_directory ${WebCore_FORWARDING_HEADERS_DIRECTORIES})
-file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WEBCORE_DIR}/${_directory}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
-endforeach ()
+#file(WRITE "${BUILD_TMP}/preBuild.sh" "#!/bin/bash\ncp -R ${WEBCORE_DIR}/ForwardingHeaders/ ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
+#foreach (_directory ${WebCore_FORWARDING_HEADERS_DIRECTORIES})
+#file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WEBCORE_DIR}/${_directory}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
+#endforeach ()
 
 # Write the post-build bash script
-file(WRITE "${BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${WebCore_DERIVED_SOURCES_DIR}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
+#file(WRITE "${BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${WebCore_DERIVED_SOURCES_DIR}/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore 2>/dev/null\n")
 
 # Copy bash scripts over and chmod to executable
-file (COPY "${BUILD_TMP}/preBuild.sh" DESTINATION "${PROJECT_BINARY_DIR}/DerivedSources/WebCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)
-file (COPY "${BUILD_TMP}/postBuild.sh" DESTINATION "${PROJECT_BINARY_DIR}/DerivedSources/WebCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)
+#file (COPY "${BUILD_TMP}/preBuild.sh" DESTINATION "${PROJECT_BINARY_DIR}/DerivedSources/WebCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)
+#file (COPY "${BUILD_TMP}/postBuild.sh" DESTINATION "${PROJECT_BINARY_DIR}/DerivedSources/WebCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)
 
 # Remove temp directory
-file(REMOVE_RECURSE "${BUILD_TMP}")
+#file(REMOVE_RECURSE "${BUILD_TMP}")
 
 list(APPEND WebCore_PRIVATE_LIBRARIES WTF)
 list(APPEND WebCore_PRIVATE_LIBRARIES JavaScriptCore)
