@@ -25,10 +25,6 @@ if (MSVC)
         /wd6031 /wd6211 /wd6246 /wd6255 /wd6387 /wd4577
     )
 
-    if (UL_ENABLE_STATIC_BUILD)
-        add_definitions(-DULTRALIGHT_STATIC_BUILD -DJS_NO_EXPORT)
-    endif ()
-
     # We do not use exceptions
     add_definitions(-D_HAS_EXCEPTIONS=0)
     add_compile_options(/EHa- /EHc- /EHs- /fp:except-)

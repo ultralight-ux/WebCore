@@ -43,6 +43,7 @@ set(JavaScriptCore_LIBRARY_TYPE STATIC)
 
 if (UL_ENABLE_STATIC_BUILD)
     set(WebCore_LIBRARY_TYPE STATIC)
+    add_definitions(-DULTRALIGHT_STATIC_BUILD -DJS_NO_EXPORT)
 else ()
     set(WebCore_LIBRARY_TYPE SHARED)
 endif ()
