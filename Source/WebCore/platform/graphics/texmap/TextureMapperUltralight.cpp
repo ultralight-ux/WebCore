@@ -10,6 +10,7 @@
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
 #include "BitmapTextureUltralight.h"
+#include <Ultralight/private/Filter.h>
 
 namespace WebCore {
 
