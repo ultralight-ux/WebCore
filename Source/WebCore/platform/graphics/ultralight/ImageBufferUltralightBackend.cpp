@@ -91,6 +91,7 @@ GraphicsContext& ImageBufferUltralightBackend::context() const
 void ImageBufferUltralightBackend::flushContext()
 {
     static_cast<GraphicsContextUltralight&>(context()).platformContext()->FlushSurface();
+    static_cast<GraphicsContextUltralight&>(context()).platformContext()->ShrinkAllocators();
 }
 
 IntSize ImageBufferUltralightBackend::backendSize() const
