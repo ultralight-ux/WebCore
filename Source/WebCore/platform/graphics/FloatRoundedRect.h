@@ -151,6 +151,7 @@ public:
 #if USE(ULTRALIGHT)
     WEBCORE_EXPORT FloatRoundedRect(const ultralight::RoundedRect&);
     WEBCORE_EXPORT operator ultralight::RoundedRect() const;
+    WEBCORE_EXPORT size_t hash() const;
 #endif
 
 private:

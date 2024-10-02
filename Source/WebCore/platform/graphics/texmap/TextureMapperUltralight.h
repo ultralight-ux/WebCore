@@ -3,9 +3,13 @@
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
+#include "ClipStackUltralight.h"
 #include <Ultralight/private/Canvas.h>
 
 namespace WebCore {
+
+class FilterOperation;
+class ClipStackUltralight;
 
 class WEBCORE_EXPORT TextureMapperUltralight : public TextureMapper {
 public:
@@ -34,6 +38,8 @@ public:
     // makes a surface the target for the following drawTexture calls.
     virtual void bindSurface(BitmapTexture* surface) override;
 
+    BitmapTexture* currentSurface() { return current_surface_.get(); }
+
     virtual void beginClip(const TransformationMatrix&, const FloatRoundedRect&) override;
 
     virtual void endClip() override;
@@ -52,11 +58,14 @@ public:
 
     virtual IntSize maxTextureSize() const override;
 
+    void drawFiltered(const BitmapTexture& sourceTexture, const BitmapTexture* contentTexture, const FilterOperation&, int pass);
+
 protected:
     bool use_gpu_;
     double scale_;
-    ultralight::RefPtr<ultralight::Canvas> default_surface_;
-    ultralight::RefPtr<ultralight::Canvas> current_surface_;
+    RefPtr<BitmapTexture> current_surface_;
+    RefPtr<BitmapTexture> default_surface_;
+    ClipStackUltralight clip_stack_;
 };
 
 } // namespace WebCore

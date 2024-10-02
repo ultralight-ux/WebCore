@@ -53,6 +53,7 @@ endif ()
 if (USE_TEXTURE_MAPPER_ULTRALIGHT)
     list(APPEND WebCore_SOURCES
         platform/graphics/texmap/BitmapTextureUltralight.cpp
+        platform/graphics/texmap/ClipStackUltralight.cpp
         platform/graphics/texmap/TextureMapperUltralight.cpp
     )
 endif ()

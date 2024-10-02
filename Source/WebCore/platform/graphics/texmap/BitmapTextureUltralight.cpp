@@ -18,18 +18,52 @@
 
 namespace WebCore {
 
-BitmapTextureUltralight::BitmapTextureUltralight(bool use_gpu, const BitmapTexture::Flags flags) : use_gpu_(use_gpu) {
+BitmapTextureUltralight* toBitmapTextureUL(BitmapTexture* texture)
+{
+    if (!texture || !texture->isBackedByUltralight())
+        return 0;
+
+    return static_cast<BitmapTextureUltralight*>(texture);
+}
+
+BitmapTextureUltralight::BitmapTextureUltralight(bool use_gpu, const BitmapTexture::Flags flags) : use_gpu_(use_gpu), owns_canvas_(true) {
+}
+
+BitmapTextureUltralight::BitmapTextureUltralight(ultralight::RefPtr<ultralight::Canvas> canvas) : canvas_(canvas), owns_canvas_(false) {
+  canvas_size_ = IntSize(canvas->width(), canvas->height());
+  use_gpu_ = canvas_->surface() == nullptr;
 }
 
 BitmapTextureUltralight::~BitmapTextureUltralight() {
-  if (canvas_) {
+  if (canvas_ && owns_canvas_) {
     canvas_->RecycleRenderTexture();
     canvas_ = nullptr;
   }
 }
 
+void BitmapTextureUltralight::applyClipIfNeeded(const ClipStackUltralight& clip) {
+  if (!canvas_)
+    return;
+
+  if (clip_hash_ == clip.clipHash())
+    return;
+
+  if (clip_applied_)
+    canvas_->Restore();
+
+  canvas_->Save();
+
+  clip.applyClip(canvas_);
+
+  clip_hash_ = clip.clipHash();
+  clip_applied_ = true;
+}
+
 void BitmapTextureUltralight::didReset() {
   ProfiledZone;
+  if (!owns_canvas_)
+    return;
+
   canvas_size_ = contentSize();
 
   if (canvas_) {
@@ -52,9 +86,9 @@ void BitmapTextureUltralight::didReset() {
 
 void BitmapTextureUltralight::updateContents(Image* image,
     const IntRect& targetRect, const IntPoint& offset) {
-  ProfiledZone;
-  if (!image)
-        return;
+    ProfiledZone;
+    if (!image)
+      return;
 
     if (image->isBitmapImage()) {
       RefPtr<NativeImage> frameImage = image->nativeImageForCurrentFrame();
@@ -141,16 +175,70 @@ inline void CopyBitmaps(ultralight::RefPtr<ultralight::Bitmap> src, ultralight::
   }
 }
 
+static unsigned getPassesRequiredForFilter(FilterOperation::Type type)
+{
+    switch (type) {
+    case FilterOperation::Type::Grayscale:
+    case FilterOperation::Type::Sepia:
+    case FilterOperation::Type::Saturate:
+    case FilterOperation::Type::HueRotate:
+    case FilterOperation::Type::Invert:
+    case FilterOperation::Type::Brightness:
+    case FilterOperation::Type::Contrast:
+    case FilterOperation::Type::Opacity:
+        return 1;
+    case FilterOperation::Type::Blur:
+    case FilterOperation::Type::DropShadow:
+        // We use two-passes (vertical+horizontal) for blur and drop-shadow.
+        return 2;
+    default:
+        return 0;
+    }
+}
+
 RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textureMapper,
   const FilterOperations& filters, bool defersLastFilter)
 {
-    // TODO: Implement GPU pipeline for filters
-    if (use_gpu_)
-      return this;
-
     ProfiledZone;
     if (filters.isEmpty())
       return this;
+
+    if (use_gpu_) {
+      TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
+      RefPtr<BitmapTexture> previousSurface = texmapUL.currentSurface();
+      RefPtr<BitmapTexture> resultSurface = this;
+      RefPtr<BitmapTexture> intermediateSurface;
+      RefPtr<BitmapTexture> spareSurface;
+
+      filter_info_ = FilterInfo();
+
+      for (size_t i = 0; i < filters.size(); ++i) {
+          RefPtr<FilterOperation> filter = filters.operations()[i];
+          ASSERT(filter);
+
+          int numPasses = getPassesRequiredForFilter(filter->type());
+          for (int j = 0; j < numPasses; ++j) {
+              bool last = (i == filters.size() - 1) && (j == numPasses - 1);
+              if (defersLastFilter && last) {
+                  toBitmapTextureUL(resultSurface.get())->filter_info_ = BitmapTextureUltralight::FilterInfo(filter.copyRef(), j, spareSurface.copyRef());
+                  break;
+              }
+
+              if (!intermediateSurface)
+                  intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);
+              texmapUL.bindSurface(intermediateSurface.get());
+              texmapUL.drawFiltered(*resultSurface.get(), spareSurface.get(), *filter, j);
+              if (!j && filter->type() == FilterOperation::Type::DropShadow) {
+                  spareSurface = resultSurface;
+                  resultSurface = nullptr;
+              }
+              std::swap(resultSurface, intermediateSurface);
+          }
+      }
+
+      texmapUL.bindSurface(previousSurface.get());
+      return resultSurface;
+    }
 
     TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
     RefPtr<BitmapTexture> dstSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);

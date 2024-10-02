@@ -5,6 +5,7 @@
 #if USE(ULTRALIGHT)
 
 #include <Ultralight/Geometry.h>
+#include <functional>
 
 namespace WebCore {
 
@@ -32,6 +33,25 @@ FloatRoundedRect::operator ultralight::RoundedRect() const
     return rrect;
 }
 
+size_t FloatRoundedRect::hash() const
+{
+    // Compute the combined hash of m_rect and m_radii:
+    size_t hashValue = std::hash<float>{}(m_rect.x());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_rect.y());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_rect.width());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_rect.height());
+    
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.topLeft().width());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.topLeft().height());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.topRight().width());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.topRight().height());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.bottomLeft().width());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.bottomLeft().height());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.bottomRight().width());
+    hashValue = hashValue * 31 + std::hash<float>{}(m_radii.bottomRight().height());
+    
+    return hashValue;
+}
 } // namespace WebCore
 
 #endif // USE(ULTRALIGHT)

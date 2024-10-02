@@ -396,7 +396,8 @@ public:
     WEBCORE_EXPORT TransformationMatrix(const CGAffineTransform&);
     WEBCORE_EXPORT operator CGAffineTransform() const;
 #elif USE(ULTRALIGHT)
-    operator ultralight::Matrix() const;
+    WEBCORE_EXPORT operator ultralight::Matrix() const;
+    WEBCORE_EXPORT size_t hash() const;
 #endif
 
 #if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))

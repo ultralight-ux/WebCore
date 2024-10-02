@@ -58,6 +58,7 @@ public:
 
     virtual ~BitmapTexture() = default;
     virtual bool isBackedByOpenGL() const { return false; }
+    virtual bool isBackedByUltralight() const { return false; }
 
     virtual IntSize size() const = 0;
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset) = 0;
