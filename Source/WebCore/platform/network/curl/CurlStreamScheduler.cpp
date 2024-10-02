@@ -25,6 +25,8 @@
 
 #include "config.h"
 #include "CurlStreamScheduler.h"
+#include <thread>
+#include <chrono>
 
 #if USE(CURL)
 
@@ -176,10 +178,16 @@ void CurlStreamScheduler::workerThread()
 
             if (maxfd >= 0)
                 rc = ::select(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout);
+
+            // Unconditionally yield to avoid busy loop.
+            std::this_thread::yield();
         } while (rc == -1 && errno == EINTR);
 
         for (auto& stream : m_streamList.values())
             stream->tryToTransfer(readfds, writefds, exceptfds);
+
+        // Sleep for a while to reduce CPU usage.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
         stopThreadIfNoMoreJobRunning();
     }
