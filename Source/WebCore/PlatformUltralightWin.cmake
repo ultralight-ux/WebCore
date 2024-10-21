@@ -171,7 +171,7 @@ if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRe
             /Ob2                            # Inline expansion: any suitable function.
             /fp:fast                        # Fast floating-point model.
             /cgthreads8                     # Specify the number of threads for codegen.
-            -march=nehalem                  # Optimize for nehalem archictecture.
+            -march=core2                    # Optimize for core2 archictecture.
             -funroll-loops                  # Unroll loops where beneficial.
             -flto=thin
         )
