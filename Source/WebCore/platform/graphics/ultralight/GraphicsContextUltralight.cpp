@@ -167,11 +167,8 @@ void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThic
     ProfiledZone;
     // FIXME: this function does not handle patterns and gradients like drawPath does, it probably should.
     ASSERT(!rect.isEmpty());
-    
-    Color stroke = strokeColor().colorWithAlphaMultipliedBy(alpha());
-    Color fill = strokeColor().colorWithAlphaMultipliedBy(alpha());
 
-    platformContext()->DrawRect(rect, fill);
+    platformContext()->DrawRect(rect, fillColor());
 
     if (strokeStyle() != NoStroke) {
         // We do a fill of four rects to simulate the stroke of a border.
@@ -183,7 +180,7 @@ void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThic
         };
 
         for (size_t i = 0; i < 4; ++i)
-            platformContext()->DrawRect(rects[i], stroke);
+            platformContext()->DrawRect(rects[i], strokeColor());
     }
 }
 
@@ -254,8 +251,7 @@ void GraphicsContextUltralight::fillPath(const Path& path)
         return;
     }
 
-    Color localColor(fillColor().colorWithAlphaMultipliedBy(alpha()));
-    platformContext()->FillPath(path.platformPath(), localColor, platformFillRule);
+    platformContext()->FillPath(path.platformPath(), fillColor(), platformFillRule);
 }
 
 void GraphicsContextUltralight::strokePath(const Path& path)
@@ -296,8 +292,7 @@ void GraphicsContextUltralight::strokePath(const Path& path)
     if (dashArraySize)
         dashArray = extraState().m_lineDash.data();
 
-    Color localStrokeColor = strokeColor().colorWithAlphaMultipliedBy(alpha());
-    platformContext()->StrokePath(path.platformPath(), localStrokeColor, strokeThickness(),
+    platformContext()->StrokePath(path.platformPath(), strokeColor(), strokeThickness(),
         lineCap, lineJoin, extraState().m_miterLimit, dashArray, dashArraySize,
         extraState().m_lineDashOffset);
 }
@@ -311,9 +306,8 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect)
         restore();
         return;
     }
-   
-    Color localColor(fillColor().colorWithAlphaMultipliedBy(alpha()));
-    fillRect(rect, localColor);
+
+    fillRect(rect, fillColor());
 }
 
 void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& color)
@@ -338,7 +332,6 @@ void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect
     }
 
     if (color.isVisible()) {
-        Color localColor(color.colorWithAlphaMultipliedBy(alpha()));
         platformContext()->DrawRoundedRect(rect, color, 0.0, UltralightColorTRANSPARENT);
     }
 }
@@ -355,11 +348,10 @@ void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, c
         path.addRect(roundedHoleRect.rect());
 
     WindRule oldFillRule = fillRule();
-    Color oldFillColor(fillColor().colorWithAlphaMultipliedBy(alpha()));
+    Color oldFillColor = fillColor();
 
     setFillRule(WindRule::EvenOdd);
-    Color localColor(color.colorWithAlphaMultipliedBy(alpha()));
-    setFillColor(localColor);
+    setFillColor(color);
 
     // fillRectWithRoundedHole() assumes that the edges of rect are clipped out, so we only care about shadows cast around inside the hole.
     if (hasVisibleShadow()) {
@@ -634,7 +626,7 @@ void GraphicsContextUltralight::drawLinesForText(const FloatPoint& point, float 
     if (widths.isEmpty())
         return;
 
-    Color localStrokeColor(strokeColor().colorWithAlphaMultipliedBy(alpha()));
+    Color localStrokeColor(strokeColor());
 
     FloatRect bounds = computeLineBoundsAndAntialiasingModeForText(FloatRect(point, FloatSize(widths.last(), thickness)), printing, localStrokeColor);
 
