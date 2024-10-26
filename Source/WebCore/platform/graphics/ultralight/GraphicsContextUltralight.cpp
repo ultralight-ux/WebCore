@@ -165,6 +165,7 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
 void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThickness)
 {
     ProfiledZone;
+    applyState();
     // FIXME: this function does not handle patterns and gradients like drawPath does, it probably should.
     ASSERT(!rect.isEmpty());
 
@@ -210,6 +211,15 @@ void GraphicsContextUltralight::drawEllipse(const FloatRect& rect)
     drawPath(path);
 }
 
+void GraphicsContextUltralight::applyState()
+{
+    auto context = platformContext();
+    
+    context->SetCompositeOp((ultralight::CompositeOp)state().compositeMode().operation);
+    context->SetBlendMode((ultralight::BlendMode)state().compositeMode().blendMode);
+    context->SetAlpha(state().alpha());
+}
+
 void GraphicsContextUltralight::applyStrokePattern()
 {
     if (!strokePattern())
@@ -238,8 +248,11 @@ void GraphicsContextUltralight::drawPath(const Path& path)
 void GraphicsContextUltralight::fillPath(const Path& path)
 {
     ProfiledZone;
+
     if (path.isEmpty())
         return;
+
+    applyState();
 
     auto platformFillRule = fillRule() == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
 
@@ -259,6 +272,8 @@ void GraphicsContextUltralight::strokePath(const Path& path)
     ProfiledZone;
     if (path.isEmpty())
         return;
+
+    applyState();
 
     ultralight::LineCap lineCap;
     switch (extraState().m_lineCap) {
@@ -300,6 +315,7 @@ void GraphicsContextUltralight::strokePath(const Path& path)
 void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 {
     ProfiledZone;
+    applyState();
     if (auto fillGradient = this->fillGradient()) {
         save();
         fillGradient->fill(*this, rect);
@@ -313,6 +329,9 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& color)
 {
     ProfiledZone;
+
+    applyState();
+
     if (hasVisibleShadow()) {
         ShadowBlur contextShadow(dropShadow(), shadowsIgnoreTransforms());
         contextShadow.drawRectShadow(*this, FloatRoundedRect(rect));
@@ -326,6 +345,9 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& col
 void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect, const Color& color)
 {
     ProfiledZone;
+
+    applyState();
+
     if (hasVisibleShadow()) {
         ShadowBlur contextShadow(dropShadow(), shadowsIgnoreTransforms());
         contextShadow.drawRectShadow(*this, rect);
@@ -339,6 +361,9 @@ void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect
 void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, const FloatRoundedRect& roundedHoleRect, const Color& color)
 {
     ProfiledZone;
+
+    applyState();
+
     Path path;
     path.addRect(rect);
 
@@ -511,10 +536,12 @@ void GraphicsContextUltralight::strokeRect(const FloatRect& rect, float width)
         return;
     }
 
+    applyState();
+
     if (strokePattern())
         applyStrokePattern();
 
-  if (width < 0.001)
+    if (width < 0.001)
         return;
 
     if (rect.isEmpty() || rect.isZero())
@@ -626,6 +653,8 @@ void GraphicsContextUltralight::drawLinesForText(const FloatPoint& point, float 
     if (widths.isEmpty())
         return;
 
+    applyState();
+
     Color localStrokeColor(strokeColor());
 
     FloatRect bounds = computeLineBoundsAndAntialiasingModeForText(FloatRect(point, FloatSize(widths.last(), thickness)), printing, localStrokeColor);
@@ -695,11 +724,13 @@ void GraphicsContextUltralight::applyDeviceScaleFactor(float deviceScaleFactor)
 
 void GraphicsContextUltralight::fillEllipse(const FloatRect& ellipse)
 {
+    applyState();
     fillEllipseAsPath(ellipse);
 }
 
 void GraphicsContextUltralight::strokeEllipse(const FloatRect& ellipse)
 {
+    applyState();
     strokeEllipseAsPath(ellipse);
 }
 

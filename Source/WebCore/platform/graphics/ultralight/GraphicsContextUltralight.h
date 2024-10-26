@@ -95,6 +95,7 @@ public:
     virtual FloatRect roundToDevicePixels(const FloatRect&, RoundingMode = RoundAllSides) const;
 
 private:
+    void applyState();
     void applyStrokePattern();
     void applyFillPattern();
 
