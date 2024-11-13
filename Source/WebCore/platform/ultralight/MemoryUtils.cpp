@@ -13,7 +13,9 @@
 namespace WebCore {
 
 #if OS(DARWIN)
+#if ENABLE(RESOURCE_USAGE)
 static ResourceUsageData gData;
+#endif
 #endif
 
 static std::string fmtBytes(uint64_t bytes) {
@@ -35,15 +37,19 @@ static std::string fmtBytes(uint64_t bytes) {
 
 MemoryUtils::MemoryUtils() {
 #if OS(DARWIN)
+#if ENABLE(RESOURCE_USAGE)
   ResourceUsageThread::addObserver(this, Memory, [this](const ResourceUsageData& data) {
     gData = data;
   });
+#endif
 #endif
 }
 
 MemoryUtils::~MemoryUtils() {
 #if OS(DARWIN)
+#if ENABLE(RESOURCE_USAGE)
   ResourceUsageThread::removeObserver(this);
+#endif
 #endif
 }
 
@@ -51,6 +57,7 @@ MemoryUtils::~MemoryUtils() {
   stream << str << fmtBytes(obj) << std::endl;
 
 void MemoryUtils::logMemoryStatistics() {
+#if ENABLE(RESOURCE_USAGE)
   std::ostringstream stream;
   stream << "Memory Usage (WebCore): " << std::endl;
 #if OS(DARWIN)
@@ -68,6 +75,7 @@ void MemoryUtils::logMemoryStatistics() {
   PRINT_STATS("    JavaScript:          ", currentGCHeapCapacity + currentGCOwnedExtra);
 #endif
   UL_LOG_INFO(stream.str().c_str());
+#endif
 }
 
 void MemoryUtils::beginSimulatedMemoryPressure() {
