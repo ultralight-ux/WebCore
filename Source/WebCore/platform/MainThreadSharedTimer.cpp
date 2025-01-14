@@ -75,13 +75,19 @@ void MainThreadSharedTimer::invalidate()
 
 void MainThreadSharedTimer::setFiredFunction(Function<void()>&& firedFunction)
 {
-    RELEASE_ASSERT(!m_firedFunction || !firedFunction);
+    ASSERT(!m_firedFunction || !firedFunction);
+    if (!m_firedFunction || !firedFunction)
+        return;
+
     m_firedFunction = WTFMove(firedFunction);
 }
 
 void MainThreadSharedTimer::fired()
 {
     ASSERT(m_firedFunction);
+    if (!m_firedFunction)
+        return;
+        
     m_firedFunction();
 }
 
