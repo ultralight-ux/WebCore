@@ -135,7 +135,7 @@ void* fastMemDup(const void* mem, size_t bytes)
 
 } // namespace WTF
 
-#if USE(SYSTEM_MALLOC) && !USE(MIMALLOC)
+#if USE(SYSTEM_MALLOC) && !USE(ZONE_ALLOC)
 
 #include <wtf/OSAllocator.h>
 
@@ -364,9 +364,9 @@ void fastMallocDumpMallocStats() { }
 
 } // namespace WTF
 
-#elif USE(SYSTEM_MALLOC) && USE(MIMALLOC)
+#elif USE(SYSTEM_MALLOC) && USE(ZONE_ALLOC)
 
-#include <mimalloc.h>
+#include <Ultralight/private/ZoneAlloc.h>
 #include <wtf/OSAllocator.h>
 
 namespace WTF {
@@ -379,7 +379,7 @@ bool isFastMallocEnabled()
 WTF_PRIVATE_INLINE void* fastZeroedMalloc(size_t n)
 {
     ASSERT_IS_WITHIN_LIMIT(n);
-    return mi_zalloc(n);
+    return ul_zone_zalloc(UL_ZONE_WEBCORE, n);
 }
 
 WTF_PRIVATE_INLINE char* fastStrDup(const char* src)
@@ -398,24 +398,24 @@ WTF_PRIVATE_INLINE TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 WTF_PRIVATE_INLINE void* fastMalloc(size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);
-    return mi_malloc(size);
+    return ul_zone_malloc(UL_ZONE_WEBCORE, size);
 }
 
 WTF_PRIVATE_INLINE void* fastCalloc(size_t numElements, size_t elementSize)
 {
     ASSERT_IS_WITHIN_LIMIT(numElements * elementSize);
-    return mi_calloc(numElements, elementSize);
+    return ul_zone_calloc(UL_ZONE_WEBCORE, numElements, elementSize);
 }
 
 WTF_PRIVATE_INLINE void* fastRealloc(void* object, size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);
-    return mi_realloc(object, size);
+    return ul_zone_realloc(UL_ZONE_WEBCORE, object, size);
 }
 
 WTF_PRIVATE_INLINE void fastFree(void* object)
 {
-    mi_free(object);
+    ul_zone_free(UL_ZONE_WEBCORE, object);
 }
 
 WTF_PRIVATE_INLINE size_t fastMallocSize(const void*)
@@ -434,24 +434,24 @@ WTF_PRIVATE_INLINE size_t fastMallocGoodSize(size_t size)
 WTF_PRIVATE_INLINE void* fastAlignedMalloc(size_t alignment, size_t size) 
 {
     ASSERT_IS_WITHIN_LIMIT(size);
-    return mi_aligned_alloc(alignment, size);
+    return ul_zone_malloc_aligned(UL_ZONE_WEBCORE, size, alignment);
 }
 
 WTF_PRIVATE_INLINE void* tryFastAlignedMalloc(size_t alignment, size_t size) 
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
-    return mi_aligned_alloc(alignment, size);
+    return ul_zone_malloc_aligned(UL_ZONE_WEBCORE, size, alignment);
 }
 
 WTF_PRIVATE_INLINE void fastAlignedFree(void* p) 
 {
-    mi_free(p);
+    ul_zone_free_aligned(UL_ZONE_WEBCORE, p);
 }
 
 WTF_PRIVATE_INLINE TryMallocReturnValue tryFastMalloc(size_t size)
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
-    return mi_malloc(size);
+    return ul_zone_malloc(UL_ZONE_WEBCORE, size);
 }
     
 WTF_PRIVATE_INLINE TryMallocReturnValue tryFastCalloc(size_t numElements, size_t elementSize)
@@ -461,20 +461,20 @@ WTF_PRIVATE_INLINE TryMallocReturnValue tryFastCalloc(size_t numElements, size_t
     checkedSize *= numElements;
     if (checkedSize.hasOverflowed())
         return nullptr;
-    return mi_calloc(numElements, elementSize);
+    return ul_zone_calloc(UL_ZONE_WEBCORE, numElements, elementSize);
 }
     
 WTF_PRIVATE_INLINE TryMallocReturnValue tryFastRealloc(void* object, size_t newSize)
 {
     FAIL_IF_EXCEEDS_LIMIT(newSize);
-    return mi_realloc(object, newSize);
+    return ul_zone_realloc(UL_ZONE_WEBCORE, object, newSize);
 }
 
 void releaseFastMallocFreeMemory() { 
 #if USE(ULTRALIGHT)
     ProfiledZone;
 #endif
-    mi_collect(true);
+    ul_zone_alloc_collect(UL_ZONE_WEBCORE, 1);
 }
 
 void releaseFastMallocFreeMemoryForThisThread() {

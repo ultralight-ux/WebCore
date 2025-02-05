@@ -4,7 +4,6 @@
 # FIXME: Port bmalloc to Windows. https://bugs.webkit.org/show_bug.cgi?id=143310
 #add_subdirectory(bmalloc)
 
-add_subdirectory(mimalloc)
 add_subdirectory(WTF)
 add_subdirectory(JavaScriptCore)
 add_subdirectory(SQLite)
