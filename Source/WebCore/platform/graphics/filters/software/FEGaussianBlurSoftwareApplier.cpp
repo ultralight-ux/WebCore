@@ -470,9 +470,9 @@ bool FEGaussianBlurSoftwareApplier::apply(const Filter& filter, const FilterImag
 
     auto scaledSigma = filter.scaledByFilterScale(FloatSize({ m_effect.stdDeviationX(), m_effect.stdDeviationY() }));
 
-    auto ulFilter = ultralight::BlurFilter(scaledSigma.width(), scaledSigma.height(), (ultralight::BlurFilter::EdgeMode)m_effect.edgeMode());
+    auto ulFilter = std::make_unique<ultralight::BlurFilter>(scaledSigma.width(), scaledSigma.height(), (ultralight::BlurFilter::EdgeMode)m_effect.edgeMode());
 
-    dstCanvas->DrawCanvasWithFilter(srcCanvas, ulFilter, ulSrcRect, ulDstRect, UltralightRGBA(255, 255, 255, 255));
+    dstCanvas->DrawCanvasWithFilter(srcCanvas, ulFilter.get(), ulSrcRect, ulDstRect, UltralightRGBA(255, 255, 255, 255));
 
     return true;
 #else

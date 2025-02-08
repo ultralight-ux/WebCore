@@ -45,6 +45,9 @@ void BitmapTextureUltralight::applyClipIfNeeded(const ClipStackUltralight& clip)
   if (!canvas_)
     return;
 
+  clip.applyClip(canvas_);
+
+/*
   if (clip_hash_ == clip.clipHash())
     return;
 
@@ -57,6 +60,7 @@ void BitmapTextureUltralight::applyClipIfNeeded(const ClipStackUltralight& clip)
 
   clip_hash_ = clip.clipHash();
   clip_applied_ = true;
+  */
 }
 
 void BitmapTextureUltralight::didReset() {
@@ -175,7 +179,7 @@ inline void CopyBitmaps(ultralight::RefPtr<ultralight::Bitmap> src, ultralight::
   }
 }
 
-static unsigned getPassesRequiredForFilter(FilterOperation::Type type)
+static unsigned getPassesRequiredForFilter(FilterOperation::Type type, bool use_gpu)
 {
     switch (type) {
     case FilterOperation::Type::Grayscale:
@@ -189,8 +193,8 @@ static unsigned getPassesRequiredForFilter(FilterOperation::Type type)
         return 1;
     case FilterOperation::Type::Blur:
     case FilterOperation::Type::DropShadow:
-        // We use two-passes (vertical+horizontal) for blur and drop-shadow.
-        return 2;
+        // We use two-passes (vertical+horizontal) for blur and drop-shadow on GPU
+        return use_gpu ? 2 : 1;
     default:
         return 0;
     }
@@ -203,7 +207,9 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
     if (filters.isEmpty())
       return this;
 
-    if (use_gpu_) {
+    const bool enable_ultralight_filters = true;
+
+    if (enable_ultralight_filters) {
       TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
       RefPtr<BitmapTexture> previousSurface = texmapUL.currentSurface();
       RefPtr<BitmapTexture> resultSurface = this;
@@ -216,7 +222,7 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
           RefPtr<FilterOperation> filter = filters.operations()[i];
           ASSERT(filter);
 
-          int numPasses = getPassesRequiredForFilter(filter->type());
+          int numPasses = getPassesRequiredForFilter(filter->type(), use_gpu());
           for (int j = 0; j < numPasses; ++j) {
               bool last = (i == filters.size() - 1) && (j == numPasses - 1);
               if (defersLastFilter && last) {

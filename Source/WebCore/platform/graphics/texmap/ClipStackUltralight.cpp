@@ -41,15 +41,9 @@ void ClipStackUltralight::applyClip(ultralight::RefPtr<ultralight::Canvas> canva
     if (isEmpty())
         return;
 
-    auto matrix = canvas->GetMatrix();
-
     for (size_t i = 0; i < m_clipRects.size(); ++i) {
-        canvas->SetMatrix(m_clipMatrices[i]);
-        canvas->SetClip(m_clipRects[i], false);
+        canvas->SetClip(m_clipRects[i], false, m_clipMatrices[i]);
     }
-
-    // Restore matrix
-    canvas->SetMatrix(matrix);
 }
 
 } // namespace WebCore
