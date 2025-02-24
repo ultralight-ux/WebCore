@@ -58,7 +58,20 @@ public:
 
     virtual IntSize maxTextureSize() const override;
 
-    void drawFiltered(const BitmapTexture& sourceTexture, const BitmapTexture* contentTexture, const FilterOperation&, int pass);
+    void drawFiltered(const BitmapTexture& sourceTexture, const BitmapTexture* contentTexture, RefPtr<FilterOperation>, int pass, float adjustScale);
+
+    void drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize);
+
+    // Some filters require multiple passes to render correctly.
+    // This function returns the number of passes required for the given filter.
+    static unsigned getPassesRequiredForFilter(RefPtr<FilterOperation> filter, bool use_gpu);
+
+    // Get the blur radius (std deviation) in absolute pixels for Blur and DropShadow filters.
+    static float getBlurRadiusForFilter(RefPtr<FilterOperation> filter, const IntSize& size, float deviceScale);
+
+    // Some filters (like blurs) will downscale the source texture prior to processing to improve performance.
+    // This function returns the scale factor required for the given filter (1.0f = no scaling).
+    static float getScaleRequiredForFilter(RefPtr<FilterOperation> filter, const IntSize& size, float deviceScale, bool use_gpu);
 
 protected:
     bool use_gpu_;

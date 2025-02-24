@@ -11,61 +11,127 @@
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
 #include "BitmapTextureUltralight.h"
+#include <Ultralight/platform/Config.h>
 #include <Ultralight/private/Filter.h>
 
 namespace WebCore {
 
-std::unique_ptr<ultralight::Filter> ToUltralightFilter(const FilterOperation& operation, const IntSize& size, int pass, const BitmapTexture* contentTexture, float deviceScale)
+std::unique_ptr<ultralight::Filter> ToUltralightFilter(RefPtr<FilterOperation> operation, const IntSize& size, int pass, const BitmapTexture* contentTexture, float deviceScale, float adjustScale)
 {
-    switch(operation.type()) {
+    switch (operation->type()) {
     case FilterOperation::Type::Grayscale:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Grayscale,
-            static_cast<const BasicColorMatrixFilterOperation&>(operation).amount());
+            static_cast<const BasicColorMatrixFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Sepia:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Sepia,
-            static_cast<const BasicColorMatrixFilterOperation&>(operation).amount());
+            static_cast<const BasicColorMatrixFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Saturate:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Saturate,
-            static_cast<const BasicColorMatrixFilterOperation&>(operation).amount());
+            static_cast<const BasicColorMatrixFilterOperation&>(*operation).amount());
     case FilterOperation::Type::HueRotate:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::HueRotate,
-            static_cast<const BasicColorMatrixFilterOperation&>(operation).amount());
+            static_cast<const BasicColorMatrixFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Invert:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Invert,
-            static_cast<const BasicComponentTransferFilterOperation&>(operation).amount());
+            static_cast<const BasicComponentTransferFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Brightness:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Brightness,
-            static_cast<const BasicComponentTransferFilterOperation&>(operation).amount());
+            static_cast<const BasicComponentTransferFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Contrast:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Contrast,
-            static_cast<const BasicComponentTransferFilterOperation&>(operation).amount());
+            static_cast<const BasicComponentTransferFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Opacity:
         return std::make_unique<ultralight::BasicFilter>(ultralight::Filter::Type::Opacity,
-            static_cast<const BasicComponentTransferFilterOperation&>(operation).amount());
+            static_cast<const BasicComponentTransferFilterOperation&>(*operation).amount());
     case FilterOperation::Type::Blur: {
-        auto& blur = static_cast<const BlurFilterOperation&>(operation);
-        FloatSize radius;
-        float sigmaY = floatValueForLength(blur.stdDeviation(), size.height());
-        float sigmaX = floatValueForLength(blur.stdDeviation(), size.width());
-        radius.setHeight(sigmaY / size.height());
-        radius.setWidth(sigmaX / size.width());
-        return std::make_unique<ultralight::BlurFilter>(pass, deviceScale, sigmaX, sigmaY, radius.width(), radius.height());
+        auto& blur = static_cast<const BlurFilterOperation&>(*operation);
+
+        // Clamp radius to reasonable limit (max dimension of the texture).
+        float blurRadius = TextureMapperUltralight::getBlurRadiusForFilter(operation, size, deviceScale) * adjustScale;
+        return std::make_unique<ultralight::BlurFilter>(pass, blurRadius);
     }
     case FilterOperation::Type::DropShadow: {
-        auto& shadow = static_cast<const DropShadowFilterOperation&>(operation);
+        auto& shadow = static_cast<const DropShadowFilterOperation&>(*operation);
+        float blurRadius = TextureMapperUltralight::getBlurRadiusForFilter(operation, size, deviceScale) * adjustScale;
+
+        // Scale the offset by the device scale.
+        auto offset = ultralight::Point((float)shadow.location().x(), (float)shadow.location().y());
+        offset *= deviceScale;
+        offset *= adjustScale;
+
         ultralight::RefPtr<ultralight::Canvas> content;
         if (contentTexture)
             content = static_cast<const BitmapTextureUltralight*>(contentTexture)->canvas();
-        return std::make_unique<ultralight::DropShadowFilter>(
-            pass, ultralight::Point(shadow.location().x(), shadow.location().y()),
-            deviceScale, shadow.stdDeviation(), shadow.stdDeviation(),
-            shadow.stdDeviation() / float(size.width()),
-            shadow.stdDeviation() / float(size.height()),
-            shadow.color(), content);
+            
+        return std::make_unique<ultralight::DropShadowFilter>(pass, offset, blurRadius, shadow.color(), content);
     }
     default:
         return std::make_unique<ultralight::Filter>();
     }
+}
+
+
+unsigned TextureMapperUltralight::getPassesRequiredForFilter(RefPtr<FilterOperation> filter, bool use_gpu)
+{
+    switch (filter->type()) {
+    case FilterOperation::Type::Grayscale:
+    case FilterOperation::Type::Sepia:
+    case FilterOperation::Type::Saturate:
+    case FilterOperation::Type::HueRotate:
+    case FilterOperation::Type::Invert:
+    case FilterOperation::Type::Brightness:
+    case FilterOperation::Type::Contrast:
+    case FilterOperation::Type::Opacity:
+        return 1;
+    case FilterOperation::Type::Blur:
+    case FilterOperation::Type::DropShadow:
+        // We use two-passes (vertical+horizontal) for blur and drop-shadow on GPU
+        return use_gpu ? 2 : 1;
+    default:
+        return 0;
+    }
+}
+
+float TextureMapperUltralight::getBlurRadiusForFilter(RefPtr<FilterOperation> filter, const IntSize& size, float deviceScale)
+{
+    switch (filter->type()) {
+    case FilterOperation::Type::Blur: {
+        auto& blur = static_cast<const BlurFilterOperation&>(*filter);
+
+        // Scale the blur amount by the device scale.
+        Length blurAmount = blur.stdDeviation();
+        blurAmount *= deviceScale;
+
+        // Clamp radius to reasonable limit (max dimension of the texture).
+        return floatValueForLength(blurAmount, (float)std::max(size.width(), size.height()));
+    }
+    case FilterOperation::Type::DropShadow: {
+        auto& shadow = static_cast<const DropShadowFilterOperation&>(*filter);
+
+        // Scale the blur amount by the device scale.
+        float blurAmount = shadow.stdDeviation() * deviceScale;
+
+        // Clamp radius to reasonable limit (max dimension of the texture).
+        return std::min(blurAmount, (float)std::max(size.width(), size.height()));
+    }
+    }
+
+    return 0.0f;
+}
+
+float TextureMapperUltralight::getScaleRequiredForFilter(RefPtr<FilterOperation> filter, const IntSize& size, float deviceScale, bool use_gpu)
+{
+    if (filter->type() != FilterOperation::Type::Blur && filter->type() != FilterOperation::Type::DropShadow)
+        return 1.0f;
+
+    float blurRadius = getBlurRadiusForFilter(filter, size, deviceScale);
+
+    // Get the effect quality:
+    ultralight::EffectQuality quality = ultralight::Platform::instance().config().effect_quality;
+
+    float downscaleFactor = ultralight::CalculateDownscaleFactorForBlur(blurRadius, size.width(), size.height(), quality, use_gpu);
+
+    return 1.0f / downscaleFactor;
 }
 
 TextureMapperUltralight::TextureMapperUltralight(bool use_gpu, double scale)
@@ -91,8 +157,8 @@ void TextureMapperUltralight::drawBorder(const Color& color, float borderThickne
         return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    //bitmapTexture->applyClipIfNeeded(clip_stack_);
-    
+    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+
     auto canvas = bitmapTexture->canvas();
 
     // We do a fill of four rects to simulate the stroke of a border.
@@ -127,8 +193,7 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
         return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    
-    
+
     auto canvas = bitmapTexture->canvas();
 
     auto& textureUL = static_cast<const BitmapTextureUltralight&>(texture);
@@ -140,7 +205,7 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
 
     std::unique_ptr<ultralight::Filter> filter;
     if (textureUL.filterInfo()->filter) {
-        auto ulFilter = ToUltralightFilter(*textureUL.filterInfo()->filter, texture.size(), textureUL.filterInfo()->pass, textureUL.filterInfo()->contentTexture.get(), scale());
+        auto ulFilter = ToUltralightFilter(textureUL.filterInfo()->filter, texture.size(), textureUL.filterInfo()->pass, textureUL.filterInfo()->contentTexture.get(), scale(), 1.0f);
         if (ulFilter->type() != ultralight::Filter::Type::None) {
             filter = std::move(ulFilter);
         }
@@ -172,8 +237,8 @@ void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
         return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    //bitmapTexture->applyClipIfNeeded(clip_stack_);
-    
+    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+
     auto canvas = bitmapTexture->canvas();
 
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
@@ -289,7 +354,7 @@ IntSize TextureMapperUltralight::maxTextureSize() const
 }
 
 void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
-    const BitmapTexture* contentTexture, const FilterOperation& operation, int pass)
+    const BitmapTexture* contentTexture, RefPtr<FilterOperation> operation, int pass, float adjustScale)
 {
     ProfiledZone;
     if (!sourceTexture.isValid())
@@ -298,15 +363,16 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     if (!current_surface_)
         return;
 
-    auto filter = ToUltralightFilter(operation, sourceTexture.size(), pass, contentTexture, scale());
+
+    auto filter = ToUltralightFilter(operation, sourceTexture.size(), pass, contentTexture, scale(), adjustScale);
     if (filter->type() == ultralight::Filter::Type::None) {
         drawTexture(sourceTexture, FloatRect(0, 0, sourceTexture.size().width(), sourceTexture.size().height()));
         return;
     }
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    //bitmapTexture->applyClipIfNeeded(clip_stack_);
-    
+    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+
     auto canvas = bitmapTexture->canvas();
 
     FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
@@ -318,6 +384,32 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
 
     canvas->Save();
     canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
+    canvas->Restore();
+}
+
+void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize)
+{
+    ProfiledZone;
+    if (!sourceTexture.isValid())
+        return;
+
+    if (!current_surface_)
+        return;
+
+    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
+    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+
+    auto canvas = bitmapTexture->canvas();
+
+    FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
+
+    auto srcCanvas = static_cast<const BitmapTextureUltralight&>(sourceTexture).canvas();
+    ultralight::Rect src = { 0.0f, 0.0f, (float)srcSize.width(), (float)srcSize.height() };
+    ultralight::Rect dest = { 0.0f, 0.0f, (float)dstSize.width(), (float)dstSize.height() };
+    Color color = UltralightColorWHITE;
+
+    canvas->Save();
+    canvas->DrawCanvas(srcCanvas, src, dest, color);
     canvas->Restore();
 }
 
