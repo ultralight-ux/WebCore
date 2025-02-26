@@ -140,6 +140,11 @@ public:
     virtual RefPtr<cairo_surface_t> createCairoSurface() { return nullptr; }
 #endif
 
+#if USE(ULTRALIGHT)
+    virtual void setUsesCachedNativeImage() { }
+    virtual void invalidateCachedNativeImage() { }
+#endif
+
     virtual bool isInUse() const { return false; }
     virtual void releaseGraphicsContext() { ASSERT_NOT_REACHED(); }
 

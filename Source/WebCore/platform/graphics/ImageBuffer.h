@@ -185,6 +185,11 @@ public:
     WEBCORE_EXPORT RefPtr<cairo_surface_t> createCairoSurface();
 #endif
 
+#if USE(ULTRALIGHT)
+    virtual void setUsesCachedNativeImage();
+    virtual void invalidateCachedNativeImage();
+#endif
+
     static RefPtr<NativeImage> sinkIntoNativeImage(RefPtr<ImageBuffer>);
     WEBCORE_EXPORT static RefPtr<Image> sinkIntoImage(RefPtr<ImageBuffer>, PreserveResolution = PreserveResolution::No);
 

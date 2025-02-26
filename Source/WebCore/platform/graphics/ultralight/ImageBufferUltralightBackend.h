@@ -35,6 +35,9 @@ public:
     RefPtr<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&, const ImageBufferAllocator& = ImageBufferAllocator()) const override;
     void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
 
+    void setUsesCachedNativeImage() override;
+    void invalidateCachedNativeImage() override;
+
     ultralight::Surface* surface() const { return m_surface.get(); }
     ultralight::RefPtr<ultralight::Bitmap> bitmap() { return m_bitmap; }
 
@@ -46,6 +49,7 @@ protected:
     std::unique_ptr<ultralight::Surface> m_surface;
     std::unique_ptr<GraphicsContext> m_context;
     ultralight::RefPtr<ultralight::Bitmap> m_bitmap;
+    RefPtr<NativeImage> m_cachedNativeImage;
 };
 
 }  // namespace WebCore

@@ -385,6 +385,20 @@ RefPtr<cairo_surface_t> ImageBuffer::createCairoSurface()
 }
 #endif
 
+#if USE(ULTRALIGHT)
+void ImageBuffer::setUsesCachedNativeImage()
+{
+    if (auto* backend = ensureBackendCreated())
+        backend->setUsesCachedNativeImage();
+}
+
+void ImageBuffer::invalidateCachedNativeImage()
+{
+    if (auto* backend = ensureBackendCreated())
+        backend->invalidateCachedNativeImage();
+}
+#endif
+
 RefPtr<NativeImage> ImageBuffer::sinkIntoNativeImage(RefPtr<ImageBuffer> source)
 {
     if (!source)

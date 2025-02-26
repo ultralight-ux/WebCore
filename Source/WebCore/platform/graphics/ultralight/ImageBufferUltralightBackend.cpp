@@ -106,8 +106,11 @@ RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCo
     case CopyBackingStore:
         return NativeImage::create(ultralight::Image::Create(ultralight::Bitmap::Create(*m_bitmap.get()), true));
 
-    case DontCopyBackingStore:
+    case DontCopyBackingStore: {
+        if (m_cachedNativeImage)
+            return m_cachedNativeImage;
         return NativeImage::create(ultralight::Image::Create(m_bitmap, true));
+    }
     }
 
     ASSERT_NOT_REACHED();
@@ -132,6 +135,18 @@ void ImageBufferUltralightBackend::putPixelBuffer(const PixelBuffer& pixelBuffer
     ProfiledZone;
     ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, m_bitmap->raw_pixels());
     m_surface->set_dirty_bounds({ 0, 0, (int)m_surface->width(), (int)m_surface->height() });
+}
+
+void ImageBufferUltralightBackend::setUsesCachedNativeImage()
+{
+    if (!m_cachedNativeImage)
+        m_cachedNativeImage = NativeImage::create(ultralight::Image::Create(m_bitmap, true));
+}
+
+void ImageBufferUltralightBackend::invalidateCachedNativeImage()
+{
+    if (m_cachedNativeImage)
+        m_cachedNativeImage->platformImage()->set_is_bitmap_dirty(true);
 }
 
 unsigned ImageBufferUltralightBackend::bytesPerRow() const
