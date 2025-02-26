@@ -1599,11 +1599,17 @@ void Page::layoutIfNeeded()
 
 void Page::scheduleRenderingUpdate(OptionSet<RenderingUpdateStep> requestedSteps)
 {
+#if USE(ULTRALIGHT)
+    // Ultralight: ignore bailing out on re-entrant rendering updates for now
+    scheduleRenderingUpdateInternal();
+    return;
+#else
     LOG_WITH_STREAM(EventLoop, stream << "Page " << this << " scheduleTimedRenderingUpdate() - requestedSteps " << requestedSteps << " remaining steps " << m_renderingUpdateRemainingSteps);
     if (m_renderingUpdateRemainingSteps.isEmpty()) {
         scheduleRenderingUpdateInternal();
         return;
     }
+#endif
     computeUnfulfilledRenderingSteps(requestedSteps);
 }
 

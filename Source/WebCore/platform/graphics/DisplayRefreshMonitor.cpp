@@ -174,11 +174,15 @@ void DisplayRefreshMonitor::displayLinkFired(const DisplayUpdate& displayUpdate)
             return;
         }
 
+        // Ultralight: We ignore the unscheduled fire count for now.
+        // We may want to revisit this in the future.
+#if !USE(ULTRALIGHT)
         LOG_WITH_STREAM(DisplayLink, stream << "[Web] DisplayRefreshMonitor::displayLinkFired for display " << displayID() << " - scheduled " << isScheduled() << " unscheduledFireCount " << m_unscheduledFireCount << " of " << m_maxUnscheduledFireCount);
         if (firedAndReachedMaxUnscheduledFireCount()) {
             stopNotificationMechanism();
             return;
         }
+#endif
 
         setIsScheduled(false);
         setIsPreviousFrameDone(false);
