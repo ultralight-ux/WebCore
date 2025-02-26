@@ -43,6 +43,124 @@
 #include <wtf/RunLoop.h>
 #include <wtf/Scope.h>
 
+#if USE(ULTRALIGHT)
+
+namespace WebCore {
+
+// Shadow parameters
+struct ShadowParams {
+    bool isInset;
+    FloatSize radius;
+    Color color;
+    FloatRect shadowRect;
+    FloatRoundedRect::Radii radii;
+    FloatRect insetBounds; // For inset shadows
+
+    bool operator==(const ShadowParams& other) const
+    {
+        if (isInset != other.isInset)
+            return false;
+
+        bool matches = radius == other.radius && color == other.color && shadowRect == other.shadowRect && radii == other.radii;
+
+        if (isInset)
+            return matches && insetBounds == other.insetBounds;
+        else
+            return matches;
+    }
+
+    // Empty marker methods required for HashTraits
+    bool isEmptyValue() const
+    {
+        return shadowRect.isEmpty() && !color.isValid();
+    }
+
+    // Create a distinguished deleted value
+    static ShadowParams deletedValue()
+    {
+        ShadowParams params;
+        params.isInset = false;
+        params.color = Color::transparentBlack;
+        // Create a special rectangle that's valid but would never occur in practice
+        params.shadowRect = FloatRect(-1, -1, -1, -1);
+        return params;
+    }
+};
+
+// For HashMap key
+struct ShadowParamsHash {
+    static unsigned hash(const ShadowParams& params)
+    {
+        // Use WTF's hash combine utilities
+        unsigned hash = WTF::IntHash<bool>::hash(params.isInset);
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.radius.width()));
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.radius.height()));
+        hash = WTF::pairIntHash(hash, WTF::IntHash<unsigned>::hash(params.color.operator ultralight::Color()));
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.shadowRect.x()));
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.shadowRect.y()));
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.shadowRect.width()));
+        hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.shadowRect.height()));
+
+        if (params.isInset) {
+            hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.insetBounds.x()));
+            hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.insetBounds.y()));
+            hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.insetBounds.width()));
+            hash = WTF::pairIntHash(hash, WTF::FloatHash<float>::hash(params.insetBounds.height()));
+        }
+
+        return hash;
+    }
+
+    static bool equal(const ShadowParams& a, const ShadowParams& b)
+    {
+        return a == b;
+    }
+
+    static const bool safeToCompareToEmptyOrDeleted = false;
+};
+} // namespace WebCore
+
+// Define HashTraits specialization outside the class
+namespace WTF {
+
+template <> struct HashTraits<WebCore::ShadowParams> : GenericHashTraits<WebCore::ShadowParams> {
+    static constexpr bool emptyValueIsZero = false;
+
+    static void constructDeletedValue(WebCore::ShadowParams& slot)
+    {
+        new (NotNull, &slot) WebCore::ShadowParams(WebCore::ShadowParams::deletedValue());
+    }
+
+    static bool isDeletedValue(const WebCore::ShadowParams& value)
+    {
+        return value.shadowRect.x() == -1 && value.shadowRect.y() == -1 && value.shadowRect.width() == -1 && value.shadowRect.height() == -1 && value.color == WebCore::Color::transparentBlack;
+    }
+
+    static bool isEmptyValue(const WebCore::ShadowParams& value)
+    {
+        return value.isEmptyValue();
+    }
+
+    static WebCore::ShadowParams emptyValue()
+    {
+        WebCore::ShadowParams params;
+        params.isInset = false;
+        params.color = WebCore::Color();
+        params.shadowRect = WebCore::FloatRect();
+        return params;
+    }
+
+    static constexpr bool hasIsEmptyValueFunction = true;
+};
+
+template <> struct DefaultHash<WebCore::ShadowParams> {
+    using Hash = WebCore::ShadowParamsHash;
+};
+
+} // namespace WTF
+
+#endif // USE(ULTRALIGHT)
+
 namespace WebCore {
 
 enum {
@@ -175,6 +293,420 @@ ScratchBuffer& ScratchBuffer::singleton()
 static float radiusToLegacyRadius(float radius)
 {
     return radius > 8 ? 8 + 4 * sqrt((radius - 8) / 2) : radius;
+}
+#elif USE(ULTRALIGHT)
+static inline int roundUpToMultipleOf32(int d)
+{
+    return (1 + (d >> 5)) << 5;
+}
+
+class ShadowCache {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    ShadowCache()
+        : m_purgeTimer(RunLoop::main(), this, &ShadowCache::purgeTimerFired)
+    {
+    }
+
+    // Return struct with both the buffer and redraw flag
+    struct BufferWithRedrawFlag {
+        RefPtr<ImageBuffer> buffer;
+        bool needsRedraw;
+    };
+
+    // Usage statistics
+    struct UsageStats {
+        MonotonicTime firstSeen;
+        MonotonicTime lastSeen;
+        uint32_t requestCount { 0 };
+        bool isCached { false };
+    };
+
+    // Cache entry
+    struct CacheEntry {
+        RefPtr<ImageBuffer> imageBuffer;
+        ShadowParams params;
+        IntSize bufferSize;
+        MonotonicTime lastUsedTime;
+        uint32_t usageCount { 0 };
+    };
+
+    // Get buffer for regular shadow with redraw flag
+    BufferWithRedrawFlag getBufferForShadow(const FloatSize& radius, const Color& color, 
+                                          const FloatRect& shadowRect, const FloatRoundedRect::Radii& radii, 
+                                          const FloatSize& layerSize, const IntSize& bufferSize) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        ShadowParams params;
+        params.isInset = false;
+        params.radius = radius;
+        params.color = color;
+        params.shadowRect = shadowRect;
+        params.radii = radii;
+        
+        return getBuffer(params, bufferSize);
+    }
+    
+    // Get buffer for inset shadow with redraw flag
+    BufferWithRedrawFlag getBufferForInsetShadow(const FloatSize& radius, const Color& color, 
+                                              const FloatRect& bounds, const FloatRect& shadowRect, 
+                                              const FloatRoundedRect::Radii& radii, const IntSize& bufferSize) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        ShadowParams params;
+        params.isInset = true;
+        params.radius = radius;
+        params.color = color;
+        params.shadowRect = shadowRect;
+        params.radii = radii;
+        params.insetBounds = bounds;
+        
+        return getBuffer(params, bufferSize);
+    }
+    
+    static ShadowCache& singleton() WTF_REQUIRES_LOCK(lock());
+    static Lock& lock() WTF_RETURNS_LOCK(s_lock) { return s_lock; }
+    
+private:
+    BufferWithRedrawFlag getBuffer(const ShadowParams& params, const IntSize& bufferSize) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        const MonotonicTime now = MonotonicTime::now();
+        bool needsRedraw = true;
+        
+        // Update usage statistics
+        auto& stats = m_usageStats.ensure(params, [&] {
+            UsageStats newStats;
+            newStats.firstSeen = now;
+            newStats.lastSeen = now;
+            return newStats;
+        }).iterator->value;
+        
+        stats.requestCount++;
+        stats.lastSeen = now;
+        
+        // Check for existing cached entry
+        for (auto& entry : m_cachedEntries) {
+            if (entry.params == params && 
+                entry.bufferSize.width() >= bufferSize.width() && 
+                entry.bufferSize.height() >= bufferSize.height()) {
+                
+                entry.lastUsedTime = now;
+                entry.usageCount++;
+                // For cached entries with matching params, no redraw needed
+                needsRedraw = false;
+                return { entry.imageBuffer, needsRedraw };
+            }
+        }
+        
+        // Check if this shadow should be cached
+        if (shouldCache(stats, params)) {
+            // Try to find a suitable buffer in cache we can repurpose
+            for (auto& entry : m_cachedEntries) {
+                if (entry.bufferSize.width() >= bufferSize.width() && 
+                    entry.bufferSize.height() >= bufferSize.height() &&
+                    entry.usageCount < stats.requestCount) {
+                    
+                    // Update entry info
+                    auto& oldParams = entry.params;
+                    auto it = m_usageStats.find(oldParams);
+                    if (it != m_usageStats.end())
+                        it->value.isCached = false;
+                    
+                    // Need to redraw since we're changing the entry's purpose
+                    needsRedraw = true;
+                    entry.params = params;
+                    entry.lastUsedTime = now;
+                    entry.usageCount = stats.requestCount;
+                    
+                    stats.isCached = true;
+                    return { entry.imageBuffer, needsRedraw };
+                }
+            }
+            
+            // No suitable buffer found, create new if we have room
+            if (m_cachedEntries.size() < m_maxCachedEntries || ensureCacheSpace()) {
+                auto entry = createCacheEntry(params, bufferSize);
+                if (entry.imageBuffer) {
+                    stats.isCached = true;
+                    // New buffer always needs redraw
+                    needsRedraw = true;
+                    m_cachedEntries.append(WTFMove(entry));
+                    scheduleCachePurge();
+                    return { m_cachedEntries.last().imageBuffer, needsRedraw };
+                }
+            }
+        }
+        
+        // Use scratch buffer as fallback
+        auto result = getScratchBuffer(bufferSize, params);
+        return { result.buffer, result.needsRedraw };
+    }
+    
+    bool shouldCache(const UsageStats& stats, const ShadowParams&) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        if (stats.isCached)
+            return true;
+            
+        const MonotonicTime now = MonotonicTime::now();
+        const Seconds recentWindow { 1_s }; // 1 second window
+        
+        // Cache by the second request if seen within 1 second
+        if (stats.requestCount >= 2 && (now - stats.firstSeen) <= recentWindow)
+            return true;
+            
+        // Cache if used a few times
+        if (stats.requestCount >= 3)
+            return true;
+            
+        return false;
+    }
+    
+    bool ensureCacheSpace() WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        if (m_cachedEntries.size() < m_maxCachedEntries)
+            return true;
+            
+        pruneCache(1); // Remove at least one entry
+        return m_cachedEntries.size() < m_maxCachedEntries;
+    }
+    
+    CacheEntry createCacheEntry(const ShadowParams& params, const IntSize& bufferSize) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        // Round to the nearest 32 pixels
+        IntSize roundedSize(roundUpToMultipleOf32(bufferSize.width()), 
+                           roundUpToMultipleOf32(bufferSize.height()));
+        
+        auto imageBuffer = ImageBuffer::create(roundedSize, RenderingPurpose::Unspecified, 1, 
+                                              DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+        if (!imageBuffer)
+            return {};
+
+        // This is needed to avoid needlessly re-uploading the buffer to the GPU, with the caveat that we will
+        // need to manually invalidate the image buffer each time we modify it.
+        imageBuffer->setUsesCachedNativeImage();
+            
+        CacheEntry entry;
+        entry.imageBuffer = imageBuffer;
+        entry.params = params;
+        entry.bufferSize = roundedSize;
+        entry.lastUsedTime = MonotonicTime::now();
+        entry.usageCount = 1;
+        
+        return entry;
+    }
+    
+    BufferWithRedrawFlag getScratchBuffer(const IntSize& bufferSize, const ShadowParams& params) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        bool needsRedraw = true;
+        
+        // Check if scratch buffer already contains this shadow
+        if (m_scratchBuffer && 
+            m_scratchBuffer->truncatedLogicalSize().width() >= bufferSize.width() && 
+            m_scratchBuffer->truncatedLogicalSize().height() >= bufferSize.height() &&
+            m_lastScratchParams == params) {
+            needsRedraw = false;
+        } else {
+            // Create or resize scratch buffer if needed
+            if (!m_scratchBuffer || 
+                m_scratchBuffer->truncatedLogicalSize().width() < bufferSize.width() || 
+                m_scratchBuffer->truncatedLogicalSize().height() < bufferSize.height()) {
+                
+                // Round to the nearest 32 pixels
+                IntSize roundedSize(roundUpToMultipleOf32(bufferSize.width()), 
+                                  roundUpToMultipleOf32(bufferSize.height()));
+                
+                m_scratchBuffer = ImageBuffer::create(roundedSize, RenderingPurpose::Unspecified, 1, 
+                                                    DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+                
+                scheduleScratchBufferPurge();
+            }
+            
+            m_lastScratchParams = params;
+        }
+        
+        m_lastScratchUseTime = MonotonicTime::now();
+        
+        return { m_scratchBuffer, needsRedraw };
+    }
+    
+    void scheduleScratchBufferPurge()
+    {
+        ASSERT(lock().isHeld());
+        if (!m_purgeTimer.isActive()) {
+            const Seconds scratchBufferPurgeInterval { 2_s }; // 2 seconds (like original code)
+            m_purgeTimer.startOneShot(scratchBufferPurgeInterval);
+        }
+    }
+    
+    void scheduleCachePurge()
+    {
+        ASSERT(lock().isHeld());
+        if (!m_purgeTimer.isActive()) {
+            const Seconds cacheCleanupInterval { 5_s }; // 5 seconds
+            m_purgeTimer.startOneShot(cacheCleanupInterval);
+        }
+    }
+    
+    void purgeTimerFired()
+    {
+        ASSERT(isMainThread());
+        if (lock().tryLock()) {
+            purgeScratchBufferIfUnused();
+            pruneCache();
+            pruneUsageStats();
+            lock().unlock();
+        }
+    }
+    
+    void purgeScratchBufferIfUnused() WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        const MonotonicTime now = MonotonicTime::now();
+        const Seconds unusedThreshold { 2_s }; // 2 seconds (like original code)
+        
+        if (m_scratchBuffer && (now - m_lastScratchUseTime) > unusedThreshold)
+            m_scratchBuffer = nullptr;
+    }
+    
+    void pruneCache(size_t minEntriesToRemove = 0) WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        if (m_cachedEntries.isEmpty())
+            return;
+            
+        const MonotonicTime now = MonotonicTime::now();
+        const Seconds maxCacheTime { 10_s }; // 10 seconds retention
+        
+        // Calculate memory usage
+        size_t totalMemoryBytes = 0;
+        for (const auto& entry : m_cachedEntries) {
+            totalMemoryBytes += (entry.bufferSize.width() * entry.bufferSize.height() * 4);
+        }
+        
+        // Score entries
+        Vector<std::pair<size_t, float>> indexScores;
+        indexScores.reserveInitialCapacity(m_cachedEntries.size());
+        
+        for (size_t i = 0; i < m_cachedEntries.size(); ++i) {
+            const auto& entry = m_cachedEntries[i];
+            
+            // Score based on recency and frequency
+            float timeScore = 1.0f - std::min(1.0f, static_cast<float>((now - entry.lastUsedTime).seconds() / maxCacheTime.seconds()));
+            float usageScore = std::min(1.0f, entry.usageCount / 5.0f);
+            float score = (timeScore * 0.7f) + (usageScore * 0.3f); // Favor recency more
+            
+            indexScores.uncheckedAppend(std::make_pair(i, score));
+        }
+        
+        // Sort by score (lowest first)
+        std::sort(indexScores.begin(), indexScores.end(), 
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+        
+        // Determine how many entries to remove
+        size_t entriesToRemove = minEntriesToRemove;
+        
+        // Remove if too much memory is used
+        if (totalMemoryBytes > m_maxMemoryBytes) {
+            size_t memoryToFree = totalMemoryBytes - m_maxMemoryBytes;
+            size_t avgEntrySize = totalMemoryBytes / m_cachedEntries.size();
+            size_t entriesForMemory = (memoryToFree + avgEntrySize - 1) / avgEntrySize; // Round up
+            entriesToRemove = std::max(entriesToRemove, entriesForMemory);
+        }
+        
+        // Remove if too many entries
+        if (m_cachedEntries.size() > m_maxCachedEntries) {
+            entriesToRemove = std::max(entriesToRemove, m_cachedEntries.size() - m_maxCachedEntries);
+        }
+        
+        // Always remove old entries
+        for (size_t i = 0; i < indexScores.size(); ++i) {
+            const auto& entry = m_cachedEntries[indexScores[i].first];
+            if ((now - entry.lastUsedTime) > maxCacheTime)
+                entriesToRemove = std::max(entriesToRemove, i + 1);
+        }
+        
+        entriesToRemove = std::min(entriesToRemove, m_cachedEntries.size());
+        
+        if (entriesToRemove == 0)
+            return;
+            
+        // Remove entries
+        Vector<size_t> indicesToRemove;
+        for (size_t i = 0; i < entriesToRemove; ++i) {
+            size_t index = indexScores[i].first;
+            indicesToRemove.append(index);
+            
+            // Update usage stats
+            auto it = m_usageStats.find(m_cachedEntries[index].params);
+            if (it != m_usageStats.end())
+                it->value.isCached = false;
+        }
+        
+        // Sort in descending order to avoid index shifting
+        std::sort(indicesToRemove.begin(), indicesToRemove.end(), std::greater<size_t>());
+        
+        for (auto index : indicesToRemove)
+            m_cachedEntries.remove(index);
+    }
+    
+    void pruneUsageStats() WTF_REQUIRES_LOCK(lock())
+    {
+        ASSERT(lock().isHeld());
+        
+        const MonotonicTime now = MonotonicTime::now();
+        const Seconds maxStatsRetention { 15_s }; // 15 seconds stats retention
+        
+        Vector<ShadowParams> paramsToRemove;
+        
+        for (const auto& pair : m_usageStats) {
+            const auto& stats = pair.value;
+            // Only remove if not cached and not used recently
+            if (!stats.isCached && (now - stats.lastSeen) > maxStatsRetention)
+                paramsToRemove.append(pair.key);
+        }
+        
+        for (const auto& params : paramsToRemove)
+            m_usageStats.remove(params);
+    }
+    
+    static Lock s_lock;
+    
+    // Scratch buffer for infrequent shadows
+    RefPtr<ImageBuffer> m_scratchBuffer;
+    MonotonicTime m_lastScratchUseTime { MonotonicTime::now() };
+    ShadowParams m_lastScratchParams;
+    
+    // Cache for frequent shadows
+    Vector<CacheEntry> m_cachedEntries;
+    HashMap<ShadowParams, UsageStats, ShadowParamsHash> m_usageStats;
+    
+    // Configuration
+    const size_t m_maxCachedEntries { 8 };
+    const size_t m_maxMemoryBytes { 8 * 1024 * 1024 }; // 8MB
+    
+    RunLoop::Timer m_purgeTimer;
+};
+
+Lock ShadowCache::s_lock;
+
+ShadowCache& ShadowCache::singleton()
+{
+    ASSERT(lock().isHeld());
+    static NeverDestroyed<ShadowCache> shadowCache;
+    return shadowCache;
 }
 #endif
 
@@ -706,6 +1238,23 @@ void ShadowBlur::drawRectShadowWithTiling(const AffineTransform& transform, cons
         drawRectShadowWithTilingWithLayerImageBuffer(*layerImageBuffer, transform, shadowedRect, templateSize, edgeSize, drawImage, fillRect, templateShadow, redrawNeeded);
         return;
     }
+#elif USE(ULTRALIGHT)
+    if (ShadowCache::lock().tryLock()) {
+        Locker locker { AdoptLock, ShadowCache::lock() };
+
+        // Get buffer and redraw flag in a single call
+        auto result = ShadowCache::singleton().getBufferForShadow(
+            m_blurRadius, m_color, templateShadow, shadowedRect.radii(),
+            layerImageProperties.layerSize, templateSize);
+
+        if (!result.buffer)
+            return;
+
+        drawRectShadowWithTilingWithLayerImageBuffer(*result.buffer, transform, shadowedRect,
+            templateSize, edgeSize, drawImage, fillRect,
+            templateShadow, result.needsRedraw);
+        return;
+    }
 #else
     UNUSED_PARAM(layerImageProperties);
 #endif
@@ -732,6 +1281,9 @@ void ShadowBlur::drawRectShadowWithTilingWithLayerImageBuffer(ImageBuffer& layer
             shadowContext.fillPath(path);
         }
         blurAndColorShadowBuffer(layerImage, templateSize);
+#if USE(ULTRALIGHT)
+        layerImage.invalidateCachedNativeImage();
+#endif
     }
 
     FloatSize offset = m_offset;
@@ -762,6 +1314,23 @@ void ShadowBlur::drawInsetShadowWithTiling(const AffineTransform& transform, con
         drawInsetShadowWithTilingWithLayerImageBuffer(*layerImageBuffer, transform, fullRect, holeRect, templateSize, edgeSize, drawImage, fillRectWithHole, templateBounds, templateHole, redrawNeeded);
         return;
     }
+#elif USE(ULTRALIGHT)
+    if (ShadowCache::lock().tryLock()) {
+        Locker locker { AdoptLock, ShadowCache::lock() };
+
+        // Get buffer and redraw flag in a single call
+        auto result = ShadowCache::singleton().getBufferForInsetShadow(
+            m_blurRadius, m_color, templateBounds, templateHole, holeRect.radii(), templateSize);
+
+        if (!result.buffer)
+            return;
+
+        drawInsetShadowWithTilingWithLayerImageBuffer(*result.buffer, transform, fullRect,
+            holeRect, templateSize, edgeSize, drawImage,
+            fillRectWithHole, templateBounds, templateHole,
+            result.needsRedraw);
+        return;
+    }
 #endif
 
     if (auto layerImageBuffer = ImageBuffer::create(templateSize, RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8))
@@ -788,6 +1357,9 @@ void ShadowBlur::drawInsetShadowWithTilingWithLayerImageBuffer(ImageBuffer& laye
         shadowContext.fillPath(path);
 
         blurAndColorShadowBuffer(layerImage, templateSize);
+#if USE(ULTRALIGHT)
+        layerImage.invalidateCachedNativeImage();
+#endif
     }
     FloatSize offset = m_offset;
     if (shadowsIgnoreTransforms())
