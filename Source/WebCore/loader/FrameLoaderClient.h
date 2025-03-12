@@ -341,6 +341,10 @@ public:
     virtual bool isEmptyFrameLoaderClient() const { return false; }
     virtual bool isRemoteWorkerFrameLoaderClient() const { return false; }
 
+#if USE(ULTRALIGHT)
+    virtual bool isUltralightFrameLoaderClient() const { return false; }
+#endif
+
 #if USE(QUICK_LOOK)
     virtual RefPtr<LegacyPreviewLoaderClient> createPreviewLoaderClient(const String&, const String&) = 0;
 #endif
