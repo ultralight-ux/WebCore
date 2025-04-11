@@ -76,7 +76,7 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
   if (error)
     return nullptr;
 
-  ultralight::RefPtr<ultralight::FontFace> fontFace = ultralight::FontFace::Create(adoptRef(face), fontFile);
+  ultralight::RefPtr<ultralight::FontFace> fontFace = ultralight::FontFace::Create(adoptRef(face), fontFile, {});
 
   return std::make_unique<FontCustomPlatformData>(fontFace);
 }

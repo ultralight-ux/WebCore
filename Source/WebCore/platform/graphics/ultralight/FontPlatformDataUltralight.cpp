@@ -78,6 +78,9 @@ FT_Face FontPlatformData::face() const {
   // We always set the current font-size before accessing the underlying FT_Face
   FT_Face ft_face = m_face->face().get();
   FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)m_size);
+  if (m_face->design_coordinates().size()) {
+    FT_Set_Var_Design_Coordinates(ft_face, m_face->design_coordinates().size(), m_face->design_coordinates().data());
+  }
   return ft_face;
 }
 
