@@ -30,8 +30,6 @@ public:
 
   virtual RefPtr<FontFile> font_file() const { return font_file_; }
 
-  virtual WTF::Vector<FT_Fixed> design_coordinates() const { return design_coordinates_; }
-
   virtual void update_access() override {
     last_access_ = std::chrono::steady_clock::now();
   }
@@ -39,7 +37,7 @@ public:
   virtual std::chrono::steady_clock::time_point last_access() const { return last_access_; }
 
 protected:
-  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file, WTF::Vector<FT_Fixed> design_coordinates) : face_(face), font_file_(font_file), design_coordinates_(design_coordinates) {
+  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) : face_(face), font_file_(font_file) {
     last_access_ = std::chrono::steady_clock::now();
   }
 
@@ -47,7 +45,6 @@ protected:
 
   WTF::RefPtr<FT_FaceRec_> face_;
   RefPtr<FontFile> font_file_;
-  WTF::Vector<FT_Fixed> design_coordinates_;
   std::chrono::steady_clock::time_point last_access_;
 
   friend class FontFace;
@@ -57,8 +54,8 @@ protected:
 FontFace::FontFace() {}
 FontFace::~FontFace() {}
 
-RefPtr<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file, WTF::Vector<FT_Fixed> design_coordinates) {
-  return AdoptRef(*new FontFaceImpl(face, font_file, design_coordinates));
+RefPtr<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) {
+  return AdoptRef(*new FontFaceImpl(face, font_file));
 }
 
 class FontDatabase {
@@ -78,57 +75,6 @@ public:
     return *g_instance;
   }
 
-  WTF::Vector<FT_Fixed> CalculateDesignCoordinates(FT_Face ft_face, int weight, bool italic) {
-    WTF::Vector<FT_Fixed> coords;
-    FT_MM_Var* mmvar = nullptr;
-    FT_Error error = FT_Get_MM_Var(ft_face, &mmvar);
-    
-    if (error == 0 && mmvar) {
-      coords.resize(mmvar->num_axis);
-      
-      // Initialize all coordinates to their default values
-      for (FT_UInt j = 0; j < mmvar->num_axis; j++) {
-        coords[j] = mmvar->axis[j].def;
-      }
-      
-      // Track whether we found weight and italic axes
-      bool found_weight = false;
-      bool found_italic = false;
-      
-      // Find the weight and italic/slant axes
-      for (FT_UInt i = 0; i < mmvar->num_axis; i++) {
-        FT_Var_Axis& axis = mmvar->axis[i];
-        FT_ULong tag = axis.tag;
-        
-        // Check if this is the weight axis (tag 'wght')
-        if (tag == FT_MAKE_TAG('w', 'g', 'h', 't')) {
-          // Map CSS weight (100-900) to the font's weight axis range
-          double normalized = (weight - 100) / 800.0; // Normalize between 0 and 1
-          coords[i] = axis.minimum + 
-                      (FT_Fixed)(normalized * (axis.maximum - axis.minimum));
-          found_weight = true;
-        }
-        // Check if this is the italic axis (tag 'ital')
-        else if (tag == FT_MAKE_TAG('i', 't', 'a', 'l')) {
-          // Set italic coordinate based on the italic boolean
-          coords[i] = italic ? axis.maximum : axis.minimum;
-          found_italic = true;
-        }
-        // Check if this is the slant axis (tag 'slnt') - an alternative to 'ital'
-        else if (tag == FT_MAKE_TAG('s', 'l', 'n', 't') && !found_italic) {
-          // Set slant coordinate based on the italic boolean
-          // Note: slant axis is often negative for italic (e.g. -12 degrees)
-          coords[i] = italic ? axis.minimum : axis.def;
-          found_italic = true;
-        }
-      }
-      
-      // Free the MM_Var structure
-      FT_Done_MM_Var(ft_face->glyph->library, mmvar);
-    }
-
-    return coords;
-  }
 
   RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {
     ProfiledZone;
@@ -182,10 +128,7 @@ public:
 
           assert(error == 0);
 
-          // Calculate design coordinates to apply weight/italic to variable fonts
-          WTF::Vector<FT_Fixed> design_coordinates = CalculateDesignCoordinates(face, weight, italic);
-
-          font_face = FontFace::Create(adoptRef(face), file, design_coordinates);
+          font_face = FontFace::Create(adoptRef(face), file);
         }
       }
       else {
@@ -203,10 +146,7 @@ public:
 
         assert(error == 0);
 
-        // Calculate design coordinates to apply weight/italic to variable fonts
-        WTF::Vector<FT_Fixed> design_coordinates = CalculateDesignCoordinates(face, weight, italic);
-
-        font_face = FontFace::Create(adoptRef(face), file, design_coordinates);
+        font_face = FontFace::Create(adoptRef(face), file);
       }
     }
     
@@ -257,7 +197,7 @@ namespace WebCore {
 
 using ultralight::Convert;
 
-static int GetRawWeight(FontSelectionValue weight) {
+inline int GetRawWeight(FontSelectionValue weight) {
   if (weight < FontSelectionValue(150)) return 100;
   if (weight < FontSelectionValue(250)) return 200;
   if (weight < FontSelectionValue(350)) return 300;
@@ -368,13 +308,16 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
 
   ultralight::FontDatabase& font_db = ultralight::FontDatabase::instance();
 
+  int font_weight = GetRawWeight(fontDescription.weight());
+  bool font_italic = !!fontDescription.italic();
+
   ultralight::RefPtr<ultralight::FontFace> font_face = font_db.LookupFont(
-    Convert(font_family), GetRawWeight(fontDescription.weight()), !!fontDescription.italic());
+    Convert(font_family), font_weight, font_italic);
 
   if (!font_face)
     return nullptr;
 
-  return std::make_unique<FontPlatformData>(font_face, fontDescription);;
+  return std::make_unique<FontPlatformData>(font_face, fontDescription, font_weight, font_italic);
 }
 
 std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&)

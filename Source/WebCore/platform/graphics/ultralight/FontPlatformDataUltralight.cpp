@@ -23,13 +23,77 @@ namespace WebCore {
 
 #define ENABLE_DISTANCE_FIELD_FONTS 0
 
-FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description)
+// We need to calculate the design coordinates to apply font weight and italic to the font.
+WTF::Vector<FT_Fixed> CalculateDesignCoordinates(FT_Face ft_face, int weight, bool italic) {
+  WTF::Vector<FT_Fixed> coords;
+  FT_MM_Var* mmvar = nullptr;
+  FT_Error error = FT_Get_MM_Var(ft_face, &mmvar);
+
+  // Clamp the weight to a valid range
+  if (weight < 100)
+    weight = 100;
+  else if (weight > 900)
+    weight = 900;
+  
+  if (error == 0 && mmvar) {
+    coords.resize(mmvar->num_axis);
+    
+    // Initialize all coordinates to their default values
+    for (FT_UInt j = 0; j < mmvar->num_axis; j++) {
+      coords[j] = mmvar->axis[j].def;
+    }
+    
+    // Track whether we found weight and italic axes
+    bool found_weight = false;
+    bool found_italic = false;
+    
+    // Find the weight and italic/slant axes
+    for (FT_UInt i = 0; i < mmvar->num_axis; i++) {
+      FT_Var_Axis& axis = mmvar->axis[i];
+      FT_ULong tag = axis.tag;
+      
+      // Check if this is the weight axis (tag 'wght')
+      if (tag == FT_MAKE_TAG('w', 'g', 'h', 't')) {
+        // Map CSS weight (100-900) to the font's weight axis range
+        double normalized = (weight - 100) / 800.0; // Normalize between 0 and 1
+        coords[i] = axis.minimum + 
+                    (FT_Fixed)(normalized * (axis.maximum - axis.minimum));
+        found_weight = true;
+      }
+      // Check if this is the italic axis (tag 'ital')
+      else if (tag == FT_MAKE_TAG('i', 't', 'a', 'l')) {
+        // Set italic coordinate based on the italic boolean
+        coords[i] = italic ? axis.maximum : axis.minimum;
+        found_italic = true;
+      }
+      // Check if this is the slant axis (tag 'slnt') - an alternative to 'ital'
+      else if (tag == FT_MAKE_TAG('s', 'l', 'n', 't') && !found_italic) {
+        // Set slant coordinate based on the italic boolean
+        // Note: slant axis is often negative for italic (e.g. -12 degrees)
+        coords[i] = italic ? axis.minimum : axis.def;
+        found_italic = true;
+      }
+    }
+    
+    // Free the MM_Var structure
+    FT_Done_MM_Var(ft_face->glyph->library, mmvar);
+  }
+
+  return coords;
+}
+
+FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description, int weight, bool italic)
   : m_face(face) {
   ProfiledMemoryZone(MemoryTag::Font);
   m_fixedWidth = m_face->face()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 
   m_size = description.computedPixelSize();
+
+  m_designCoordinates = CalculateDesignCoordinates(m_face->face().get(), weight, italic);
+  if (m_designCoordinates.size()) {
+    FT_Set_Var_Design_Coordinates(m_face->face().get(), m_designCoordinates.size(), m_designCoordinates.data());
+  }
 
 #if ENABLE_DISTANCE_FIELD_FONTS
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
@@ -65,6 +129,7 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
   m_fixedWidth = other.m_fixedWidth;
   m_face = other.m_face;
   m_font = other.m_font;
+  m_designCoordinates = other.m_designCoordinates;
 
   return *this;
 }
@@ -78,9 +143,6 @@ FT_Face FontPlatformData::face() const {
   // We always set the current font-size before accessing the underlying FT_Face
   FT_Face ft_face = m_face->face().get();
   FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)m_size);
-  if (m_face->design_coordinates().size()) {
-    FT_Set_Var_Design_Coordinates(ft_face, m_face->design_coordinates().size(), m_face->design_coordinates().data());
-  }
   return ft_face;
 }
 
@@ -142,7 +204,12 @@ unsigned FontPlatformData::hash() const
     | m_syntheticOblique);
 
   uintptr_t font_hash = m_face->font_file()->hash();
-  uintptr_t hashCodes[] = { font_hash, flags, (FT_UInt)m_size };
+  unsigned int design_coords_hash = 0;
+  if (m_designCoordinates.size()) {
+    design_coords_hash = StringHasher::computeHash<FT_Fixed>(m_designCoordinates.data(),  m_designCoordinates.size());
+  }
+
+  uintptr_t hashCodes[] = { font_hash, flags, (FT_UInt)m_size, design_coords_hash };
   return StringHasher::computeHash<char>((char*)hashCodes, sizeof(hashCodes));
 }
 
