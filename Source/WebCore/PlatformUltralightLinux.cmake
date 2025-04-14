@@ -178,6 +178,12 @@ if (USE_GSTREAMER)
     )
 endif ()
 
+list(APPEND WebCore_LINK_OPTIONS
+    # Make sure libWebCore.so uses the symbols from the static libraries defined above to avoid
+    # conflicts with any shared libraries above this one in the link order.
+    -Wl,-Bsymbolic
+)
+
 message(STATUS "Freetype include ${FREETYPE_INCLUDE_DIRS}")
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
