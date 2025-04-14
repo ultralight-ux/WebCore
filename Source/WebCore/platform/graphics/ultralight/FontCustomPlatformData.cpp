@@ -9,6 +9,18 @@
 
 namespace WebCore {
 
+inline int ToRawWeight(FontSelectionValue weight) {
+  if (weight < FontSelectionValue(150)) return 100;
+  if (weight < FontSelectionValue(250)) return 200;
+  if (weight < FontSelectionValue(350)) return 300;
+  if (weight < FontSelectionValue(450)) return 400;
+  if (weight < FontSelectionValue(550)) return 500;
+  if (weight < FontSelectionValue(650)) return 600;
+  if (weight < FontSelectionValue(750)) return 700;
+  if (weight < FontSelectionValue(850)) return 800;
+  return 900;
+}
+
 FontCustomPlatformData::FontCustomPlatformData(ultralight::RefPtr<ultralight::FontFace> face) : m_face(face)
 {
 }
@@ -26,7 +38,10 @@ FontCustomPlatformData::~FontCustomPlatformData()
 FontPlatformData FontCustomPlatformData::fontPlatformData(
   const FontDescription& description, bool bold, bool italic, const FontCreationContext& fontCreationContext)
 {
-  return FontPlatformData(m_face, description);
+  int font_weight = ToRawWeight(description.weight());
+  bool font_italic = !!description.italic();
+
+  return FontPlatformData(m_face, description, font_weight, font_italic);
 }
 
 FontCustomPlatformData& FontCustomPlatformData::operator=(const FontCustomPlatformData& other) {

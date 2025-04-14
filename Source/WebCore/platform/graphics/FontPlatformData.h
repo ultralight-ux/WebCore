@@ -88,6 +88,9 @@ interface IDWriteFontFace;
 #endif
 
 #if USE(ULTRALIGHT)
+
+typedef signed long  FT_Fixed;
+
 namespace ultralight {
 
 class FontFace : public RefCounted {
@@ -174,7 +177,7 @@ public:
 #endif
 
 #if USE(ULTRALIGHT)
-    FontPlatformData(ultralight::RefPtr<ultralight::FontFace>, const FontDescription&);
+    FontPlatformData(ultralight::RefPtr<ultralight::FontFace>, const FontDescription&, int weight, bool italic);
     FontPlatformData(const FontPlatformData&);
     FontPlatformData(FontPlatformData&&) = default;
     FontPlatformData& operator=(const FontPlatformData&);
@@ -343,6 +346,7 @@ private:
     ultralight::RefPtr<ultralight::Font> m_font;
     Vector<ultralight::Glyph> m_glyphBuffer;
     bool m_distanceField; // Whether or not this font is rendered via SDF
+    Vector<FT_Fixed> m_designCoordinates;
 #endif
 
     float m_size { 0 };

@@ -951,6 +951,9 @@ std::optional<ShadowBlur::LayerImageProperties> ShadowBlur::calculateLayerBoundi
 
     FloatRect unclippedLayerRect = layerRect;
 
+    // TODO: Ultralight - ignoring clip for now, need to fix GraphicsContext::clipBounds() to return
+    // the correct bounds for the current context.
+#if !USE(ULTRALIGHT)
     if (!clipRect.contains(enclosingIntRect(layerRect))) {
         // If we are totally outside the clip region, we aren't painting at all.
         if (intersection(layerRect, clipRect).isEmpty())
@@ -971,6 +974,7 @@ std::optional<ShadowBlur::LayerImageProperties> ShadowBlur::calculateLayerBoundi
 
         layerRect.intersect(inflatedClip);
     }
+#endif
 
     IntSize frameSize = inflation;
     frameSize.scale(2);

@@ -75,13 +75,16 @@ public:
     return *g_instance;
   }
 
+
   RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {
     ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Font);
     ultralight::String8 family8 = family.utf8();
     unsigned int family_hash = StringHasher::computeHash(family8.data(), (unsigned int)family8.sizeBytes());
-    uintptr_t hashCodes[] = { family_hash, (uintptr_t)weight, italic };
-    unsigned int request_hash = StringHasher::computeHash<char>((char*)hashCodes, sizeof(hashCodes));
+    unsigned int request_hash = family_hash;
+    request_hash = request_hash * 31 + weight;
+    request_hash = request_hash * 31 + (italic ? 1 : 0);
+
 
     auto i = font_db_.find(request_hash);
     if (i != font_db_.end()) {
@@ -124,6 +127,7 @@ public:
             return nullptr;
 
           assert(error == 0);
+
           font_face = FontFace::Create(adoptRef(face), file);
         }
       }
@@ -141,14 +145,17 @@ public:
           return nullptr;
 
         assert(error == 0);
+
         font_face = FontFace::Create(adoptRef(face), file);
       }
     }
     
     // font_face may still be null here, that's okay-- we want to cache a request that resulted in a null load
     font_db_.insert({ request_hash, font_face });
-    if (font_face)
+
+    if (font_face) {
       font_face->update_access();
+    }
 
     return font_face;
   }
@@ -190,7 +197,7 @@ namespace WebCore {
 
 using ultralight::Convert;
 
-static int GetRawWeight(FontSelectionValue weight) {
+inline int GetRawWeight(FontSelectionValue weight) {
   if (weight < FontSelectionValue(150)) return 100;
   if (weight < FontSelectionValue(250)) return 200;
   if (weight < FontSelectionValue(350)) return 300;
@@ -301,13 +308,16 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
 
   ultralight::FontDatabase& font_db = ultralight::FontDatabase::instance();
 
+  int font_weight = GetRawWeight(fontDescription.weight());
+  bool font_italic = !!fontDescription.italic();
+
   ultralight::RefPtr<ultralight::FontFace> font_face = font_db.LookupFont(
-    Convert(font_family), GetRawWeight(fontDescription.weight()), !!fontDescription.italic());
+    Convert(font_family), font_weight, font_italic);
 
   if (!font_face)
     return nullptr;
 
-  return std::make_unique<FontPlatformData>(font_face, fontDescription);;
+  return std::make_unique<FontPlatformData>(font_face, fontDescription, font_weight, font_italic);
 }
 
 std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&)
