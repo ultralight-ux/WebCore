@@ -34,6 +34,7 @@ void Gradient::createUltralightGradient()
             grad->p1 = ultralight::Point(data.point1.x(), data.point1.y());
             grad->r0 = data.startRadius;
             grad->r1 = data.endRadius;
+            grad->aspect_ratio = data.aspectRatio;
             return grad;
         },
         [&](const ConicData&) -> PlatformGradient {
