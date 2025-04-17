@@ -212,7 +212,7 @@ WI.ContextMenu = class ContextMenu extends WI.ContextSubMenuItem
                 this._event.target.addEventListener("contextmenu", this, true);
                 InspectorFrontendHost.dispatchEventAsContextMenuEvent(this._event);
             } else
-                InspectorFrontendHost.showContextMenu(this._event, menuObject);
+                this._showSoftContextMenu(this._event, menuObject);
         }
 
         if (this._event)
@@ -234,7 +234,7 @@ WI.ContextMenu = class ContextMenu extends WI.ContextSubMenuItem
             callback(this);
 
         this._event.target.removeEventListener("contextmenu", this, true);
-        InspectorFrontendHost.showContextMenu(event, this._menuObject);
+        this._showSoftContextMenu(event, this._menuObject);
         this._menuObject = null;
 
         event.stopImmediatePropagation();
@@ -261,6 +261,11 @@ WI.ContextMenu = class ContextMenu extends WI.ContextSubMenuItem
         } catch (e) {
             WI.reportInternalError(e);
         }
+    }
+
+    _showSoftContextMenu(event, menuObject)
+    {
+        new WI.SoftContextMenu(menuObject).show(event);
     }
 };
 
