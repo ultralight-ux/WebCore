@@ -15,6 +15,7 @@
 #include "FilterImage.h"
 #include "FilterResults.h"
 #include "ImageBufferUltralightBackend.h"
+#include "NotImplemented.h"
 
 namespace WebCore {
 
@@ -46,21 +47,6 @@ void BitmapTextureUltralight::applyClipIfNeeded(const ClipStackUltralight& clip)
     return;
 
   clip.applyClip(canvas_);
-
-/*
-  if (clip_hash_ == clip.clipHash())
-    return;
-
-  if (clip_applied_)
-    canvas_->Restore();
-
-  canvas_->Save();
-
-  clip.applyClip(canvas_);
-
-  clip_hash_ = clip.clipHash();
-  clip_applied_ = true;
-  */
 }
 
 void BitmapTextureUltralight::didReset() {
@@ -92,21 +78,40 @@ void BitmapTextureUltralight::didReset() {
 void BitmapTextureUltralight::updateContents(Image* image,
     const IntRect& targetRect, const IntPoint& offset) {
     ProfiledZone;
-    if (!image)
+    if (!image || !canvas_)
       return;
 
     if (image->isBitmapImage()) {
       RefPtr<NativeImage> frameImage = image->nativeImageForCurrentFrame();
+      if (!frameImage)
+        return;
 
       IntSize imageSize = frameImage->size();
 
-      ultralight::Rect srcRect = { 0.0f, 0.0f, (float)imageSize.width(),
-          (float)imageSize.height() };
-      srcRect.Move(offset.x(), offset.y());
+      // Calculate source rectangle from the image, taking offset into account
+      // offset represents how far into the image we should start
+      ultralight::Rect srcRect = { 
+          (float)offset.x(), 
+          (float)offset.y(), 
+          (float)offset.x() + targetRect.width(), 
+          (float)offset.y() + targetRect.height() 
+      };
 
-      ultralight::Rect destRect = { (float)targetRect.x(), (float)targetRect.y(),
-        (float)targetRect.maxX(), (float)targetRect.maxY() };
+      // Make sure we don't exceed the image bounds
+      if (srcRect.right > imageSize.width())
+          srcRect.right = imageSize.width();
+      if (srcRect.bottom > imageSize.height())
+          srcRect.bottom = imageSize.height();
 
+      // Target rectangle in the texture's coordinates
+      ultralight::Rect destRect = { 
+          (float)targetRect.x(), 
+          (float)targetRect.y(),
+          (float)targetRect.maxX(), 
+          (float)targetRect.maxY() 
+      };
+
+      // Draw the image to the canvas
       canvas_->set_blending_enabled(false);
       canvas_->DrawImage(frameImage->platformImage(), srcRect, destRect, UltralightColorWHITE);
       canvas_->set_blending_enabled(true);
@@ -116,39 +121,96 @@ void BitmapTextureUltralight::updateContents(Image* image,
 void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const IntRect& targetRect,
   const IntPoint& offset, float scale) {
   ProfiledZone;
+  if (!canvas_ || !sourceLayer)
+    return;
+    
+  // Following BitmapTexture.cpp's reference implementation:
+  // Calculate the source rectangle in the layer's coordinate space
   IntRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
-  ultralight::IntRect scissorRect = { sourceRect.x(), sourceRect.y(), sourceRect.maxX(), sourceRect.maxY() };
-  canvas_->SetScissorRect(scissorRect);
-
-  // Add 2 pixel buffer around drawn area to avoid artifacts
-  sourceRect.expand(4, 4);
-  sourceRect.move(-2, -2);
-
-  // Clear rect by disabling blending and drawing a transparent quad.
-  canvas_->set_scissor_enabled(true);
-  canvas_->set_blending_enabled(false);
-  canvas_->DrawRect(FloatRect(sourceRect), UltralightColorTRANSPARENT);
-  canvas_->set_blending_enabled(true);
-
   sourceRect.scale(1 / scale);
+  
+  // Set scissor rect to the target area
+  ultralight::IntRect scissorRect = { 
+      targetRect.x(), 
+      targetRect.y(), 
+      targetRect.maxX(), 
+      targetRect.maxY() 
+  };
+  canvas_->SetScissorRect(scissorRect);
+  canvas_->set_scissor_enabled(true);
+  
+  // Clear the target area
+  canvas_->set_blending_enabled(false);
+  canvas_->DrawRect(FloatRect(targetRect), UltralightColorTRANSPARENT);
+  canvas_->set_blending_enabled(true);
   
   canvas_->Save();
   {
     GraphicsContextUltralight ctx(canvas_);
+    
+    // Translate to target rect origin
+    ctx.translate(targetRect.x(), targetRect.y());
+    
+    // Apply scale factor
     ctx.applyDeviceScaleFactor(scale);
-
+    
+    // Translate to offset the source rectangle's position
+    ctx.translate(-sourceRect.x(), -sourceRect.y());
+    
+    // Paint the layer contents
     sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);
   }
   canvas_->Restore();
-
+  
   canvas_->set_scissor_enabled(false);
 }
 
-void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,
+void BitmapTextureUltralight::updateContents(const void* data, const IntRect& target,
     const IntPoint& offset, int bytesPerLine) {
   ProfiledZone;
-  // not implemented
+  if (!data || !canvas_)
+    return;
+    
+  // Create a temporary bitmap with the source data
+  // We need to calculate proper dimensions for the bitmap
+  int bpp = 4; // Assuming BGRA8 format (32-bits per pixel)
+  int width = target.width();
+  int height = target.height();
+  
+  // Create a bitmap that wraps the existing pixel data (no copy)
+  auto bitmap = ultralight::Bitmap::Create(width, height, 
+      ultralight::BitmapFormat::BGRA8_UNORM_SRGB, 
+      bytesPerLine, data, bytesPerLine * height, 
+      nullptr, nullptr); // No destruction callback needed, we don't own the data
+      
+  if (!bitmap)
+    return;
+    
+  // Create an image from the bitmap
+  auto image = ultralight::Image::Create(bitmap, true);
+  if (!image)
+    return;
+  
+  // Calculate source and destination rectangles
+  ultralight::Rect srcRect = { 
+      (float)offset.x(), 
+      (float)offset.y(), 
+      (float)offset.x() + target.width(),
+      (float)offset.y() + target.height() 
+  };
+  
+  ultralight::Rect destRect = { 
+      (float)target.x(), 
+      (float)target.y(),
+      (float)target.maxX(), 
+      (float)target.maxY() 
+  };
+  
+  // Draw the image to our canvas
+  canvas_->set_blending_enabled(false);
+  canvas_->DrawImage(image, srcRect, destRect, UltralightColorWHITE);
+  canvas_->set_blending_enabled(true);
 }
 
 inline ultralight::RefPtr<ultralight::Bitmap> ImageBufferToBitmap(ImageBuffer& imageBuffer) {

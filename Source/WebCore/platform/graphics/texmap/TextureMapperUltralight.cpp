@@ -192,6 +192,9 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     if (!current_surface_)
         return;
 
+    if (isInMaskMode())
+        return;
+
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
 
     auto canvas = bitmapTexture->canvas();
@@ -199,8 +202,17 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     auto& textureUL = static_cast<const BitmapTextureUltralight&>(texture);
 
     auto srcCanvas = textureUL.canvas();
-    ultralight::Rect src = { 0.0f, 0.0f, (float)srcCanvas->width(), (float)srcCanvas->height() };
+    
+    // Get the actual texture content dimensions
+    FloatSize contentSize = texture.contentSize();
+    
+    // Source rectangle is based on the content size of the texture
+    ultralight::Rect src = { 0.0f, 0.0f, (float)contentSize.width(), (float)contentSize.height() };
+    
+    // Destination rectangle is the target rect provided to this function
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
+    
+    // Apply opacity to the color
     Color color = UltralightRGBA(255, 255, 255, (unsigned char)(opacity * 255.0f));
 
     std::unique_ptr<ultralight::Filter> filter;
@@ -211,21 +223,21 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
         }
     }
 
+    // Always apply clip stack before drawing
+    canvas->Save();
+    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    
+    // Set the transformation matrix that positions this tile in the overall scene
+    canvas->SetMatrix(modelViewMatrix);
+    
     if (filter) {
-        canvas->Save();
-        bitmapTexture->applyClipIfNeeded(clip_stack_);
-        canvas->Transform(modelViewMatrix);
         canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
-        canvas->Restore();
     } else {
-        canvas->Save();
-        canvas->Transform(modelViewMatrix);
+        // Use DrawCanvas method to composite this tile
         canvas->DrawCanvas(srcCanvas, src, dest, color);
-        canvas->Restore();
     }
-
-    // paint.color = UltralightColorGREEN;
-    // current_surface_->DrawRect({ 20, 20, 30, 30 }, paint);
+    
+    canvas->Restore();
 }
 
 void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
@@ -236,14 +248,16 @@ void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
     if (!current_surface_)
         return;
 
-    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+    if (isInMaskMode())
+        return;
 
+    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
     auto canvas = bitmapTexture->canvas();
 
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
 
     canvas->Save();
+    bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->Transform(modelViewMatrix);
     if (!isBlendingAllowed)
         canvas->set_blending_enabled(false);
@@ -273,54 +287,17 @@ void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
 void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const FloatRoundedRect& rect)
 {
     clip_stack_.pushClip(rect, mat);
-
-    /*
-    ProfiledZone;
-    auto surface = current_surface_ ? current_surface_ : default_surface_;
-    auto canvas = static_cast<BitmapTextureUltralight*>(surface.get())->canvas();
-    canvas->Save();
-
-    // TODO: support 3d transforms in clip
-    if (!mat.isAffine())
-        return;
-
-    FloatQuad quad = mat.projectQuad(rect.rect());
-    IntRect bbox = quad.enclosingBoundingBox();
-
-    // Only use scissors on rectilinear clips.
-    if (!quad.isRectilinear() || bbox.isEmpty())
-        return;
-
-    ultralight::IntRect scissor_box = { bbox.x(), bbox.y(), bbox.maxX(), bbox.maxY() };
-    ultralight::IntRect new_scissor = canvas->GetScissorRect().Intersect(scissor_box);
-
-    canvas->set_scissor_enabled(true);
-    canvas->SetScissorRect(new_scissor);
-    */
 }
 
 void TextureMapperUltralight::endClip()
 {
     clip_stack_.popClip();
-
-    /*
-    ProfiledZone;
-    auto surface = current_surface_ ? current_surface_ : default_surface_;
-    auto canvas = static_cast<BitmapTextureUltralight*>(surface.get())->canvas();
-    canvas->Restore();
-    */
 }
 
 IntRect TextureMapperUltralight::clipBounds()
 {
+    //return IntRect(0, 0, 8192, 8192);
     return clip_stack_.scissorRect();
-
-    /*
-    auto surface = current_surface_ ? current_surface_ : default_surface_;
-    auto canvas = static_cast<BitmapTextureUltralight*>(surface.get())->canvas();
-    ultralight::IntRect bounds = canvas->GetScissorRect();
-    return IntRect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
-    */
 }
 
 Ref<BitmapTexture> TextureMapperUltralight::createTexture()
@@ -350,7 +327,7 @@ void TextureMapperUltralight::endPainting() {}
 
 IntSize TextureMapperUltralight::maxTextureSize() const
 {
-    return IntSize(4096, 4096);
+    return IntSize(2048, 2048);
 }
 
 void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
@@ -363,6 +340,9 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     if (!current_surface_)
         return;
 
+    if (isInMaskMode())
+        return;
+
 
     auto filter = ToUltralightFilter(operation, sourceTexture.size(), pass, contentTexture, scale(), adjustScale);
     if (filter->type() == ultralight::Filter::Type::None) {
@@ -371,8 +351,6 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     }
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    // bitmapTexture->applyClipIfNeeded(clip_stack_);
-
     auto canvas = bitmapTexture->canvas();
 
     FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
@@ -383,6 +361,7 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     Color color = UltralightColorWHITE;
 
     canvas->Save();
+    bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
     canvas->Restore();
 }
@@ -396,9 +375,10 @@ void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTe
     if (!current_surface_)
         return;
 
-    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
-    // bitmapTexture->applyClipIfNeeded(clip_stack_);
+    if (isInMaskMode())
+        return;
 
+    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
     auto canvas = bitmapTexture->canvas();
 
     FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
@@ -409,6 +389,7 @@ void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTe
     Color color = UltralightColorWHITE;
 
     canvas->Save();
+    bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvas(srcCanvas, src, dest, color);
     canvas->Restore();
 }
