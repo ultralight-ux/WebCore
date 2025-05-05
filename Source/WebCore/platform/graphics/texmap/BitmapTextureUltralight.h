@@ -19,23 +19,26 @@ class FilterOperation;
 class WEBCORE_EXPORT BitmapTextureUltralight : public BitmapTexture {
 public:
 
-    static Ref<BitmapTexture> create(bool use_gpu, const Flags flags = NoFlag)
+    static Ref<BitmapTexture> create(TextureMapper* textureMapper, bool use_gpu, const Flags flags = NoFlag)
     {
-        return adoptRef(*new BitmapTextureUltralight(use_gpu, flags));
+        return adoptRef(*new BitmapTextureUltralight(textureMapper, use_gpu, flags));
     }
 
-    static Ref<BitmapTexture> create(ultralight::RefPtr<ultralight::Canvas> canvas)
+    static Ref<BitmapTexture> create(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas)
     {
-        return adoptRef(*new BitmapTextureUltralight(canvas));
+        return adoptRef(*new BitmapTextureUltralight(textureMapper, canvas));
     }
 
     // Create a new BitmapTextureUltralight (canvas will be lazily created):
-    BitmapTextureUltralight(bool use_gpu, const Flags = NoFlag);
+    BitmapTextureUltralight(TextureMapper* textureMapper, bool use_gpu, const Flags = NoFlag);
 
     // Create from an existing Ultralight Canvas:
-    BitmapTextureUltralight(ultralight::RefPtr<ultralight::Canvas> canvas);
+    BitmapTextureUltralight(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas);
 
     virtual ~BitmapTextureUltralight();
+    
+    // Get the texture mapper that created this texture
+    TextureMapper* textureMapper() const { return textureMapper_; }
 
     ultralight::RefPtr<ultralight::Canvas> canvas() const { return canvas_; }
 
@@ -77,6 +80,7 @@ public:
     const FilterInfo* filterInfo() const { return &filter_info_; }
 
 protected:
+    TextureMapper* textureMapper_; // Pointer to the TextureMapper that created this texture
     bool use_gpu_;
     bool owns_canvas_;
     std::unique_ptr<ultralight::Surface> surface_; // CPU backing store, only used when use_gpu_ is false.

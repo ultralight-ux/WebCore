@@ -27,10 +27,12 @@ BitmapTextureUltralight* toBitmapTextureUL(BitmapTexture* texture)
     return static_cast<BitmapTextureUltralight*>(texture);
 }
 
-BitmapTextureUltralight::BitmapTextureUltralight(bool use_gpu, const BitmapTexture::Flags flags) : use_gpu_(use_gpu), owns_canvas_(true) {
+BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, bool use_gpu, const BitmapTexture::Flags flags) 
+  : textureMapper_(textureMapper), use_gpu_(use_gpu), owns_canvas_(true) {
 }
 
-BitmapTextureUltralight::BitmapTextureUltralight(ultralight::RefPtr<ultralight::Canvas> canvas) : canvas_(canvas), owns_canvas_(false) {
+BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas) 
+  : textureMapper_(textureMapper), canvas_(canvas), owns_canvas_(false) {
   canvas_size_ = IntSize(canvas->width(), canvas->height());
   use_gpu_ = canvas_->surface() == nullptr;
 }
@@ -123,13 +125,12 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
   ProfiledZone;
   if (!canvas_ || !sourceLayer)
     return;
-    
-  // Following BitmapTexture.cpp's reference implementation:
-  // Calculate the source rectangle in the layer's coordinate space
-  IntRect sourceRect(targetRect);
-  sourceRect.setLocation(offset);
-  sourceRect.scale(1 / scale);
+
+  //printf("BitmapTextureUltralight::updateContents: [%d %d %d %d], offset: [%d %d]\n", targetRect.x(), targetRect.y(), targetRect.width(), targetRect.height(), offset.x(), offset.y());
   
+  // Amount of padding to add around the target rect (used to prevent artifacts when doing partial draws)
+  int pad = 2;
+
   // Set scissor rect to the target area
   ultralight::IntRect scissorRect = { 
       targetRect.x(), 
@@ -137,12 +138,24 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
       targetRect.maxX(), 
       targetRect.maxY() 
   };
+
   canvas_->SetScissorRect(scissorRect);
   canvas_->set_scissor_enabled(true);
+
+  IntRect paddedTargetRect = targetRect;
+  paddedTargetRect.inflate(pad);
+
+  // Following BitmapTexture.cpp's reference implementation:
+  // Calculate the source rectangle in the layer's coordinate space
+
+  IntRect sourceRect(targetRect);
+  sourceRect.setLocation(offset);
+  sourceRect.inflate(pad);
+  sourceRect.scale(1 / scale);
   
   // Clear the target area
   canvas_->set_blending_enabled(false);
-  canvas_->DrawRect(FloatRect(targetRect), UltralightColorTRANSPARENT);
+  canvas_->DrawRect(FloatRect(paddedTargetRect), UltralightColorTRANSPARENT);
   canvas_->set_blending_enabled(true);
   
   canvas_->Save();
@@ -150,8 +163,8 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
     GraphicsContextUltralight ctx(canvas_);
     
     // Translate to target rect origin
-    ctx.translate(targetRect.x(), targetRect.y());
-    
+    ctx.translate(paddedTargetRect.x(), paddedTargetRect.y());
+
     // Apply scale factor
     ctx.applyDeviceScaleFactor(scale);
     

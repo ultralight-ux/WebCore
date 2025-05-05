@@ -49,8 +49,9 @@ BitmapTexturePool::BitmapTexturePool(const TextureMapperContextAttributes& conte
 #endif
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
-BitmapTexturePool::BitmapTexturePool(bool useGpu)
+BitmapTexturePool::BitmapTexturePool(bool useGpu, TextureMapper* textureMapper)
     : m_useGpu(useGpu)
+    , m_textureMapper(textureMapper)
     , m_releaseUnusedTexturesTimer(RunLoop::current(), this, &BitmapTexturePool::releaseUnusedTexturesTimerFired)
 {
 }
@@ -104,7 +105,7 @@ RefPtr<BitmapTexture> BitmapTexturePool::createTexture(const BitmapTexture::Flag
 #if USE(TEXTURE_MAPPER_GL)
     return BitmapTextureGL::create(m_contextAttributes, flags);
 #elif USE(TEXTURE_MAPPER_ULTRALIGHT)
-    return adoptRef(new BitmapTextureUltralight(m_useGpu, flags));
+    return adoptRef(new BitmapTextureUltralight(m_textureMapper, m_useGpu, flags));
 #else
     UNUSED_PARAM(flags);
     return nullptr;

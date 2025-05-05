@@ -1310,6 +1310,7 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
         documentDirtyRect.moveBy(-locationOfContents);
 
         if (!paintsEntireContents()) {
+#if USE(ULTRALIGHT)
             // Ultralight - this routine has been modified to use the pixel-space scroll position
             // as the true scroll offset, we map this value to content-space (floating-point) and
             // use it to translate the context. This is necessary to support fractional DPI scales.
@@ -1318,6 +1319,9 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
               scrollPosPixelSnapped = hostWindow()->screenToRootView(FloatPoint(m_scrollPositionPx));
 
             context.translate(-scrollPosPixelSnapped.x(), -scrollPosPixelSnapped.y());
+#else
+            context.translate(-scrollX(), -scrollY());
+#endif
             documentDirtyRect.moveBy(scrollPosition());
 
             context.clip(visibleContentRect(LegacyIOSDocumentVisibleRect));

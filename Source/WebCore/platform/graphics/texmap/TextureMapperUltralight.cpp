@@ -139,7 +139,7 @@ TextureMapperUltralight::TextureMapperUltralight(bool use_gpu, double scale)
     , scale_(scale)
     , clip_stack_(IntRect(0, 0, 8192, 8192))
 {
-    m_texturePool = std::make_unique<BitmapTexturePool>(use_gpu_);
+    m_texturePool = std::make_unique<BitmapTexturePool>(use_gpu_, this);
 }
 
 TextureMapperUltralight::~TextureMapperUltralight() {}
@@ -147,7 +147,7 @@ TextureMapperUltralight::~TextureMapperUltralight() {}
 void TextureMapperUltralight::set_default_surface(
     ultralight::RefPtr<ultralight::Canvas> canvas)
 {
-    default_surface_ = BitmapTextureUltralight::create(canvas);
+    default_surface_ = BitmapTextureUltralight::create(this, canvas);
 }
 
 void TextureMapperUltralight::drawBorder(const Color& color, float borderThickness,
@@ -227,8 +227,8 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     canvas->Save();
     bitmapTexture->applyClipIfNeeded(clip_stack_);
     
-    // Set the transformation matrix that positions this tile in the overall scene
-    canvas->SetMatrix(modelViewMatrix);
+    // Apply the transformation matrix
+    canvas->Transform(modelViewMatrix);
     
     if (filter) {
         canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
@@ -303,7 +303,7 @@ IntRect TextureMapperUltralight::clipBounds()
 Ref<BitmapTexture> TextureMapperUltralight::createTexture()
 {
     ProfiledZone;
-    BitmapTextureUltralight* texture = new BitmapTextureUltralight(use_gpu_);
+    BitmapTextureUltralight* texture = new BitmapTextureUltralight(this, use_gpu_);
     return *adoptRef(texture);
 }
 
@@ -327,7 +327,7 @@ void TextureMapperUltralight::endPainting() {}
 
 IntSize TextureMapperUltralight::maxTextureSize() const
 {
-    return IntSize(2048, 2048);
+    return IntSize(1024, 1024);
 }
 
 void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,

@@ -1599,7 +1599,7 @@ void Page::layoutIfNeeded()
 
 void Page::scheduleRenderingUpdate(OptionSet<RenderingUpdateStep> requestedSteps)
 {
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
     // Ultralight: ignore bailing out on re-entrant rendering updates for now
     scheduleRenderingUpdateInternal();
     return;

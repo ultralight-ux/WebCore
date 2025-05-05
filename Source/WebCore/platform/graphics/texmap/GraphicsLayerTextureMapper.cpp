@@ -613,7 +613,8 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
     scaled_size.setWidth(std::round(scaled_size.width()));
     scaled_size.setHeight(std::round(scaled_size.height()));
 
-    IntRect dirtyRect = IntRect(FloatRect(FloatPoint::zero(), scaled_size));
+    IntRect scaledSizePx = IntRect(FloatRect(FloatPoint::zero(), scaled_size));
+    IntRect dirtyRect = scaledSizePx;
 
     FloatRect scaled_needsDisplayRect = m_needsDisplayRect;
     scaled_needsDisplayRect.scale(pageScaleFactor() * deviceScaleFactor());
@@ -627,7 +628,6 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
 
     m_backingStore->updateContentsScale(pageScaleFactor() * deviceScaleFactor());
 
-    dirtyRect.scale(pageScaleFactor() * deviceScaleFactor());
     m_backingStore->updateContents(textureMapper, this, m_size, dirtyRect);
 
     m_needsDisplay = false;

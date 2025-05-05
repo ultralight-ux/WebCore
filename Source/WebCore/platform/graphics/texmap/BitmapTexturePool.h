@@ -44,7 +44,7 @@ public:
 #endif
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
-    explicit BitmapTexturePool(bool useGpu);
+    explicit BitmapTexturePool(bool useGpu, TextureMapper* textureMapper = nullptr);
 #endif
 
     RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags);
@@ -72,6 +72,7 @@ private:
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
     bool m_useGpu;
+    TextureMapper* m_textureMapper;
 #endif
 
     Vector<Entry> m_textures;
