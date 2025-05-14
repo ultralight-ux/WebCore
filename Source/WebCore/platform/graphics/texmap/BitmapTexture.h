@@ -84,8 +84,6 @@ public:
 
 protected:
     IntSize m_contentSize;
-
-private:
     Flags m_flags;
 };
 

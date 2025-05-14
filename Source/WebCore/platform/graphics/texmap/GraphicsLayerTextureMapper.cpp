@@ -52,6 +52,9 @@ GraphicsLayerTextureMapper::GraphicsLayerTextureMapper(Type layerType, GraphicsL
     , m_debugBorderWidth(0)
     , m_contentsLayer(0)
 {
+#if USE(ULTRALIGHT)
+    m_layer.setOwner(this);
+#endif
 }
 
 void GraphicsLayerTextureMapper::notifyChange(ChangeMask changeMask)
@@ -476,6 +479,9 @@ void GraphicsLayerTextureMapper::commitLayerChanges()
         if (needsBackdrop()) {
             if (!m_backdropLayer) {
                 m_backdropLayer = makeUnique<TextureMapperLayer>();
+#if USE(ULTRALIGHT)
+                m_backdropLayer->setOwner(this);
+#endif
                 m_backdropLayer->setAnchorPoint(FloatPoint3D());
                 m_backdropLayer->setContentsVisible(true);
                 m_backdropLayer->setMasksToBounds(true);
@@ -604,6 +610,8 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
 #if USE(ULTRALIGHT)
     if (ultralight::Platform::instance().config().force_repaint)
       is_forcing_repaint = true;
+
+    m_backingStore->recycleTexturesIfNeeded(textureMapper);
 #endif
 
     FloatSize scaled_size = m_size;
@@ -628,7 +636,13 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
 
     m_backingStore->updateContentsScale(pageScaleFactor() * deviceScaleFactor());
 
+#if USE(ULTRALIGHT)
+    // Defer updating the backing store until the TextureMapperLayer paints so that we can avoid
+    // unnecessary updates if the layer is not visible.
+    m_layer.setBackingStoreNeedsUpdateInRect(textureMapper, m_size, dirtyRect);
+#else
     m_backingStore->updateContents(textureMapper, this, m_size, dirtyRect);
+#endif
 
     m_needsDisplay = false;
     m_needsDisplayRect = IntRect();

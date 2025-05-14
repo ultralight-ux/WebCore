@@ -59,6 +59,63 @@ BitmapTexturePool::BitmapTexturePool(bool useGpu, TextureMapper* textureMapper)
 
 RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, const BitmapTexture::Flags flags)
 {
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+    if (size.isEmpty())
+        return nullptr;
+    if (size.width() < 1 || size.height() < 1)
+        return nullptr;
+    
+    // Round to next highest multiple of 32
+    int width = size.width();
+    int height = size.height();
+    if (width % 32)
+        width += 32 - (width % 32);
+    if (height % 32)
+        height += 32 - (height % 32);
+    IntSize paddedSize(width, height);
+
+    // Gather all the textures that match the size and flags into a vector.
+    Vector<Entry*> candidates;
+    for (auto& entry : m_textures) {
+        if (entry.m_texture->refCount() == 1
+            && entry.m_texture->size().width() >= paddedSize.width()
+            && entry.m_texture->size().height() >= paddedSize.height()
+            && entry.m_texture->flags() == flags) {
+            candidates.append(&entry);
+        }
+    }
+
+    // Sort the candidates by area.
+    std::sort(candidates.begin(), candidates.end(),
+        [](Entry* a, Entry* b) {
+            return a->m_texture->size().area() < b->m_texture->size().area();
+        });
+
+    // Select the first candidate.
+    Entry* selectedEntry = candidates.isEmpty() ? nullptr : candidates.first();
+    if (selectedEntry) {
+        // We found an entry with dimensions big enough to satisfy the request, but we have to make
+        // sure its excess area is within a reasonable range:
+
+        // If the excess area is more than 100% of the requested area or more than 150K pixels we
+        // won't use it to avoid wasting memory.
+        auto excessArea = selectedEntry->m_texture->size().area() - size.area();
+        if (excessArea > size.area() || excessArea > 150000) {
+            selectedEntry = nullptr;
+        }
+    }
+
+    // Otherwise, we need to create a new texture.
+    if (!selectedEntry) {
+        m_textures.append(Entry(createTexture(paddedSize, size, flags)));
+        selectedEntry = &m_textures.last();
+    }
+
+    scheduleReleaseUnusedTextures();
+    selectedEntry->markIsInUse();
+    selectedEntry->m_texture->reset(size, flags);
+    return selectedEntry->m_texture.copyRef();
+#else
     Entry* selectedEntry = std::find_if(m_textures.begin(), m_textures.end(),
         [&](Entry& entry) {
             return entry.m_texture->refCount() == 1
@@ -74,6 +131,7 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
     scheduleReleaseUnusedTextures();
     selectedEntry->markIsInUse();
     return selectedEntry->m_texture.copyRef();
+#endif
 }
 
 void BitmapTexturePool::scheduleReleaseUnusedTextures()
@@ -92,7 +150,7 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
     // Delete entries, which have been unused in releaseUnusedSecondsTolerance.
     MonotonicTime minUsedTime = MonotonicTime::now() - releaseUnusedSecondsTolerance;
 
-    m_textures.removeAllMatching([&minUsedTime](const Entry& entry) {
+    auto numRemoved = m_textures.removeAllMatching([&minUsedTime](const Entry& entry) {
         return entry.canBeReleased(minUsedTime);
     });
 
@@ -105,11 +163,18 @@ RefPtr<BitmapTexture> BitmapTexturePool::createTexture(const BitmapTexture::Flag
 #if USE(TEXTURE_MAPPER_GL)
     return BitmapTextureGL::create(m_contextAttributes, flags);
 #elif USE(TEXTURE_MAPPER_ULTRALIGHT)
-    return adoptRef(new BitmapTextureUltralight(m_textureMapper, m_useGpu, flags));
+    return BitmapTextureUltralight::create(m_textureMapper, m_useGpu, flags);
 #else
     UNUSED_PARAM(flags);
     return nullptr;
 #endif
 }
+
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+RefPtr<BitmapTexture> BitmapTexturePool::createTexture(const IntSize& paddedSize, const IntSize& contentSize, const BitmapTexture::Flags flags)
+{
+    return BitmapTextureUltralight::create(m_textureMapper, paddedSize, contentSize, m_useGpu, flags);
+}
+#endif
 
 } // namespace WebCore

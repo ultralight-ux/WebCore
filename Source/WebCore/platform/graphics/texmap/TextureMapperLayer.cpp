@@ -20,6 +20,9 @@
 
 #include "config.h"
 #include "TextureMapperLayer.h"
+#if USE(ULTRALIGHT)
+#include "TextureMapperTiledBackingStore.h"
+#endif
 
 #include "FloatQuad.h"
 #include "Region.h"
@@ -203,8 +206,21 @@ void TextureMapperLayer::paintSelf(TextureMapperPaintOptions& options)
     options.textureMapper.setWrapMode(TextureMapper::StretchWrap);
     options.textureMapper.setPatternTransform(TransformationMatrix());
 
+#if USE(ULTRALIGHT)
+    updateBackingStore(options.textureMapper, options.offset, layerRect(), transform);
+#endif
+
     if (backingStore) {
+#if USE(ULTRALIGHT)
+        if (backingStore->isTiledBackingStore()) {
+            auto* tiledBackingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore);
+            tiledBackingStore->paintToTextureMapperWithClip(options.textureMapper, options.offset, targetRect, transform, options.opacity);
+        } else {
+            backingStore->paintToTextureMapper(options.textureMapper, targetRect, transform, options.opacity);
+        }
+#else
         backingStore->paintToTextureMapper(options.textureMapper, targetRect, transform, options.opacity);
+#endif
         if (m_state.showDebugBorders)
             backingStore->drawBorder(options.textureMapper, m_state.debugBorderColor, m_state.debugBorderWidth, targetRect, transform);
         // Only draw repaint count for the main backing store.
@@ -1061,5 +1077,25 @@ bool TextureMapperLayer::syncAnimations(MonotonicTime time)
 
     return applicationResults.hasRunningAnimations;
 }
+
+#if USE(ULTRALIGHT)
+void TextureMapperLayer::setBackingStoreNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize& totalSize, const IntRect& rect)
+{
+    if (!m_backingStore || !m_backingStore->isTiledBackingStore())
+        return;
+    
+    auto* tiledBackingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore);
+    tiledBackingStore->setNeedsUpdateInRect(textureMapper, totalSize, rect);
+}
+
+void TextureMapperLayer::updateBackingStore(TextureMapper& textureMapper, const IntSize& offset, const FloatRect& layerRect, const TransformationMatrix& transform)
+{
+    if (!m_backingStore || !m_owner || !m_backingStore->isTiledBackingStore())
+        return;
+
+    auto* tiledBackingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore);
+    tiledBackingStore->updateContentsWithClip(textureMapper, offset, m_owner, layerRect, transform);
+}
+#endif
 
 }

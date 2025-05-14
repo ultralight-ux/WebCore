@@ -3331,6 +3331,13 @@ bool RenderLayerCompositor::requiresCompositingForPlugin(RenderLayerModelObject&
     
 bool RenderLayerCompositor::requiresCompositingForFrame(RenderLayerModelObject& renderer, RequiresCompositingData& queryData) const
 {
+#if USE(ULTRALIGHT)
+    // Ensure the main document is composited when force compositing is enabled so that main frame
+    // scrolling is accelerated via the tiled backing store.
+    if (isMainFrameCompositor() && m_forceCompositingMode && renderer.isDocumentElementRenderer())
+        return true;
+#endif
+
     if (!is<RenderWidget>(renderer))
         return false;
 

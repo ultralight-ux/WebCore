@@ -48,6 +48,12 @@ public:
     uint32_t id() { return m_id; }
 #endif
 
+#if USE(ULTRALIGHT)
+    void setOwner(GraphicsLayer* owner) { m_owner = owner; }
+    GraphicsLayer* owner() const { return m_owner; }
+    void setBackingStoreNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize& totalSize, const IntRect& rect);
+#endif
+
     const Vector<TextureMapperLayer*>& children() const { return m_children; }
 
     void setChildren(const Vector<TextureMapperLayer*>&);
@@ -158,6 +164,10 @@ private:
         return FloatRect(FloatPoint::zero(), m_state.size);
     }
 
+#if USE(ULTRALIGHT)
+    void updateBackingStore(TextureMapper&, const IntSize&, const FloatRect&, const TransformationMatrix&);
+#endif
+
     Vector<TextureMapperLayer*> m_children;
     TextureMapperLayer* m_parent { nullptr };
     WeakPtr<TextureMapperLayer> m_effectTarget;
@@ -239,6 +249,11 @@ private:
         TransformationMatrix futureCombinedForChildren;
 #endif
     } m_layerTransforms;
+
+#if USE(ULTRALIGHT)
+    GraphicsLayer* m_owner { nullptr };
+    IntRect m_backingStoreDirtyRect;
+#endif
 };
 
 } // namespace WebCore

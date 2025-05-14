@@ -36,11 +36,21 @@ public:
     inline FloatRect rect() const { return m_rect; }
     inline void setTexture(BitmapTexture* texture) { m_texture = texture; }
     inline void setRect(const FloatRect& rect) { m_rect = rect; }
+    inline void setRepaintCount(int count) { m_repaintCount = count; }
+    inline int repaintCount() const { return m_repaintCount; }
 
     void updateContents(TextureMapper&, Image*, const IntRect&);
     void updateContents(TextureMapper&, GraphicsLayer*, const IntRect&, float scale = 1);
     WEBCORE_EXPORT virtual void paint(TextureMapper&, const TransformationMatrix&, float, const unsigned exposedEdges);
     virtual ~TextureMapperTile() = default;
+
+#if USE(ULTRALIGHT)
+    void setNeedsUpdateInRect(const IntRect& rect);
+    void updateContentsIfNeeded(TextureMapper&, GraphicsLayer*, float scale = 1);
+    bool contentsIsImage() const { return m_contentsIsImage; }
+    void recycleTextureIfNeeded(int32_t currentPaintId);
+    uint32_t lastPaintId() const { return m_lastPaintId; }
+#endif
 
     explicit TextureMapperTile(const FloatRect& rect)
         : m_rect(rect)
@@ -50,6 +60,13 @@ protected:
     RefPtr<BitmapTexture> m_texture;
 private:
     FloatRect m_rect;
+    int m_repaintCount { 0 };
+#if USE(ULTRALIGHT)
+    IntRect m_updateRect;
+    bool m_contentsIsImage { false };
+    uint32_t m_lastPaintId { 0 };
+    bool m_wasRecycled { false };
+#endif
 };
 
 }

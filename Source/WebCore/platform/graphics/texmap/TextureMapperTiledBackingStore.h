@@ -36,6 +36,8 @@ public:
     static Ref<TextureMapperTiledBackingStore> create() { return adoptRef(*new TextureMapperTiledBackingStore); }
     virtual ~TextureMapperTiledBackingStore() = default;
 
+    bool isTiledBackingStore() const override { return true; }
+
     void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix&, float) override;
     void drawBorder(TextureMapper&, const Color&, float borderWidth, const FloatRect&, const TransformationMatrix&) override;
     void drawRepaintCounter(TextureMapper&, int repaintCount, const Color&, const FloatRect&, const TransformationMatrix&) override;
@@ -43,6 +45,13 @@ public:
     void updateContentsScale(float);
     void updateContents(TextureMapper&, Image*, const FloatSize&, const IntRect&);
     void updateContents(TextureMapper&, GraphicsLayer*, const FloatSize&, const IntRect&);
+
+#if USE(ULTRALIGHT)
+    void setNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize&, const IntRect&);
+    void paintToTextureMapperWithClip(TextureMapper&, const IntSize&, const FloatRect&, const TransformationMatrix&, float);
+    void updateContentsWithClip(TextureMapper&, const IntSize&, GraphicsLayer*, const FloatRect&, const TransformationMatrix&);
+    void recycleTexturesIfNeeded(TextureMapper&);
+#endif
 
     void setContentsToImage(Image* image) { m_image = image; }
 

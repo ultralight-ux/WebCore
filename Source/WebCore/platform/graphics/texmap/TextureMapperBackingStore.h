@@ -31,6 +31,8 @@ class TextureMapperBackingStore : public TextureMapperPlatformLayer {
 public:
     virtual ~TextureMapperBackingStore() = default;
 
+    virtual bool isTiledBackingStore() const { return false; }
+
     void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix&, float) override = 0;
     virtual void drawRepaintCounter(TextureMapper&, int, const Color&, const FloatRect&, const TransformationMatrix&) { }
 

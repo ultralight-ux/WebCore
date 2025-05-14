@@ -66,6 +66,10 @@ private:
     void releaseUnusedTexturesTimerFired();
     RefPtr<BitmapTexture> createTexture(const BitmapTexture::Flags);
 
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+    RefPtr<BitmapTexture> createTexture(const IntSize&, const IntSize&, const BitmapTexture::Flags);
+#endif
+
 #if USE(TEXTURE_MAPPER_GL)
     TextureMapperContextAttributes m_contextAttributes;
 #endif

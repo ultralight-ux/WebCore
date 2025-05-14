@@ -21,6 +21,10 @@
 
 #include "TextureMapperTiledBackingStore.h"
 
+#if USE(ULTRALIGHT)
+#include "TextureMapperUltralight.h"
+#endif
+
 #include "ImageBuffer.h"
 #include "ImageObserver.h"
 #include "TextureMapper.h"
@@ -28,6 +32,18 @@
 namespace WebCore {
 
 class GraphicsLayer;
+
+#if USE(ULTRALIGHT)
+static FloatRect transformRectFromLayerToGlobalCoordinateSpace(const FloatRect& rect, const TransformationMatrix& transform, const IntSize& offset)
+{
+    auto transformedRect = transform.mapRect(rect);
+    // Some layers are drawn on an intermediate surface and have this offset applied to convert to the
+    // intermediate surface coordinates. In order to translate back to actual coordinates,
+    // we have to undo it.
+    transformedRect.move(-offset);
+    return transformedRect;
+}
+#endif
 
 void TextureMapperTiledBackingStore::updateContentsFromImageIfNeeded(TextureMapper& textureMapper)
 {
@@ -65,7 +81,7 @@ void TextureMapperTiledBackingStore::drawRepaintCounter(TextureMapper& textureMa
 {
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(targetRect);
     for (auto& tile : m_tiles)
-        textureMapper.drawNumber(repaintCount, borderColor, tile.rect().location(), adjustedTransform);
+        textureMapper.drawNumber(tile.repaintCount(), borderColor, tile.rect().location(), adjustedTransform);
 }
 
 void TextureMapperTiledBackingStore::updateContentsScale(float scale)
@@ -131,6 +147,7 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(const FloatSiz
             TextureMapperTile& tile = m_tiles[tileIndicesToRemove.last()];
             tileIndicesToRemove.removeLast();
             tile.setRect(rect);
+            tile.setRepaintCount(0);
 
             if (tile.texture()) {
               FloatSize texSize = tile.rect().size();
@@ -167,5 +184,48 @@ void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper
     for (auto& tile : m_tiles)
         tile.updateContents(textureMapper, sourceLayer, dirtyRect, m_contentsScale);
 }
+
+#if USE(ULTRALIGHT)
+void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize& totalSize, const IntRect& rect)
+{
+    createOrDestroyTilesIfNeeded(totalSize, textureMapper.maxTextureSize(), true);
+    for (auto& tile : m_tiles) {
+        if (tile.rect().intersects(rect))
+            tile.setNeedsUpdateInRect(rect);
+    }
+}
+
+void TextureMapperTiledBackingStore::paintToTextureMapperWithClip(TextureMapper& textureMapper, const IntSize& offset, const FloatRect& targetRect, const TransformationMatrix& transform, float opacity)
+{
+    updateContentsFromImageIfNeeded(textureMapper);
+    TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(targetRect);
+    for (auto& tile : m_tiles) {
+        FloatRect globalTileRect = transformRectFromLayerToGlobalCoordinateSpace(tile.rect(), adjustedTransform, offset);
+        IntRect viewBounds = static_cast<TextureMapperUltralight&>(textureMapper).bounds();
+        if (globalTileRect.intersects(viewBounds)) {
+            tile.paint(textureMapper, adjustedTransform, opacity, calculateExposedTileEdges(rect(), tile.rect()));
+        }
+    }
+}
+
+void TextureMapperTiledBackingStore::updateContentsWithClip(TextureMapper& textureMapper, const IntSize& offset, GraphicsLayer* sourceLayer, const FloatRect& layerRect, const TransformationMatrix& transform)
+{
+    TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(layerRect);
+    for (auto& tile : m_tiles) {
+        FloatRect globalTileRect = transformRectFromLayerToGlobalCoordinateSpace(tile.rect(), adjustedTransform, offset);
+        IntRect viewBounds = static_cast<TextureMapperUltralight&>(textureMapper).bounds();
+        if (globalTileRect.intersects(viewBounds)) {
+            tile.updateContentsIfNeeded(textureMapper, sourceLayer, m_contentsScale);
+        }
+    }
+}
+
+void TextureMapperTiledBackingStore::recycleTexturesIfNeeded(TextureMapper& textureMapper)
+{
+    for (auto& tile : m_tiles) {
+        tile.recycleTextureIfNeeded(static_cast<TextureMapperUltralight&>(textureMapper).paint_id());
+    }
+}
+#endif
 
 } // namespace WebCore

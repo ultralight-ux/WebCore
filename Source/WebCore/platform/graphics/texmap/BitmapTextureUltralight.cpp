@@ -32,9 +32,18 @@ BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, b
 }
 
 BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas) 
-  : textureMapper_(textureMapper), canvas_(canvas), owns_canvas_(false) {
+  : textureMapper_(textureMapper), owns_canvas_(false), canvas_(canvas) {
   canvas_size_ = IntSize(canvas->width(), canvas->height());
   use_gpu_ = canvas_->surface() == nullptr;
+}
+
+BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, const IntSize& paddedSize,
+    const IntSize& contentSize, bool use_gpu, const BitmapTexture::Flags flags) 
+  : textureMapper_(textureMapper), use_gpu_(use_gpu), owns_canvas_(true) {
+  filter_info_ = FilterInfo();
+  m_contentSize = contentSize;
+  m_flags = flags;
+  resetCanvas(paddedSize);
 }
 
 BitmapTextureUltralight::~BitmapTextureUltralight() {
@@ -56,25 +65,22 @@ void BitmapTextureUltralight::didReset() {
   if (!owns_canvas_)
     return;
 
-  canvas_size_ = contentSize();
+  IntSize targetSize = contentSize();
   filter_info_ = FilterInfo();
 
   if (canvas_) {
-    if(canvas_size_.width() != canvas_->width() || canvas_size_.height() != canvas_->height())
+    if(targetSize.width() > canvas_->width() || targetSize.height() > canvas_->height()) {
+      // Resize the canvas if the target size is larger than the current size
+      canvas_size_ = targetSize;
       canvas_->Resize(canvas_size_.width(), canvas_size_.height());
+    }
       
     canvas_->Clear();
     return;
   }
 
-  if (!use_gpu_ && !surface_) {
-    // The underlying Surface is guaranteed to be a BitmapSurface.
-    auto bitmapSurfaceFactory = ultralight::GetBitmapSurfaceFactory();
-    surface_.reset(bitmapSurfaceFactory->CreateSurface(canvas_size_.width(), canvas_size_.height()));
-  }
-    
-  canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
-      canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, surface_.get());
+  // Create a new canvas with the target size
+  resetCanvas(targetSize);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
@@ -362,6 +368,19 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
     CopyBitmaps(ImageBufferToBitmap(*resultImageBuffer), BitmapTextureToBitmap(*dstSurface));
 
     return dstSurface;
+}
+
+void BitmapTextureUltralight::resetCanvas(const IntSize& size) {
+  canvas_size_ = size;
+
+  if (!use_gpu_) {
+    // The underlying Surface is guaranteed to be a BitmapSurface.
+    auto bitmapSurfaceFactory = ultralight::GetBitmapSurfaceFactory();
+    surface_.reset(bitmapSurfaceFactory->CreateSurface(canvas_size_.width(), canvas_size_.height()));
+  }
+    
+  canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
+      canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, surface_.get());
 }
 
 } // namespace WebCore

@@ -7,6 +7,15 @@ ClipStackUltralight::ClipStackUltralight(const IntRect& size) : m_size(size)
 {
 }
 
+void ClipStackUltralight::reset(const IntRect& size)
+{
+    m_size = size;
+    m_clipRects.clear();
+    m_clipMatrices.clear();
+    m_clipHashes.clear();
+    m_scissorRects.clear();
+}
+
 void ClipStackUltralight::pushClip(const FloatRoundedRect& clipRect, const TransformationMatrix& clipMatrix)
 {
     m_clipRects.append(clipRect);

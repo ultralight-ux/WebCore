@@ -19,7 +19,14 @@ public:
     double scale() const { return scale_; }
     void set_scale(double scale) { scale_ = scale; }
 
-    void set_default_surface(ultralight::RefPtr<ultralight::Canvas> canvas);
+    // Set the bounds of the root surface. (in pixels)
+    void set_bounds(const IntRect& bounds);
+
+    // Get the bounds of the root surface. (in pixels)
+    IntRect bounds() const { return bounds_; }
+
+    // Set the root Canvas that the texture mapper will composite layers onto.
+    void setRootSurface(ultralight::RefPtr<ultralight::Canvas> canvas);
 
     virtual void drawBorder(const Color&, float borderWidth, const FloatRect&,
         const TransformationMatrix&) override;
@@ -35,9 +42,10 @@ public:
 
     virtual void clearColor(const Color&) override;
 
-    // makes a surface the target for the following drawTexture calls.
+    // Bind a surface for drawing.
     virtual void bindSurface(BitmapTexture* surface) override;
 
+    // Get the currently-bound surface.
     BitmapTexture* currentSurface() { return current_surface_.get(); }
 
     virtual void beginClip(const TransformationMatrix&, const FloatRoundedRect&) override;
@@ -58,6 +66,9 @@ public:
 
     virtual IntSize maxTextureSize() const override;
 
+    // Unique ID for the current paint op (increments with each call to beginPainting).
+    uint32_t paint_id() const { return paint_id_; }
+
     void drawFiltered(const BitmapTexture& sourceTexture, const BitmapTexture* contentTexture, RefPtr<FilterOperation>, int pass, float adjustScale);
 
     void drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize);
@@ -76,8 +87,10 @@ public:
 protected:
     bool use_gpu_;
     double scale_;
+    IntRect bounds_;
+    uint32_t paint_id_;
     RefPtr<BitmapTexture> current_surface_;
-    RefPtr<BitmapTexture> default_surface_;
+    RefPtr<BitmapTexture> root_surface_;
     ClipStackUltralight clip_stack_;
 };
 

@@ -137,6 +137,7 @@ float TextureMapperUltralight::getScaleRequiredForFilter(RefPtr<FilterOperation>
 TextureMapperUltralight::TextureMapperUltralight(bool use_gpu, double scale)
     : use_gpu_(use_gpu)
     , scale_(scale)
+    , paint_id_(0)
     , clip_stack_(IntRect(0, 0, 8192, 8192))
 {
     m_texturePool = std::make_unique<BitmapTexturePool>(use_gpu_, this);
@@ -144,10 +145,25 @@ TextureMapperUltralight::TextureMapperUltralight(bool use_gpu, double scale)
 
 TextureMapperUltralight::~TextureMapperUltralight() {}
 
-void TextureMapperUltralight::set_default_surface(
+void TextureMapperUltralight::setRootSurface(
     ultralight::RefPtr<ultralight::Canvas> canvas)
 {
-    default_surface_ = BitmapTextureUltralight::create(this, canvas);
+    if (canvas) {
+        if (root_surface_ && static_cast<BitmapTextureUltralight*>(root_surface_.get())->canvas() == canvas)
+            return;
+        root_surface_ = BitmapTextureUltralight::create(this, canvas);
+    }
+}
+
+void TextureMapperUltralight::set_bounds(const IntRect& bounds)
+{
+    if (bounds == bounds_)
+        return;
+
+    bounds_ = bounds;
+
+    // Reset the clip stack with the new bounds.
+    clip_stack_.reset(bounds);
 }
 
 void TextureMapperUltralight::drawBorder(const Color& color, float borderThickness,
@@ -178,8 +194,136 @@ void TextureMapperUltralight::drawBorder(const Color& color, float borderThickne
     canvas->Restore();
 }
 
-void TextureMapperUltralight::drawNumber(int number, const Color&,
-    const FloatPoint&, const TransformationMatrix&) {}
+void TextureMapperUltralight::drawNumber(int number, const Color& color,
+    const FloatPoint& position, const TransformationMatrix& matrix) {
+    if (!current_surface_)
+        return;
+
+    auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
+    auto canvas = bitmapTexture->canvas();
+
+    // Convert the number to a string
+    String text = String::number(number);
+
+    // Improved digit sizing and spacing
+    float digitWidth = 14;  // Wider digits
+    float digitHeight = 18; // Taller digits
+    float digitSpacing = 4; // More space between digits
+    float padding = 8;      // More padding around the digits
+    float strokeWidth = 1.5f; // Slightly thicker lines for better visibility
+
+    // Calculate the total width needed for the string
+    float totalWidth = text.length() * digitWidth + (text.length() - 1) * digitSpacing + padding * 2;
+
+    // Draw as a rectangle with the number on it
+    FloatRect numberRect(position.x(), position.y(), totalWidth, digitHeight + padding * 2);
+
+    canvas->Save();
+    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    canvas->Transform(matrix);
+
+    // Draw background rectangle 
+    canvas->DrawRect(numberRect, UltralightColorBLACK);
+
+    // Draw border
+    canvas->DrawRect({ numberRect.x(), numberRect.y(), numberRect.width(), 1 }, color);
+    canvas->DrawRect({ numberRect.x(), numberRect.y() + numberRect.height() - 1, numberRect.width(), 1 }, color);
+    canvas->DrawRect({ numberRect.x(), numberRect.y(), 1, numberRect.height() }, color);
+    canvas->DrawRect({ numberRect.x() + numberRect.width() - 1, numberRect.y(), 1, numberRect.height() }, color);
+
+    // Use white for digit color regardless of the border color (for better visibility)
+    Color digitColor = Color::white;
+
+    // Start position for the first digit
+    float x = numberRect.x() + padding;
+    float y = numberRect.y() + padding;
+    float h = digitHeight;
+
+    for (unsigned i = 0; i < text.length(); ++i) {
+        char digit = text[i];
+        auto path = ultralight::Path::Create();
+
+        switch (digit) {
+        case '0':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right
+            path->LineTo(ultralight::Point(x, y + h));  // bottom
+            path->LineTo(ultralight::Point(x, y));  // left
+            break;
+        case '1':
+            path->MoveTo(ultralight::Point(x + digitWidth / 2, y));
+            path->LineTo(ultralight::Point(x + digitWidth / 2, y + h));  // vertical line
+            break;
+        case '2':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // right top
+            path->LineTo(ultralight::Point(x, y + h/2));  // middle
+            path->LineTo(ultralight::Point(x, y + h));  // left bottom
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // bottom
+            break;
+        case '3':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right
+            path->LineTo(ultralight::Point(x, y + h));  // bottom
+            path->MoveTo(ultralight::Point(x, y + h/2));
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // middle
+            break;
+        case '4':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x, y + h/2));  // left top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // middle
+            path->MoveTo(ultralight::Point(x + digitWidth, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right
+            break;
+        case '5':
+            path->MoveTo(ultralight::Point(x + digitWidth, y));
+            path->LineTo(ultralight::Point(x, y));  // top
+            path->LineTo(ultralight::Point(x, y + h/2));  // left top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // middle
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right bottom
+            path->LineTo(ultralight::Point(x, y + h));  // bottom
+            break;
+        case '6':
+            path->MoveTo(ultralight::Point(x + digitWidth, y));
+            path->LineTo(ultralight::Point(x, y));  // top
+            path->LineTo(ultralight::Point(x, y + h));  // left
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // bottom
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // right bottom
+            path->LineTo(ultralight::Point(x, y + h/2));  // middle
+            break;
+        case '7':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right
+            break;
+        case '8':
+            path->MoveTo(ultralight::Point(x, y));
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // right
+            path->LineTo(ultralight::Point(x, y + h));  // bottom
+            path->LineTo(ultralight::Point(x, y));  // left
+            path->MoveTo(ultralight::Point(x, y + h/2));
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // middle
+            break;
+        case '9':
+            path->MoveTo(ultralight::Point(x, y + h));
+            path->LineTo(ultralight::Point(x + digitWidth, y + h));  // bottom
+            path->LineTo(ultralight::Point(x + digitWidth, y));  // right
+            path->LineTo(ultralight::Point(x, y));  // top
+            path->LineTo(ultralight::Point(x, y + h/2));  // left top
+            path->LineTo(ultralight::Point(x + digitWidth, y + h/2));  // middle
+            break;
+        }
+
+        canvas->StrokePath(path, digitColor, strokeWidth); // Thicker lines and using white color
+        x += digitWidth + digitSpacing; // Add more spacing between digits
+    }
+
+    canvas->Restore();
+}
 
 void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     const FloatRect& target, const TransformationMatrix& modelViewMatrix,
@@ -277,7 +421,7 @@ void TextureMapperUltralight::clearColor(const Color&)
 void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
 {
     if (!surface) {
-        current_surface_ = default_surface_;
+        current_surface_ = root_surface_;
         return;
     }
 
@@ -303,8 +447,7 @@ IntRect TextureMapperUltralight::clipBounds()
 Ref<BitmapTexture> TextureMapperUltralight::createTexture()
 {
     ProfiledZone;
-    BitmapTextureUltralight* texture = new BitmapTextureUltralight(this, use_gpu_);
-    return *adoptRef(texture);
+    return BitmapTextureUltralight::create(this, use_gpu_);
 }
 
 Ref<BitmapTexture> TextureMapperUltralight::createTexture(int internalFormat)
@@ -320,6 +463,7 @@ void TextureMapperUltralight::setDepthRange(double zNear, double zFar)
 
 void TextureMapperUltralight::beginPainting(PaintFlags)
 {
+    paint_id_++;
     bindSurface(0);
 }
 

@@ -29,11 +29,21 @@ public:
         return adoptRef(*new BitmapTextureUltralight(textureMapper, canvas));
     }
 
+    static Ref<BitmapTexture> create(TextureMapper* textureMapper, const IntSize& paddedSize,
+        const IntSize& contentSize, bool use_gpu, const Flags flags = NoFlag)
+    {
+        return adoptRef(*new BitmapTextureUltralight(textureMapper, paddedSize, contentSize, use_gpu, flags));
+    }
+
     // Create a new BitmapTextureUltralight (canvas will be lazily created):
     BitmapTextureUltralight(TextureMapper* textureMapper, bool use_gpu, const Flags = NoFlag);
 
     // Create from an existing Ultralight Canvas:
     BitmapTextureUltralight(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas);
+
+    // Create with a specific size (for use with texture pool):
+    BitmapTextureUltralight(TextureMapper* textureMapper, const IntSize& paddedSize,
+        const IntSize& contentSize, bool use_gpu, const Flags = NoFlag);
 
     virtual ~BitmapTextureUltralight();
     
@@ -52,6 +62,7 @@ public:
 
     virtual void didReset() override;
 
+    // Size of the underlying texture in pixels (may be larger than contentSize())
     virtual IntSize size() const override { return canvas_size_; }
 
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset) override;
@@ -89,6 +100,9 @@ protected:
     FilterInfo filter_info_;
     size_t clip_hash_ = 0;
     bool clip_applied_ = false;
+    bool needs_clear_ = false;
+
+    void resetCanvas(const IntSize& size);
 };
 
 }  // namespace WebCore
