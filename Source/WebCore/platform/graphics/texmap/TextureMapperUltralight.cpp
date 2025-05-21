@@ -5,6 +5,7 @@
 #include "FloatRoundedRect.h"
 #include "LengthFunctions.h"
 #include "NotImplemented.h"
+#include "Path.h"
 #include <functional>
 #include <memory>
 
@@ -163,7 +164,8 @@ void TextureMapperUltralight::set_bounds(const IntRect& bounds)
     bounds_ = bounds;
 
     // Reset the clip stack with the new bounds.
-    clip_stack_.reset(bounds);
+    if (root_surface_)
+        root_surface_->clipStack().reset(bounds);
 }
 
 void TextureMapperUltralight::drawBorder(const Color& color, float borderThickness,
@@ -177,19 +179,14 @@ void TextureMapperUltralight::drawBorder(const Color& color, float borderThickne
 
     auto canvas = bitmapTexture->canvas();
 
-    // We do a fill of four rects to simulate the stroke of a border.
-    FloatRect rects[4] = {
-        FloatRect(rect.x(), rect.y(), rect.width(), borderThickness),
-        FloatRect(rect.x(), rect.maxY() - borderThickness, rect.width(), borderThickness),
-        FloatRect(rect.x(), rect.y() + borderThickness, borderThickness, rect.height() - 2 * borderThickness),
-        FloatRect(rect.maxX() - borderThickness, rect.y() + borderThickness, borderThickness, rect.height() - 2 * borderThickness)
-    };
+    // We create a path and stroke it to draw the border:
+    auto path = WebCore::Path();
+    path.addRect(rect);
 
     canvas->Save();
-    canvas->Transform(modelViewMatrix);
+    canvas->SetMatrix(modelViewMatrix);
 
-    for (size_t i = 0; i < 4; ++i)
-        canvas->DrawRect(rects[i], color);
+    canvas->StrokePath(path.platformPath(), color, borderThickness);
 
     canvas->Restore();
 }
@@ -205,12 +202,12 @@ void TextureMapperUltralight::drawNumber(int number, const Color& color,
     // Convert the number to a string
     String text = String::number(number);
 
-    // Improved digit sizing and spacing
-    float digitWidth = 14;  // Wider digits
-    float digitHeight = 18; // Taller digits
-    float digitSpacing = 4; // More space between digits
-    float padding = 8;      // More padding around the digits
-    float strokeWidth = 1.5f; // Slightly thicker lines for better visibility
+    // Digit sizing and spacing
+    float digitWidth = 14;
+    float digitHeight = 18;
+    float digitSpacing = 4;
+    float padding = 8;
+    float strokeWidth = 1.5f;
 
     // Calculate the total width needed for the string
     float totalWidth = text.length() * digitWidth + (text.length() - 1) * digitSpacing + padding * 2;
@@ -219,7 +216,7 @@ void TextureMapperUltralight::drawNumber(int number, const Color& color,
     FloatRect numberRect(position.x(), position.y(), totalWidth, digitHeight + padding * 2);
 
     canvas->Save();
-    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    bitmapTexture->applyClip();
     canvas->Transform(matrix);
 
     // Draw background rectangle 
@@ -318,8 +315,8 @@ void TextureMapperUltralight::drawNumber(int number, const Color& color,
             break;
         }
 
-        canvas->StrokePath(path, digitColor, strokeWidth); // Thicker lines and using white color
-        x += digitWidth + digitSpacing; // Add more spacing between digits
+        canvas->StrokePath(path, digitColor, strokeWidth);
+        x += digitWidth + digitSpacing;
     }
 
     canvas->Restore();
@@ -334,9 +331,6 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
         return;
 
     if (!current_surface_)
-        return;
-
-    if (isInMaskMode())
         return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
@@ -369,10 +363,14 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
 
     // Always apply clip stack before drawing
     canvas->Save();
-    bitmapTexture->applyClipIfNeeded(clip_stack_);
+
+    bitmapTexture->applyClip();
     
     // Apply the transformation matrix
     canvas->Transform(modelViewMatrix);
+
+    if (isInMaskMode())
+        canvas->SetCompositeOp(ultralight::kCompositeOp_DestinationIn);
     
     if (filter) {
         canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
@@ -382,6 +380,12 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     }
     
     canvas->Restore();
+
+#if 0
+    // Visualize clip by drawing a border rect:
+    auto clipRect = WebCore::FloatRect(clip_stack_.scissorRect());
+    drawBorder(Color::red, 12.0f, clipRect, TransformationMatrix());
+#endif
 }
 
 void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
@@ -392,8 +396,8 @@ void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
     if (!current_surface_)
         return;
 
-    if (isInMaskMode())
-        return;
+    //if (isInMaskMode())
+    //    return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
     auto canvas = bitmapTexture->canvas();
@@ -401,7 +405,7 @@ void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
 
     canvas->Save();
-    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    bitmapTexture->applyClip();
     canvas->Transform(modelViewMatrix);
     if (!isBlendingAllowed)
         canvas->set_blending_enabled(false);
@@ -425,23 +429,26 @@ void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
         return;
     }
 
-    current_surface_ = surface;
+    current_surface_ = static_cast<BitmapTextureUltralight*>(surface);
 }
 
 void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const FloatRoundedRect& rect)
 {
-    clip_stack_.pushClip(rect, mat);
+    auto* clip = clipStack();
+    if (clip)
+        clip->pushClip(rect, mat);
 }
 
 void TextureMapperUltralight::endClip()
 {
-    clip_stack_.popClip();
+    if (clipStack())
+        clipStack()->popClip();
 }
 
 IntRect TextureMapperUltralight::clipBounds()
 {
     //return IntRect(0, 0, 8192, 8192);
-    return clip_stack_.scissorRect();
+    return clipStack() ? clipStack()->scissorRect() : IntRect();
 }
 
 Ref<BitmapTexture> TextureMapperUltralight::createTexture()
@@ -464,6 +471,7 @@ void TextureMapperUltralight::setDepthRange(double zNear, double zFar)
 void TextureMapperUltralight::beginPainting(PaintFlags)
 {
     paint_id_++;
+    m_texturePool->setCurrentPaintId(paint_id_);
     bindSurface(0);
 }
 
@@ -471,7 +479,14 @@ void TextureMapperUltralight::endPainting() {}
 
 IntSize TextureMapperUltralight::maxTextureSize() const
 {
-    return IntSize(1024, 1024);
+    return IntSize(4096, 4096);
+}
+
+RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags, bool needsExactSize)
+{
+    RefPtr<BitmapTexture> selectedTexture = m_texturePool->acquireTexture(size, flags, needsExactSize);
+    selectedTexture->reset(size, flags);
+    return selectedTexture;
 }
 
 void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
@@ -484,9 +499,8 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     if (!current_surface_)
         return;
 
-    if (isInMaskMode())
-        return;
-
+    //if (isInMaskMode())
+     //   return;
 
     auto filter = ToUltralightFilter(operation, sourceTexture.size(), pass, contentTexture, scale(), adjustScale);
     if (filter->type() == ultralight::Filter::Type::None) {
@@ -500,14 +514,20 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
 
     auto srcCanvas = static_cast<const BitmapTextureUltralight&>(sourceTexture).canvas();
-    ultralight::Rect src = { 0.0f, 0.0f, (float)srcCanvas->width(), (float)srcCanvas->height() };
+    ultralight::Rect src = { target.x(), target.y(), target.maxX(), target.maxY() };
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
     Color color = UltralightColorWHITE;
 
     canvas->Save();
-    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    //bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
     canvas->Restore();
+
+#if 0
+    // Visualize clip by drawing a border rect:
+    auto clipRect = WebCore::FloatRect(clip_stack_.scissorRect());
+    drawBorder(Color::black, 12.0f, clipRect, TransformationMatrix());
+#endif
 }
 
 void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize)
@@ -519,13 +539,11 @@ void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTe
     if (!current_surface_)
         return;
 
-    if (isInMaskMode())
-        return;
+    //if (isInMaskMode())
+     //   return;
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
     auto canvas = bitmapTexture->canvas();
-
-    FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
 
     auto srcCanvas = static_cast<const BitmapTextureUltralight&>(sourceTexture).canvas();
     ultralight::Rect src = { 0.0f, 0.0f, (float)srcSize.width(), (float)srcSize.height() };
@@ -533,9 +551,15 @@ void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTe
     Color color = UltralightColorWHITE;
 
     canvas->Save();
-    bitmapTexture->applyClipIfNeeded(clip_stack_);
+    //bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvas(srcCanvas, src, dest, color);
     canvas->Restore();
+
+#if 0
+    // Visualize clip by drawing a border rect:
+    auto clipRect = WebCore::FloatRect(clip_stack_.scissorRect());
+    drawBorder(Color::red, 12.0f, clipRect, TransformationMatrix());
+#endif
 }
 
 } // namespace WebCore

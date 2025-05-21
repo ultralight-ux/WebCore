@@ -207,12 +207,15 @@ void TextureMapperLayer::paintSelf(TextureMapperPaintOptions& options)
     options.textureMapper.setPatternTransform(TransformationMatrix());
 
 #if USE(ULTRALIGHT)
+    // We update the backing store here to avoid unnecessary updates if the layer is not visible.
     updateBackingStore(options.textureMapper, options.offset, layerRect(), transform);
 #endif
 
     if (backingStore) {
 #if USE(ULTRALIGHT)
         if (backingStore->isTiledBackingStore()) {
+            // We only paint tiles that are visible in the current viewport and to maintain accurate
+            // information about visible tiles (to recycle backing store textures).
             auto* tiledBackingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore);
             tiledBackingStore->paintToTextureMapperWithClip(options.textureMapper, options.offset, targetRect, transform, options.opacity);
         } else {

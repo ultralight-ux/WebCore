@@ -47,7 +47,12 @@ public:
     explicit BitmapTexturePool(bool useGpu, TextureMapper* textureMapper = nullptr);
 #endif
 
-    RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags);
+    RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags, bool needsExactSize = false);
+
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+    uint32_t currentPaintId() const { return m_currentPaintId; }
+    void setCurrentPaintId(uint32_t paintId) { m_currentPaintId = paintId; }
+#endif
 
 private:
     struct Entry {
@@ -56,10 +61,16 @@ private:
         { }
 
         void markIsInUse() { m_lastUsedTime = MonotonicTime::now(); }
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+        void markIsInUse(uint32_t paintId) { m_lastUsedTime = MonotonicTime::now(); m_lastPaintId = paintId; }
+#endif
         bool canBeReleased (MonotonicTime minUsedTime) const { return m_lastUsedTime < minUsedTime && m_texture->refCount() == 1; }
 
         RefPtr<BitmapTexture> m_texture;
         MonotonicTime m_lastUsedTime;
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+        uint32_t m_lastPaintId { 0 };
+#endif
     };
 
     void scheduleReleaseUnusedTextures();
@@ -77,6 +88,7 @@ private:
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
     bool m_useGpu;
     TextureMapper* m_textureMapper;
+    uint32_t m_currentPaintId { 0 };
 #endif
 
     Vector<Entry> m_textures;

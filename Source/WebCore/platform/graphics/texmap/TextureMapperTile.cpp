@@ -76,8 +76,9 @@ void TextureMapperTile::updateContents(TextureMapper& textureMapper, GraphicsLay
 
 void TextureMapperTile::paint(TextureMapper& textureMapper, const TransformationMatrix& transform, float opacity, const unsigned exposedEdges)
 {
-    if (texture().get())
+    if (texture().get()) {
         textureMapper.drawTexture(*texture().get(), rect(), transform, opacity, exposedEdges);
+    }
 
 #if USE(ULTRALIGHT)
     m_lastPaintId = static_cast<TextureMapperUltralight&>(textureMapper).paint_id();

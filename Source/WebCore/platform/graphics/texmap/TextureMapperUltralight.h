@@ -4,6 +4,7 @@
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
 #include "ClipStackUltralight.h"
+#include "BitmapTextureUltralight.h"
 #include <Ultralight/private/Canvas.h>
 
 namespace WebCore {
@@ -46,7 +47,7 @@ public:
     virtual void bindSurface(BitmapTexture* surface) override;
 
     // Get the currently-bound surface.
-    BitmapTexture* currentSurface() { return current_surface_.get(); }
+    BitmapTextureUltralight* currentSurface() { return current_surface_.get(); }
 
     virtual void beginClip(const TransformationMatrix&, const FloatRoundedRect&) override;
 
@@ -65,6 +66,8 @@ public:
     virtual void endPainting() override;
 
     virtual IntSize maxTextureSize() const override;
+
+    virtual RefPtr<BitmapTexture> acquireTextureFromPool(const IntSize&, const BitmapTexture::Flags = BitmapTexture::SupportsAlpha, bool needsExactSize = false);
 
     // Unique ID for the current paint op (increments with each call to beginPainting).
     uint32_t paint_id() const { return paint_id_; }
@@ -85,12 +88,15 @@ public:
     static float getScaleRequiredForFilter(RefPtr<FilterOperation> filter, const IntSize& size, float deviceScale, bool use_gpu);
 
 protected:
+
+    ClipStackUltralight* clipStack() { return currentSurface() ? &currentSurface()->clipStack() : (root_surface_ ? &root_surface_->clipStack() : nullptr); }
+
     bool use_gpu_;
     double scale_;
     IntRect bounds_;
     uint32_t paint_id_;
-    RefPtr<BitmapTexture> current_surface_;
-    RefPtr<BitmapTexture> root_surface_;
+    RefPtr<BitmapTextureUltralight> current_surface_;
+    RefPtr<BitmapTextureUltralight> root_surface_;
     ClipStackUltralight clip_stack_;
 };
 

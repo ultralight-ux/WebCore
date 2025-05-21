@@ -381,8 +381,8 @@ public:
     void updateScrollSnapPropertiesWithFrameView(const FrameView&) const;
 
     // For testing.
-    void startTrackingLayerFlushes() { m_layerFlushCount = 0; }
-    unsigned layerFlushCount() const { return m_layerFlushCount; }
+    WEBCORE_EXPORT void startTrackingLayerFlushes() { m_layerFlushCount = 0; }
+    WEBCORE_EXPORT unsigned layerFlushCount() const { return m_layerFlushCount; }
 
     void startTrackingCompositingUpdates() { m_compositingUpdateCount = 0; }
     unsigned compositingUpdateCount() const { return m_compositingUpdateCount; }

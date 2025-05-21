@@ -19,17 +19,17 @@ class FilterOperation;
 class WEBCORE_EXPORT BitmapTextureUltralight : public BitmapTexture {
 public:
 
-    static Ref<BitmapTexture> create(TextureMapper* textureMapper, bool use_gpu, const Flags flags = NoFlag)
+    static Ref<BitmapTextureUltralight> create(TextureMapper* textureMapper, bool use_gpu, const Flags flags = NoFlag)
     {
         return adoptRef(*new BitmapTextureUltralight(textureMapper, use_gpu, flags));
     }
 
-    static Ref<BitmapTexture> create(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas)
+    static Ref<BitmapTextureUltralight> create(TextureMapper* textureMapper, ultralight::RefPtr<ultralight::Canvas> canvas)
     {
         return adoptRef(*new BitmapTextureUltralight(textureMapper, canvas));
     }
 
-    static Ref<BitmapTexture> create(TextureMapper* textureMapper, const IntSize& paddedSize,
+    static Ref<BitmapTextureUltralight> create(TextureMapper* textureMapper, const IntSize& paddedSize,
         const IntSize& contentSize, bool use_gpu, const Flags flags = NoFlag)
     {
         return adoptRef(*new BitmapTextureUltralight(textureMapper, paddedSize, contentSize, use_gpu, flags));
@@ -54,9 +54,13 @@ public:
 
     bool use_gpu() const { return use_gpu_; }
 
-    void applyClipIfNeeded(const ClipStackUltralight& clip);
+    ClipStackUltralight& clipStack() { return clip_stack_; }
+    const ClipStackUltralight& clipStack() const { return clip_stack_; }
 
-    // Inherited from BitmapTexture:
+    // Apply the current clip to the canvas
+    void applyClip();
+
+    // The following are inherited from BitmapTexture:
     
     virtual bool isBackedByUltralight() const override { return true; }
 
@@ -97,10 +101,8 @@ protected:
     std::unique_ptr<ultralight::Surface> surface_; // CPU backing store, only used when use_gpu_ is false.
     ultralight::RefPtr<ultralight::Canvas> canvas_;
     IntSize canvas_size_;
+    ClipStackUltralight clip_stack_;
     FilterInfo filter_info_;
-    size_t clip_hash_ = 0;
-    bool clip_applied_ = false;
-    bool needs_clear_ = false;
 
     void resetCanvas(const IntSize& size);
 };
