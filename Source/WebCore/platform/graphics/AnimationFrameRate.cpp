@@ -28,16 +28,42 @@
 #include "AnimationFrameRate.h"
 #include <wtf/text/TextStream.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#include <cmath>
+#endif
+
 namespace WebCore {
 
 static constexpr OptionSet<ThrottlingReason> halfSpeedThrottlingReasons { ThrottlingReason::LowPowerMode, ThrottlingReason::NonInteractedCrossOriginFrame, ThrottlingReason::VisuallyIdle };
 
+FramesPerSecond getFullSpeedFramesPerSecond()
+{
+#if USE(ULTRALIGHT)
+    double animation_interval = ultralight::Platform::instance().config().animation_timer_delay;
+    if (animation_interval > 0)
+        return static_cast<unsigned>(std::ceil(1.0 / animation_interval));
+#endif
+    return FullSpeedFramesPerSecond;
+}
+
+Seconds getFullSpeedAnimationInterval()
+{
+#if USE(ULTRALIGHT)
+    double animation_interval = ultralight::Platform::instance().config().animation_timer_delay;
+    if (animation_interval > 0)
+        return Seconds(animation_interval);
+#endif
+    return FullSpeedAnimationInterval;
+}
+
 FramesPerSecond framesPerSecondNearestFullSpeed(FramesPerSecond nominalFramesPerSecond)
 {
-    if (nominalFramesPerSecond <= FullSpeedFramesPerSecond)
+    if (nominalFramesPerSecond <= getFullSpeedFramesPerSecond())
         return nominalFramesPerSecond;
 
-    float fullSpeedRatio = nominalFramesPerSecond / FullSpeedFramesPerSecond;
+    float fullSpeedRatio = nominalFramesPerSecond / getFullSpeedFramesPerSecond();
     FramesPerSecond floorSpeed = nominalFramesPerSecond / std::floor(fullSpeedRatio);
     FramesPerSecond ceilSpeed = nominalFramesPerSecond / std::ceil(fullSpeedRatio);
 
@@ -49,12 +75,12 @@ std::optional<FramesPerSecond> preferredFramesPerSecond(OptionSet<ThrottlingReas
     if (reasons.contains(ThrottlingReason::OutsideViewport))
         return std::nullopt;
 
-    if (!nominalFramesPerSecond || *nominalFramesPerSecond == FullSpeedFramesPerSecond) {
+    if (!nominalFramesPerSecond || *nominalFramesPerSecond == getFullSpeedFramesPerSecond()) {
         // FIXME: handle ThrottlingReason::VisuallyIdle
         if (reasons.containsAny(halfSpeedThrottlingReasons))
             return HalfSpeedThrottlingFramesPerSecond;
 
-        return FullSpeedFramesPerSecond;
+        return getFullSpeedFramesPerSecond();
     }
 
     auto framesPerSecond = preferFrameRatesNear60FPS ? framesPerSecondNearestFullSpeed(*nominalFramesPerSecond) : *nominalFramesPerSecond;
@@ -69,11 +95,11 @@ Seconds preferredFrameInterval(OptionSet<ThrottlingReason> reasons, std::optiona
     if (reasons.contains(ThrottlingReason::OutsideViewport))
         return AggressiveThrottlingAnimationInterval;
 
-    if (!nominalFramesPerSecond || *nominalFramesPerSecond == FullSpeedFramesPerSecond) {
+    if (!nominalFramesPerSecond || *nominalFramesPerSecond == getFullSpeedFramesPerSecond()) {
         // FIXME: handle ThrottlingReason::VisuallyIdle
         if (reasons.containsAny(halfSpeedThrottlingReasons))
             return HalfSpeedThrottlingAnimationInterval;
-        return FullSpeedAnimationInterval;
+        return getFullSpeedAnimationInterval();
     }
 
     auto framesPerSecond = preferFrameRatesNear60FPS ? framesPerSecondNearestFullSpeed(*nominalFramesPerSecond) : *nominalFramesPerSecond;
@@ -87,8 +113,8 @@ Seconds preferredFrameInterval(OptionSet<ThrottlingReason> reasons, std::optiona
 
 FramesPerSecond preferredFramesPerSecondFromInterval(Seconds preferredFrameInterval)
 {
-    if (preferredFrameInterval == FullSpeedAnimationInterval)
-        return FullSpeedFramesPerSecond;
+    if (preferredFrameInterval == getFullSpeedAnimationInterval())
+        return getFullSpeedFramesPerSecond();
 
     if (preferredFrameInterval == HalfSpeedThrottlingAnimationInterval)
         return HalfSpeedThrottlingFramesPerSecond;

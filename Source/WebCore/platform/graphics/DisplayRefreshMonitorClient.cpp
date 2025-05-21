@@ -29,9 +29,24 @@
 #include "DisplayRefreshMonitor.h"
 #include "DisplayRefreshMonitorManager.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#include <cmath>
+#endif
+
 namespace WebCore {
 
+#if USE(ULTRALIGHT)
+DisplayRefreshMonitorClient::DisplayRefreshMonitorClient()
+{
+    double animation_interval = ultralight::Platform::instance().config().animation_timer_delay;
+    if (animation_interval > 0)
+        m_preferredFramesPerSecond = static_cast<unsigned>(std::ceil(1.0 / animation_interval));
+}
+#else
 DisplayRefreshMonitorClient::DisplayRefreshMonitorClient() = default;
+#endif
 
 DisplayRefreshMonitorClient::~DisplayRefreshMonitorClient()
 {

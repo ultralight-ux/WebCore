@@ -80,10 +80,6 @@ Seconds ScriptedAnimationController::preferredScriptedAnimationInterval() const
     if (!page)
         return FullSpeedAnimationInterval;
 
-#if USE(ULTRALIGHT)
-    return Seconds(ultralight::Platform::instance().config().animation_timer_delay);
-#endif
-
     return preferredFrameInterval(throttlingReasons(), page->displayNominalFramesPerSecond(), page->settings().preferPageRenderingUpdatesNear60FPSEnabled());
 }
 
