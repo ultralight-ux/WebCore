@@ -104,6 +104,33 @@ private:
     MonotonicTime m_startTime;
 };
 
+#elif USE(ULTRALIGHT) && 1
+
+class FloatPoint;
+
+class ScrollAnimationSmooth final: public ScrollAnimation {
+public:
+    ScrollAnimationSmooth(ScrollAnimationClient&);
+    virtual ~ScrollAnimationSmooth();
+
+    bool startAnimatedScrollToDestination(const FloatPoint& fromOffset, const FloatPoint& destinationOffset);
+    bool retargetActiveAnimation(const FloatPoint& newOffset) final;
+
+    std::optional<FloatPoint> destinationOffset() const final { return m_destinationOffset; }
+
+private:
+
+    void updateScrollExtents() final;
+    void serviceAnimation(MonotonicTime) final;
+    String debugDescription() const final;
+
+    bool animateScroll(MonotonicTime);
+
+    FloatPoint m_destinationOffset;                 // logical scroll target
+    FloatPoint m_velocity { 0, 0 };                 // px / ms, decays each frame
+    std::optional<MonotonicTime> m_lastTime;        // when we last advanced
+};
+
 #else
 
 class FloatPoint;

@@ -416,12 +416,138 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
 
 } // namespace WebCore
 
+#elif USE(ULTRALIGHT) && 1
+
+
+namespace WebCore {
+
+//------------------------------------------------------------------------------
+// Constants roughly based off macOS's UIScrollViewDecelerationRateNormal (0.998)
+//------------------------------------------------------------------------------
+static constexpr float decayPerMs             = 0.994f;   // Lambda
+static constexpr float oneMinusLambda         = 1.0f - decayPerMs;
+static constexpr float initialVelocityFactor  = 3.0f;     // Boost this to increase attack
+static constexpr float stopVelocityThreshold  = 0.01f;    // px / ms (~10 px/s)
+static constexpr float stopDistanceThreshold  = 0.5f;     // px (snap to target)
+static constexpr double maxStepMilliseconds   = 500.0;    // clamp delta
+
+ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
+    : ScrollAnimation(Type::Smooth, client)
+{
+}
+
+ScrollAnimationSmooth::~ScrollAnimationSmooth() = default;
+
+bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& from, const FloatPoint& to)
+{
+    auto ext = m_client.scrollExtentsForAnimation(*this);
+    m_currentOffset = from;
+    m_destinationOffset = to.constrainedBetween(ext.minimumScrollOffset(), ext.maximumScrollOffset());
+
+    if (!isActive() && from == m_destinationOffset)
+        return false;
+
+    // Choose a velocity that will asymptotically converge in an ideal lambda tail.
+    auto delta = m_destinationOffset - m_currentOffset; // delta is in px
+
+    m_velocity = { delta.width() * oneMinusLambda * initialVelocityFactor,
+        delta.height() * oneMinusLambda * initialVelocityFactor }; // value in px / ms
+
+    m_lastTime = MonotonicTime::now();
+
+    if (!isActive())
+        didStart(MonotonicTime::now());
+
+    return true;
+}
+
+// This is called when there is already an active animation.
+bool ScrollAnimationSmooth::retargetActiveAnimation(const FloatPoint& newDest)
+{
+    if (!isActive())
+        return false;
+
+    auto ext = m_client.scrollExtentsForAnimation(*this);
+    m_destinationOffset = newDest.constrainedBetween(ext.minimumScrollOffset(), ext.maximumScrollOffset());
+
+    // *Reset* momentum towards the new goal.
+    auto delta = m_destinationOffset - m_currentOffset;
+    m_velocity = { delta.width() * oneMinusLambda * initialVelocityFactor,
+        delta.height() * oneMinusLambda * initialVelocityFactor };
+
+    return true;
+}
+
+void ScrollAnimationSmooth::updateScrollExtents()
+{
+    auto extents = m_client.scrollExtentsForAnimation(*this);
+    m_destinationOffset = m_destinationOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
+}
+
+void ScrollAnimationSmooth::serviceAnimation(MonotonicTime currentTime)
+{
+    bool animationActive = animateScroll(currentTime);
+    m_client.scrollAnimationDidUpdate(*this, m_currentOffset);
+    if (!animationActive)
+        didEnd();
+}
+
+bool ScrollAnimationSmooth::animateScroll(MonotonicTime now)
+{
+    if (!m_lastTime)
+        m_lastTime = now;
+
+    double dtMs = (now - *m_lastTime).milliseconds();
+    if (dtMs <= 0)
+        return true; // no time advanced
+    if (dtMs > maxStepMilliseconds)
+        dtMs = maxStepMilliseconds; // clamp huge gaps
+
+    // 1. advance position with current velocity (v in px / ms)
+    m_currentOffset = { m_currentOffset.x() + m_velocity.x() * static_cast<float>(dtMs),
+        m_currentOffset.y() + m_velocity.y() * static_cast<float>(dtMs) };
+
+    // 2. detect overshoot (sign change between remaining before/after)
+    auto remaining = m_destinationOffset - m_currentOffset;
+    auto signFlip = [](float a, float b) { return (a > 0) != (b > 0); };
+
+    bool overshotX = signFlip(remaining.width(), m_velocity.x());
+    bool overshotY = signFlip(remaining.height(), m_velocity.y());
+
+    // 3. decay velocity exponentially
+    float decay = std::pow(decayPerMs, static_cast<float>(dtMs));
+    m_velocity = { m_velocity.x() * decay, m_velocity.y() * decay };
+
+    // 4. stop conditions: close enough *or* overshot *or* v == 0
+    bool done = (std::fabs(remaining.width()) <= stopDistanceThreshold 
+        && std::fabs(remaining.height()) <= stopDistanceThreshold) 
+        || (std::fabs(m_velocity.x()) <= stopVelocityThreshold 
+        && std::fabs(m_velocity.y()) <= stopVelocityThreshold) || overshotX || overshotY;
+
+    if (done) {
+        m_currentOffset = m_destinationOffset; // snap exactly onto target
+        return false; // stop animating
+    }
+
+    m_lastTime = now;
+    return true; // continue animating
+}
+
+String ScrollAnimationSmooth::debugDescription() const
+{
+    TextStream textStream;
+    return textStream.release();
+}
+
+} // namespace WebCore
+
 #else
 
 namespace WebCore {
 
 static const float animationSpeed { 1500.0f };
-static const Seconds maxAnimationDuration { 200_ms };
+static const Seconds maxAnimationDuration { 400_ms };
+static const Seconds minAnimationDuration { 100_ms };
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
     : ScrollAnimation(Type::Smooth, client)
@@ -483,7 +609,7 @@ void ScrollAnimationSmooth::updateScrollExtents()
 Seconds ScrollAnimationSmooth::durationFromDistance(const FloatSize& delta) const
 {
     float distance = euclidianDistance(delta);
-    return std::min(Seconds(distance / animationSpeed), maxAnimationDuration);
+    return std::max(std::min(Seconds(distance / animationSpeed), maxAnimationDuration), minAnimationDuration);
 }
 
 inline float linearInterpolation(float progress, float a, float b)
