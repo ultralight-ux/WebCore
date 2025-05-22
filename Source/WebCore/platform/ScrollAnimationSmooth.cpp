@@ -70,14 +70,20 @@ namespace WebCore {
 //        Animation ends when BOTH position and velocity are almost zero.
 // 
 //    5.  Tunable constants:
-//          omega*        0.022f   // higher => snappier, shorter tail
+//          omega*        0.025f   // higher => snappier, shorter tail
 //          zeta          1.0f     // >=1.0 avoids overshoot (use < 1.0 to make it springy)
 // 
 //          * omega was chosen to approximate the 0.998 deceleration rate in iOS ScrollView.
 // 
 /////////////////////////////////////////////////////////////////////////////////////////
 
+#if OS(DARWIN)
+// We use a slightly stiffer spring constant on iOS/macOS because the OS already has some
+// inherent smoothing in its scroll events and we don't want to overdo it.
+static constexpr float omega = 0.025f;      // Stiffness of spring (see above)
+#else
 static constexpr float omega = 0.022f;      // Stiffness of spring (see above)
+#endif
 static constexpr float zeta = 1.0f;         // Critical damping (see above)
 static constexpr float maxStepMs = 300.0f;  // Max time delta (to avoid large jumps)
 
