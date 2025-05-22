@@ -153,10 +153,10 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
   // Following BitmapTexture.cpp's reference implementation:
   // Calculate the source rectangle in the layer's coordinate space
 
-  IntRect sourceRect(targetRect);
+  FloatRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
   sourceRect.inflate(pad);
-  sourceRect.scale(1 / scale);
+  sourceRect.scale(1.0f / scale);
   
   // Clear the target area
   canvas_->set_blending_enabled(false);
