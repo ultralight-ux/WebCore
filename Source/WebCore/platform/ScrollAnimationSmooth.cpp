@@ -2,7 +2,7 @@
  * Copyright (C) 2016 Igalia S.L.
  * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  * Copyright (c) 2011, Google Inc. All rights reserved.
- * Copyright (C) 2023 Ultralight, Inc.
+ * Copyright (C) 2025 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,13 +36,50 @@
 #include "TimingFunction.h"
 #include <wtf/text/TextStream.h>
 
-#if USE(ULTRALIGHT) && 0
-
-static double baseRate = 120;
-static Seconds tickTime = 1_s / baseRate;
-static const Seconds minimumTimerInterval { 2_ms };
-
 namespace WebCore {
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// 
+//    This file implements smooth scrolling as a 1-D spring-mass system with
+//    *critical damping*. The main motivation is to have a smooth, snappy scrolling
+//    experience, without overshoot, oscillation, nor visual discontinuities in the first
+//    derivative (even when we receive a bunch of scroll events at once).
+//
+//    1.  Equation of motion (each axis is solved independently):
+//            d2x/dt2 + 2*zeta*omega * dx/dt + omega^2 * (x - target) = 0
+//
+//        x           current scroll offset   (pixels)
+//        target      destination offset      (pixels)
+//        dx/dt       velocity                (pixels / ms)
+//        d2x/dt2     acceleration            (pixels / ms^2)
+//        omega       natural frequency       (rad / ms)  – "stiffness"
+//        zeta        damping ratio           (unitless)
+//                    zeta = 1.0  -> critical damping (fastest settle, no overshoot)
+//
+//    2.  Integration (per animation frame)
+//            v += a * dt        // update velocity   (semi-implicit Euler)
+//            x += v * dt        // update position
+//
+//        This scheme is stable even with large or varying dt values.
+//
+//    3.  Retargeting policy
+//        retargetActiveAnimation() only changes the destination.  Velocity is
+//        preserved, so the curve remains C1-continuous (no sudden jump).
+//
+//    4.  Stop conditions
+//        Animation ends when BOTH position and velocity are almost zero.
+// 
+//    5.  Tunable constants:
+//          omega*        0.022f   // higher => snappier, shorter tail
+//          zeta          1.0f     // >=1.0 avoids overshoot (use < 1.0 to make it springy)
+// 
+//          * omega was chosen to approximate the 0.998 deceleration rate in iOS ScrollView.
+// 
+/////////////////////////////////////////////////////////////////////////////////////////
+
+static constexpr float omega = 0.022f;      // Stiffness of spring (see above)
+static constexpr float zeta = 1.0f;         // Critical damping (see above)
+static constexpr float maxStepMs = 300.0f;  // Max time delta (to avoid large jumps)
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
     : ScrollAnimation(Type::Smooth, client)
@@ -51,411 +88,22 @@ ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
 
 ScrollAnimationSmooth::~ScrollAnimationSmooth() = default;
 
-bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& fromOffset, const FloatPoint& destinationOffset)
-{
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-
-    m_currentOffset = fromOffset;
-    m_destinationOffset = destinationOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-
-    m_verticalData = PerAxisData(fromOffset.y(), extents.maximumScrollOffset().y() - extents.minimumScrollOffset().y());
-    m_horizontalData = PerAxisData(fromOffset.x(), extents.maximumScrollOffset().x() - extents.minimumScrollOffset().x());
-
-    if (!isActive() && fromOffset == m_destinationOffset)
-        return false;
-
-    bool mayScrollV = updatePerAxisData(m_verticalData, ScrollGranularity::Pixel, m_destinationOffset.y());
-    bool mayScrollH = updatePerAxisData(m_horizontalData, ScrollGranularity::Pixel, m_destinationOffset.x());
-
-    if (!mayScrollV && !mayScrollH)
-        return false;
-
-    if (!isActive())
-        didStart(MonotonicTime::now());
-
-    return true;
-}
-
-bool ScrollAnimationSmooth::retargetActiveAnimation(const FloatPoint& newOffset)
-{
-    if (!isActive())
-        return false;
-
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-    m_destinationOffset = newOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-    bool mayScrollV = updatePerAxisData(m_verticalData, ScrollGranularity::Pixel, m_destinationOffset.y());
-    bool mayScrollH = updatePerAxisData(m_horizontalData, ScrollGranularity::Pixel, m_destinationOffset.x());
-
-    if (!mayScrollV && !mayScrollH)
-        return false;
-
-    return true;
-}
-
-void ScrollAnimationSmooth::updateScrollExtents()
-{
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-    m_destinationOffset = m_destinationOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-}
-
-void ScrollAnimationSmooth::serviceAnimation(MonotonicTime currentTime)
-{
-    bool animateV = animateScroll(m_verticalData, currentTime);
-    bool animateH = animateScroll(m_verticalData, currentTime);
-
-    auto newOffset = FloatPoint(m_horizontalData.currentPosition, m_verticalData.currentPosition);
-    if (newOffset != m_currentOffset) {
-        m_currentOffset = newOffset;
-        m_client.scrollAnimationDidUpdate(*this, m_currentOffset);
-    }
-
-    if (!animateV && !animateH)
-        didEnd();
-}
-
-String ScrollAnimationSmooth::debugDescription() const
-{
-    TextStream textStream;
-    textStream << "ScrollAnimationSmooth " << this << " active " << isActive() << " to " << m_destinationOffset << " from current offset " << currentOffset();
-    return textStream.release();
-}
-
-static inline double curveAt(ScrollAnimationSmooth::Curve curve, double t)
-{
-    switch (curve) {
-    case ScrollAnimationSmooth::Curve::Linear:
-        return t;
-    case ScrollAnimationSmooth::Curve::Quadratic:
-        return t * t;
-    case ScrollAnimationSmooth::Curve::Cubic:
-        return t * t * t;
-    case ScrollAnimationSmooth::Curve::Quartic:
-        return t * t * t * t;
-    case ScrollAnimationSmooth::Curve::Bounce:
-        // Time base is chosen to keep the bounce points simpler:
-        // 1 (half bounce coming in) + 1 + .5 + .25
-        static const double timeBase = 2.75;
-        static const double timeBaseSquared = timeBase * timeBase;
-        if (t < 1 / timeBase)
-            return timeBaseSquared * t * t;
-        if (t < 2 / timeBase) {
-            // Invert a [-.5,.5] quadratic parabola, center it in [1,2].
-            double t1 = t - 1.5 / timeBase;
-            const double parabolaAtEdge = 1 - .5 * .5;
-            return timeBaseSquared * t1 * t1 + parabolaAtEdge;
-        }
-        if (t < 2.5 / timeBase) {
-            // Invert a [-.25,.25] quadratic parabola, center it in [2,2.5].
-            double t2 = t - 2.25 / timeBase;
-            const double parabolaAtEdge = 1 - .25 * .25;
-            return timeBaseSquared * t2 * t2 + parabolaAtEdge;
-        }
-        // Invert a [-.125,.125] quadratic parabola, center it in [2.5,2.75].
-        const double parabolaAtEdge = 1 - .125 * .125;
-        t -= 2.625 / timeBase;
-        return timeBaseSquared * t * t + parabolaAtEdge;
-    }
-    ASSERT_NOT_REACHED();
-    return 0;
-}
-
-static inline double attackCurve(ScrollAnimationSmooth::Curve curve, double deltaTime, double curveT, double startPosition, double attackPosition)
-{
-    double t = deltaTime / curveT;
-    double positionFactor = curveAt(curve, t);
-    return startPosition + positionFactor * (attackPosition - startPosition);
-}
-
-static inline double releaseCurve(ScrollAnimationSmooth::Curve curve, double deltaTime, double curveT, double releasePosition, double desiredPosition)
-{
-    double t = deltaTime / curveT;
-    double positionFactor = 1 - curveAt(curve, 1 - t);
-    return releasePosition + (positionFactor * (desiredPosition - releasePosition));
-}
-
-static inline double coastCurve(ScrollAnimationSmooth::Curve curve, double factor)
-{
-    return 1 - curveAt(curve, 1 - factor);
-}
-
-static inline double curveIntegralAt(ScrollAnimationSmooth::Curve curve, double t)
-{
-    switch (curve) {
-    case ScrollAnimationSmooth::Curve::Linear:
-        return t * t / 2;
-    case ScrollAnimationSmooth::Curve::Quadratic:
-        return t * t * t / 3;
-    case ScrollAnimationSmooth::Curve::Cubic:
-        return t * t * t * t / 4;
-    case ScrollAnimationSmooth::Curve::Quartic:
-        return t * t * t * t * t / 5;
-    case ScrollAnimationSmooth::Curve::Bounce:
-        static const double timeBase = 2.75;
-        static const double timeBaseSquared = timeBase * timeBase;
-        static const double timeBaseSquaredOverThree = timeBaseSquared / 3;
-        double area;
-        double t1 = std::min(t, 1 / timeBase);
-        area = timeBaseSquaredOverThree * t1 * t1 * t1;
-        if (t < 1 / timeBase)
-            return area;
-
-        t1 = std::min(t - 1 / timeBase, 1 / timeBase);
-        // The integral of timeBaseSquared * (t1 - .5 / timeBase) * (t1 - .5 / timeBase) + parabolaAtEdge
-        static const double secondInnerOffset = timeBaseSquared * .5 / timeBase;
-        double bounceArea = t1 * (t1 * (timeBaseSquaredOverThree * t1 - secondInnerOffset) + 1);
-        area += bounceArea;
-        if (t < 2 / timeBase)
-            return area;
-
-        t1 = std::min(t - 2 / timeBase, 0.5 / timeBase);
-        // The integral of timeBaseSquared * (t1 - .25 / timeBase) * (t1 - .25 / timeBase) + parabolaAtEdge
-        static const double thirdInnerOffset = timeBaseSquared * .25 / timeBase;
-        bounceArea = t1 * (t1 * (timeBaseSquaredOverThree * t1 - thirdInnerOffset) + 1);
-        area += bounceArea;
-        if (t < 2.5 / timeBase)
-            return area;
-
-        t1 = t - 2.5 / timeBase;
-        // The integral of timeBaseSquared * (t1 - .125 / timeBase) * (t1 - .125 / timeBase) + parabolaAtEdge
-        static const double fourthInnerOffset = timeBaseSquared * .125 / timeBase;
-        bounceArea = t1 * (t1 * (timeBaseSquaredOverThree * t1 - fourthInnerOffset) + 1);
-        area += bounceArea;
-        return area;
-    }
-    ASSERT_NOT_REACHED();
-    return 0;
-}
-
-static inline double attackArea(ScrollAnimationSmooth::Curve curve, double startT, double endT)
-{
-    double startValue = curveIntegralAt(curve, startT);
-    double endValue = curveIntegralAt(curve, endT);
-    return endValue - startValue;
-}
-
-static inline double releaseArea(ScrollAnimationSmooth::Curve curve, double startT, double endT)
-{
-    double startValue = curveIntegralAt(curve, 1 - endT);
-    double endValue = curveIntegralAt(curve, 1 - startT);
-    return endValue - startValue;
-}
-
-static inline void getAnimationParametersForGranularity(ScrollGranularity granularity, Seconds& animationTime, Seconds& repeatMinimumSustainTime, Seconds& attackTime, Seconds& releaseTime, ScrollAnimationSmooth::Curve& coastTimeCurve, Seconds& maximumCoastTime)
-{
-    static const Seconds baseTickTime = 1_s / baseRate;
-
-    switch (granularity) {
-    case ScrollGranularity::Document:
-        animationTime = baseTickTime * 20;
-        repeatMinimumSustainTime = baseTickTime * 20;
-        attackTime = baseTickTime * 20;
-        releaseTime = baseTickTime * 20;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
-        maximumCoastTime = 0_s;
-        break;
-    case ScrollGranularity::Line:
-        animationTime = baseTickTime * 10;
-        repeatMinimumSustainTime = baseTickTime * 7;
-        attackTime = baseTickTime * 3;
-        releaseTime = baseTickTime * 3;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
-        maximumCoastTime = baseTickTime * 3;
-        break;
-    case ScrollGranularity::Page:
-        animationTime = baseTickTime * 30;
-        repeatMinimumSustainTime = baseTickTime * 20;
-        attackTime = baseTickTime * 10;
-        releaseTime = baseTickTime * 10;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
-        maximumCoastTime = 0_s;
-        break;
-    case ScrollGranularity::Pixel:
-        animationTime = baseTickTime * 10;
-        repeatMinimumSustainTime = baseTickTime * 7;
-        attackTime = baseTickTime * 3;
-        releaseTime = baseTickTime * 3;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
-        maximumCoastTime = baseTickTime * 3;
-        break;
-    default:
-        ASSERT_NOT_REACHED();
-    }
-}
-
-bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranularity granularity, float position)
-{
-    float delta = position - data.desiredPosition;
-
-    if (!data.startTime || !delta || (delta < 0) != (data.desiredPosition - data.currentPosition < 0)) {
-        data.desiredPosition = data.currentPosition;
-        data.startTime = {};
-    }
-
-    float newPosition = data.desiredPosition + delta;
-
-    if (newPosition == data.desiredPosition)
-        return false;
-
-    Seconds animationTime, repeatMinimumSustainTime, attackTime, releaseTime, maximumCoastTime;
-    Curve coastTimeCurve;
-    getAnimationParametersForGranularity(granularity, animationTime, repeatMinimumSustainTime, attackTime, releaseTime, coastTimeCurve, maximumCoastTime);
-
-    data.desiredPosition = newPosition;
-    if (!data.startTime)
-        data.attackTime = attackTime;
-    data.animationTime = animationTime;
-    data.releaseTime = releaseTime;
-
-    // Prioritize our way out of over constraint.
-    if (data.attackTime + data.releaseTime > data.animationTime) {
-        if (data.releaseTime > data.animationTime)
-            data.releaseTime = data.animationTime;
-        data.attackTime = data.animationTime - data.releaseTime;
-    }
-
-    if (!data.startTime) {
-        // FIXME: This should be the time from the event that got us here.
-        data.startTime = MonotonicTime::now() - tickTime / 2.;
-        data.startPosition = data.currentPosition;
-        data.lastAnimationTime = data.startTime;
-    }
-    data.startVelocity = data.currentVelocity;
-
-    double remainingDelta = data.desiredPosition - data.currentPosition;
-    double attackAreaLeft = 0;
-    Seconds deltaTime = data.lastAnimationTime - data.startTime;
-    Seconds attackTimeLeft = std::max(0_s, data.attackTime - deltaTime);
-    Seconds timeLeft = data.animationTime - deltaTime;
-    Seconds minTimeLeft = data.releaseTime + std::min(repeatMinimumSustainTime, data.animationTime - data.releaseTime - attackTimeLeft);
-    if (timeLeft < minTimeLeft) {
-        data.animationTime = deltaTime + minTimeLeft;
-        timeLeft = minTimeLeft;
-    }
-
-    if (maximumCoastTime > (repeatMinimumSustainTime + releaseTime)) {
-        double targetMaxCoastVelocity = data.visibleLength * .25 * baseRate;
-        // This needs to be as minimal as possible while not being intrusive to page up/down.
-        double minCoastDelta = data.visibleLength;
-
-        if (fabs(remainingDelta) > minCoastDelta) {
-            double maxCoastDelta = maximumCoastTime.value() * targetMaxCoastVelocity;
-            double coastFactor = std::min(1., (fabs(remainingDelta) - minCoastDelta) / (maxCoastDelta - minCoastDelta));
-
-            // We could play with the curve here - linear seems a little soft. Initial testing makes me want to feed into the sustain time more aggressively.
-            Seconds coastMinTimeLeft = std::min(maximumCoastTime, minTimeLeft + (maximumCoastTime - minTimeLeft) * coastCurve(coastTimeCurve, coastFactor));
-
-            if (Seconds additionalTime = std::max(0_s, coastMinTimeLeft - minTimeLeft)) {
-                Seconds additionalReleaseTime = std::min(additionalTime, additionalTime * (releaseTime / (releaseTime + repeatMinimumSustainTime)));
-                data.releaseTime = releaseTime + additionalReleaseTime;
-                data.animationTime = deltaTime + coastMinTimeLeft;
-                timeLeft = coastMinTimeLeft;
-            }
-        }
-    }
-
-    Seconds releaseTimeLeft = std::min(timeLeft, data.releaseTime);
-    Seconds sustainTimeLeft = std::max(0_s, timeLeft - releaseTimeLeft - attackTimeLeft);
-    if (attackTimeLeft) {
-        double attackSpot = deltaTime / data.attackTime;
-        attackAreaLeft = attackArea(Curve::Cubic, attackSpot, 1) * data.attackTime.value();
-    }
-
-    double releaseSpot = (data.releaseTime - releaseTimeLeft) / data.releaseTime;
-    double releaseAreaLeft = releaseArea(Curve::Cubic, releaseSpot, 1) * data.releaseTime.value();
-
-    data.desiredVelocity = remainingDelta / (attackAreaLeft + sustainTimeLeft.value() + releaseAreaLeft);
-    data.releasePosition = data.desiredPosition - data.desiredVelocity * releaseAreaLeft;
-    if (attackAreaLeft)
-        data.attackPosition = data.startPosition + data.desiredVelocity * attackAreaLeft;
-    else
-        data.attackPosition = data.releasePosition - (data.animationTime - data.releaseTime - data.attackTime).value() * data.desiredVelocity;
-
-    if (sustainTimeLeft) {
-        double roundOff = data.releasePosition - ((attackAreaLeft ? data.attackPosition : data.currentPosition) + data.desiredVelocity * sustainTimeLeft.value());
-        data.desiredVelocity += roundOff / sustainTimeLeft.value();
-    }
-
-    return true;
-}
-
-bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime currentTime)
-{
-    if (!data.startTime)
-        return false;
-
-    Seconds lastScrollInterval = currentTime - data.lastAnimationTime;
-    if (lastScrollInterval < minimumTimerInterval)
-        return true;
-
-    data.lastAnimationTime = currentTime;
-
-    Seconds deltaTime = currentTime - data.startTime;
-    double newPosition = data.currentPosition;
-
-    if (deltaTime > data.animationTime) {
-        data = PerAxisData(data.desiredPosition, data.visibleLength);
-        return false;
-    }
-    if (deltaTime < data.attackTime)
-        newPosition = attackCurve(Curve::Cubic, deltaTime.value(), data.attackTime.value(), data.startPosition, data.attackPosition);
-    else if (deltaTime < (data.animationTime - data.releaseTime))
-        newPosition = data.attackPosition + (deltaTime - data.attackTime).value() * data.desiredVelocity;
-    else {
-        // release is based on targeting the exact final position.
-        Seconds releaseDeltaT = deltaTime - (data.animationTime - data.releaseTime);
-        newPosition = releaseCurve(Curve::Cubic, releaseDeltaT.value(), data.releaseTime.value(), data.releasePosition, data.desiredPosition);
-    }
-
-    // Normalize velocity to a per second amount. Could be used to check for jank.
-    if (lastScrollInterval > 0_s)
-        data.currentVelocity = (newPosition - data.currentPosition) / lastScrollInterval.value();
-    data.currentPosition = newPosition;
-
-    return true;
-}
-
-} // namespace WebCore
-
-#elif USE(ULTRALIGHT) && 1
-
-
-namespace WebCore {
-
-//------------------------------------------------------------------------------
-// Roughly based off macOS's UIScrollViewDecelerationRateNormal (friction = 0.002)
-//------------------------------------------------------------------------------
-static constexpr float friction               = 0.006f;   // Boost this to slow down faster
-static constexpr float attack                 = 1.75f;     // Boost this to increase initial velocity
-static constexpr float stopVelocityThreshold  = 0.01f;    // px / ms (~10 px/s)
-static constexpr float stopDistanceThreshold  = 0.5f;     // px (snap to target)
-static constexpr double maxStepMilliseconds   = 500.0;    // clamp delta
-
-ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
-    : ScrollAnimation(Type::Smooth, client)
-{
-}
-
-ScrollAnimationSmooth::~ScrollAnimationSmooth() = default;
-
-bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& from, const FloatPoint& to)
+bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& from,
+    const FloatPoint& to)
 {
     auto ext = m_client.scrollExtentsForAnimation(*this);
     m_currentOffset = from;
-    m_destinationOffset = to.constrainedBetween(ext.minimumScrollOffset(), ext.maximumScrollOffset());
+    m_destinationOffset = to.constrainedBetween(ext.minimumScrollOffset(),
+        ext.maximumScrollOffset());
 
     if (!isActive() && from == m_destinationOffset)
-        return false;
+        return false; // already there
 
-    // Choose a velocity that will asymptotically converge in an ideal lambda tail.
-    auto delta = m_destinationOffset - m_currentOffset; // delta is in px
-
-    m_velocity = { delta.width() * friction * attack,
-                   delta.height() * friction * attack  }; // value in px / ms
-
+    m_velocity = { 0, 0 }; // we start at rest, imagine pulling back a spring...
     m_lastTime = MonotonicTime::now();
 
     if (!isActive())
-        didStart(MonotonicTime::now());
+        didStart(*m_lastTime);
 
     return true;
 }
@@ -467,12 +115,13 @@ bool ScrollAnimationSmooth::retargetActiveAnimation(const FloatPoint& newDest)
         return false;
 
     auto ext = m_client.scrollExtentsForAnimation(*this);
-    m_destinationOffset = newDest.constrainedBetween(ext.minimumScrollOffset(), ext.maximumScrollOffset());
+    m_destinationOffset = newDest.constrainedBetween(ext.minimumScrollOffset(),
+        ext.maximumScrollOffset());
 
-    // *Reset* momentum towards the new goal
-    auto delta = m_destinationOffset - m_currentOffset;
-    m_velocity = { delta.width() * friction * attack,
-                   delta.height() * friction * attack };
+    if (m_destinationOffset == m_currentOffset)
+        return false;
+
+    // Velocity is left untouched (continuously integrated in animateScroll())
 
     return true;
 }
@@ -496,37 +145,48 @@ bool ScrollAnimationSmooth::animateScroll(MonotonicTime now)
     if (!m_lastTime)
         m_lastTime = now;
 
-    double dtMs = (now - *m_lastTime).milliseconds();
+    float dtMs = static_cast<float>((now - *m_lastTime).milliseconds());
     if (dtMs <= 0)
-        return true; // no time advanced
-    if (dtMs > maxStepMilliseconds)
-        dtMs = maxStepMilliseconds; // clamp huge gaps
+        return true; // no time traveling
+    if (dtMs > maxStepMs)
+        dtMs = maxStepMs; // clamp huge gaps in case FPS drops
 
-    // 1. advance position with current velocity (v in px / ms)
-    m_currentOffset = { m_currentOffset.x() + m_velocity.x() * static_cast<float>(dtMs),
-        m_currentOffset.y() + m_velocity.y() * static_cast<float>(dtMs) };
+    // 1. spring acceleration (critically-damped) 
+    FloatSize dispBefore = m_currentOffset - m_destinationOffset; // initial displacement (in px)
 
-    // 2. detect overshoot (sign change between remaining before/after)
-    auto remaining = m_destinationOffset - m_currentOffset;
-    auto signFlip = [](float a, float b) { return (a > 0) != (b > 0); };
+    float ax = -omega * omega * dispBefore.width()
+        - 2.0f * zeta * omega * m_velocity.x();
+    float ay = -omega * omega * dispBefore.height()
+        - 2.0f * zeta * omega * m_velocity.y();
 
-    bool overshotX = signFlip(remaining.width(), m_velocity.x());
-    bool overshotY = signFlip(remaining.height(), m_velocity.y());
+    // 2. integrate velocity  
+    m_velocity.setX(m_velocity.x() + ax * dtMs);
+    m_velocity.setY(m_velocity.y() + ay * dtMs);
 
-    float decayPerMs = (1.0f - friction);
+    // 3. integrate position 
+    m_currentOffset.move(m_velocity.x() * dtMs,
+        m_velocity.y() * dtMs);
 
-    // 3. decay velocity exponentially
-    float decay = std::pow(decayPerMs, static_cast<float>(dtMs));
-    m_velocity = { m_velocity.x() * decay, m_velocity.y() * decay };
+    // 4. test if we should stop (we overshot or are close enough)
+    FloatSize dispAfter = m_currentOffset - m_destinationOffset; // new displacement (in px)
 
-    // 4. stop conditions: close enough *or* overshot *or* v == 0
-    bool done = (std::fabs(remaining.width()) <= stopDistanceThreshold 
-        && std::fabs(remaining.height()) <= stopDistanceThreshold) 
-        || (std::fabs(m_velocity.x()) <= stopVelocityThreshold 
-        && std::fabs(m_velocity.y()) <= stopVelocityThreshold) || overshotX || overshotY;
+    auto signFlip = [](float a, float b) {
+        return (a > 0.f) != (b > 0.f);
+    };
 
-    if (done) {
-        m_currentOffset = m_destinationOffset; // snap exactly onto target
+    bool overshootX = signFlip(dispBefore.width(), dispAfter.width());
+    bool overshootY = signFlip(dispBefore.height(), dispAfter.height());
+
+    constexpr float posEps = 1.0f; // px
+    constexpr float velEps = 0.02f; // px / ms
+
+    bool inTolerance = std::fabs(dispAfter.width()) <= posEps && 
+        std::fabs(dispAfter.height()) <= posEps &&
+        std::fabs(m_velocity.x()) <= velEps &&
+        std::fabs(m_velocity.y()) <= velEps;
+
+    if (overshootX || overshootY || inTolerance) {
+        m_currentOffset = m_destinationOffset; // snap to destination
         return false; // stop animating
     }
 
@@ -541,114 +201,3 @@ String ScrollAnimationSmooth::debugDescription() const
 }
 
 } // namespace WebCore
-
-#else
-
-namespace WebCore {
-
-static const float animationSpeed { 1500.0f };
-static const Seconds maxAnimationDuration { 400_ms };
-static const Seconds minAnimationDuration { 100_ms };
-
-ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
-    : ScrollAnimation(Type::Smooth, client)
-    , m_timingFunction(CubicBezierTimingFunction::create())
-{
-}
-
-ScrollAnimationSmooth::~ScrollAnimationSmooth() = default;
-
-bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& fromOffset, const FloatPoint& destinationOffset)
-{
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-
-    m_currentOffset = m_startOffset = fromOffset;
-    m_destinationOffset = destinationOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-
-    if (!isActive() && fromOffset == m_destinationOffset)
-        return false;
-
-    m_duration = durationFromDistance(m_destinationOffset - m_startOffset);
-    if (!m_duration)
-        return false;
-
-    downcast<CubicBezierTimingFunction>(*m_timingFunction).setTimingFunctionPreset(CubicBezierTimingFunction::TimingFunctionPreset::EaseInOut);
-
-    if (!isActive())
-        didStart(MonotonicTime::now());
-
-    return true;
-}
-
-bool ScrollAnimationSmooth::retargetActiveAnimation(const FloatPoint& newOffset)
-{
-    if (!isActive())
-        return false;
-
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-
-    m_startTime = MonotonicTime::now();
-    m_startOffset = m_currentOffset;
-    m_destinationOffset = newOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-    m_duration = durationFromDistance(m_destinationOffset - m_startOffset);
-    downcast<CubicBezierTimingFunction>(*m_timingFunction).setTimingFunctionPreset(CubicBezierTimingFunction::TimingFunctionPreset::EaseOut);
-    m_timingFunction = CubicBezierTimingFunction::create(CubicBezierTimingFunction::TimingFunctionPreset::EaseOut);
-
-    if (m_currentOffset == m_destinationOffset || !m_duration)
-        return false;
-
-    return true;
-}
-
-void ScrollAnimationSmooth::updateScrollExtents()
-{
-    auto extents = m_client.scrollExtentsForAnimation(*this);
-    // FIXME: Ideally fix up m_startOffset so m_currentOffset doesn't go backwards.
-    m_destinationOffset = m_destinationOffset.constrainedBetween(extents.minimumScrollOffset(), extents.maximumScrollOffset());
-}
-
-Seconds ScrollAnimationSmooth::durationFromDistance(const FloatSize& delta) const
-{
-    float distance = euclidianDistance(delta);
-    return std::max(std::min(Seconds(distance / animationSpeed), maxAnimationDuration), minAnimationDuration);
-}
-
-inline float linearInterpolation(float progress, float a, float b)
-{
-    return a + progress * (b - a);
-}
-
-void ScrollAnimationSmooth::serviceAnimation(MonotonicTime currentTime)
-{
-    bool animationActive = animateScroll(currentTime);
-    m_client.scrollAnimationDidUpdate(*this, m_currentOffset);
-    if (!animationActive)
-        didEnd();
-}
-
-bool ScrollAnimationSmooth::animateScroll(MonotonicTime currentTime)
-{
-    MonotonicTime endTime = m_startTime + m_duration;
-    currentTime = std::min(currentTime, endTime);
-
-    double fractionComplete = (currentTime - m_startTime) / m_duration;
-    double progress = m_timingFunction->transformProgress(fractionComplete, m_duration.value());
-
-    m_currentOffset = {
-        linearInterpolation(progress, m_startOffset.x(), m_destinationOffset.x()),
-        linearInterpolation(progress, m_startOffset.y(), m_destinationOffset.y()),
-    };
-
-    return currentTime < endTime;
-}
-
-String ScrollAnimationSmooth::debugDescription() const
-{
-    TextStream textStream;
-    textStream << "ScrollAnimationSmooth " << this << " active " << isActive() << " from " << m_startOffset << " to " << m_destinationOffset << " current offset " << currentOffset();
-    return textStream.release();
-}
-
-} // namespace WebCore
-
-#endif
