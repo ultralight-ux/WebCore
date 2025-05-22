@@ -422,11 +422,10 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
 namespace WebCore {
 
 //------------------------------------------------------------------------------
-// Constants roughly based off macOS's UIScrollViewDecelerationRateNormal (0.998)
+// Roughly based off macOS's UIScrollViewDecelerationRateNormal (friction = 0.002)
 //------------------------------------------------------------------------------
-static constexpr float decayPerMs             = 0.994f;   // Lambda
-static constexpr float oneMinusLambda         = 1.0f - decayPerMs;
-static constexpr float initialVelocityFactor  = 3.0f;     // Boost this to increase attack
+static constexpr float friction               = 0.006f;   // Boost this to slow down faster
+static constexpr float attack                 = 1.75f;     // Boost this to increase initial velocity
 static constexpr float stopVelocityThreshold  = 0.01f;    // px / ms (~10 px/s)
 static constexpr float stopDistanceThreshold  = 0.5f;     // px (snap to target)
 static constexpr double maxStepMilliseconds   = 500.0;    // clamp delta
@@ -450,8 +449,8 @@ bool ScrollAnimationSmooth::startAnimatedScrollToDestination(const FloatPoint& f
     // Choose a velocity that will asymptotically converge in an ideal lambda tail.
     auto delta = m_destinationOffset - m_currentOffset; // delta is in px
 
-    m_velocity = { delta.width() * oneMinusLambda * initialVelocityFactor,
-        delta.height() * oneMinusLambda * initialVelocityFactor }; // value in px / ms
+    m_velocity = { delta.width() * friction * attack,
+                   delta.height() * friction * attack  }; // value in px / ms
 
     m_lastTime = MonotonicTime::now();
 
@@ -470,10 +469,10 @@ bool ScrollAnimationSmooth::retargetActiveAnimation(const FloatPoint& newDest)
     auto ext = m_client.scrollExtentsForAnimation(*this);
     m_destinationOffset = newDest.constrainedBetween(ext.minimumScrollOffset(), ext.maximumScrollOffset());
 
-    // *Reset* momentum towards the new goal.
+    // *Reset* momentum towards the new goal
     auto delta = m_destinationOffset - m_currentOffset;
-    m_velocity = { delta.width() * oneMinusLambda * initialVelocityFactor,
-        delta.height() * oneMinusLambda * initialVelocityFactor };
+    m_velocity = { delta.width() * friction * attack,
+                   delta.height() * friction * attack };
 
     return true;
 }
@@ -513,6 +512,8 @@ bool ScrollAnimationSmooth::animateScroll(MonotonicTime now)
 
     bool overshotX = signFlip(remaining.width(), m_velocity.x());
     bool overshotY = signFlip(remaining.height(), m_velocity.y());
+
+    float decayPerMs = (1.0f - friction);
 
     // 3. decay velocity exponentially
     float decay = std::pow(decayPerMs, static_cast<float>(dtMs));
