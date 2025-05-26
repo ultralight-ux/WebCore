@@ -442,8 +442,16 @@ void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, 
     srcRectScaled.scale(resolutionScale());
 
     if (auto* backend = ensureBackendCreated()) {
+#if USE(ULTRALIGHT)
+        // Ensure we make a copy of the image when drawing to GPU so we don't modify pixels mid-flight.
+        bool drawingToGPU = destContext.hasPlatformContext() && !destContext.platformContext()->surface();
+        bool shouldCopy = &destContext == &context() || drawingToGPU;
+        if (auto image = copyNativeImageForDrawing(shouldCopy ? CopyBackingStore : DontCopyBackingStore))
+            destContext.drawNativeImage(*image, backendSize(), destRect, srcRectScaled, options);
+#else
         if (auto image = copyNativeImageForDrawing(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
             destContext.drawNativeImage(*image, backendSize(), destRect, srcRectScaled, options);
+#endif
         backend->finalizeDrawIntoContext(destContext);
     }
 }
@@ -455,8 +463,16 @@ void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& des
     adjustedSrcRect.scale(resolutionScale());
 
     if (ensureBackendCreated()) {
+#if USE(ULTRALIGHT)
+        // Ensure we make a copy of the image when drawing to GPU so we don't modify pixels mid-flight.
+        bool drawingToGPU = destContext.hasPlatformContext() && !destContext.platformContext()->surface();
+        bool shouldCopy = &destContext == &context() || drawingToGPU;
+        if (auto image = copyImage(shouldCopy ? CopyBackingStore : DontCopyBackingStore))
+            image->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
+#else
         if (auto image = copyImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
             image->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
+#endif
     }
 }
 
