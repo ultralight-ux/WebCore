@@ -72,9 +72,13 @@ public:
     // Unique ID for the current paint op (increments with each call to beginPainting).
     uint32_t paint_id() const { return paint_id_; }
 
+    bool use_gpu() const { return use_gpu_; }
+
+    RefPtr<BitmapTexture> drawFiltered(RefPtr<BitmapTexture> src, const IntSize& srcSize, RefPtr<FilterOperation> filter);
+
     void drawFiltered(const BitmapTexture& sourceTexture, const BitmapTexture* contentTexture, RefPtr<FilterOperation>, int pass, float adjustScale);
 
-    void drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize);
+    void drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize, const FloatPoint& dstOffset);
 
     // Some filters require multiple passes to render correctly.
     // This function returns the number of passes required for the given filter.

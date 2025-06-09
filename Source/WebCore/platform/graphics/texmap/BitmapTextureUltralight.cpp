@@ -267,107 +267,125 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
     if (filters.isEmpty())
       return this;
 
-    const bool enable_ultralight_filters = true;
+    TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
+    RefPtr<BitmapTexture> previousSurface = texmapUL.currentSurface();
+    RefPtr<BitmapTexture> resultSurface = this;
+    RefPtr<BitmapTexture> intermediateSurface;
+    RefPtr<BitmapTexture> contentSurface;
 
-    if (enable_ultralight_filters) {
-        TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
-        RefPtr<BitmapTexture> previousSurface = texmapUL.currentSurface();
-        RefPtr<BitmapTexture> resultSurface = this;
-        RefPtr<BitmapTexture> intermediateSurface;
-        RefPtr<BitmapTexture> spareSurface;
+    filter_info_ = FilterInfo();
 
-        filter_info_ = FilterInfo();
+    //defersLastFilter = false;
 
-        for (size_t i = 0; i < filters.size(); ++i) {
-            RefPtr<FilterOperation> filter = filters.operations()[i];
-            ASSERT(filter);
+#if 0
+    for (size_t i = 0; i < filters.size(); ++i) {
 
-            int numPasses = TextureMapperUltralight::getPassesRequiredForFilter(filter, use_gpu());
+        RefPtr<FilterOperation> filter = filters.operations()[i];
+        ASSERT(filter);
 
-            float scale = TextureMapperUltralight::getScaleRequiredForFilter(filter, contentSize(), texmapUL.scale(), use_gpu());
-            bool needsCustomScale = scale != 1.0f;
-            bool needsExactSize = filter->type() == FilterOperation::Type::DropShadow || filter->type() == FilterOperation::Type::Blur;
-
-            IntSize scaledSize = contentSize();
-            if (needsCustomScale) {
-                scaledSize = IntSize((int)std::ceil(contentSize().width() * scale), (int)std::ceil(contentSize().height() * scale));
-                // When we use a custom scale, we first draw the content to a temporary surface at the custom scale.
-                if (!intermediateSurface)
-                    intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
-                texmapUL.bindSurface(intermediateSurface.get());
-                texmapUL.drawTextureWithScale(*resultSurface.get(), contentSize(), scaledSize);
-                std::swap(resultSurface, intermediateSurface);
-
-                
-                // We then apply the filter to the temporary surface.
-                for (int j = 0; j < numPasses; ++j) {
-                    intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
-                    texmapUL.bindSurface(intermediateSurface.get());
-                    texmapUL.drawFiltered(*resultSurface.get(), spareSurface.get(), filter, j, scale);
-                    std::swap(resultSurface, intermediateSurface);
-                }
-                    
-
-                // We then draw the result to a full-sized surface at the original scale.
-                intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha, needsExactSize);
-                texmapUL.bindSurface(intermediateSurface.get());
-                texmapUL.drawTextureWithScale(*resultSurface.get(), scaledSize, contentSize());
-                std::swap(resultSurface, intermediateSurface);
-
-            } else {
-                for (int j = 0; j < numPasses; ++j) {
-                    bool last = (i == filters.size() - 1) && (j == numPasses - 1);
-                    if (defersLastFilter && last) {
-                        toBitmapTextureUL(resultSurface.get())->filter_info_ = BitmapTextureUltralight::FilterInfo(filter.copyRef(), j, spareSurface.copyRef());
-                        break;
-                    }
-
-                    if (!intermediateSurface)
-                        intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha, needsExactSize);
-                    texmapUL.bindSurface(intermediateSurface.get());
-                    texmapUL.drawFiltered(*resultSurface.get(), spareSurface.get(), filter, j, 1.0f);
-                    if (!j && filter->type() == FilterOperation::Type::DropShadow) {
-                        spareSurface = resultSurface;
-                        resultSurface = nullptr;
-                    }
-                    std::swap(resultSurface, intermediateSurface);
-                }
-            }
+        bool last = (i == filters.size() - 1);
+        if (defersLastFilter && last) {
+            toBitmapTextureUL(resultSurface.get())->filter_info_ = BitmapTextureUltralight::FilterInfo(filter.copyRef());
+            break;
         }
 
-        texmapUL.bindSurface(previousSurface.get());
-        return resultSurface;
+        intermediateSurface = texmapUL.drawFiltered(resultSurface, contentSize(), filter);
+        std::swap(resultSurface, intermediateSurface);
+    }
+#else
+    for (size_t i = 0; i < filters.size(); ++i) {
+        RefPtr<FilterOperation> filter = filters.operations()[i];
+        ASSERT(filter);
+
+        int numPasses = TextureMapperUltralight::getPassesRequiredForFilter(filter, use_gpu());
+
+        float scale = TextureMapperUltralight::getScaleRequiredForFilter(filter, contentSize(), texmapUL.scale(), use_gpu());
+            
+        bool isDropShadow = filter->type() == FilterOperation::Type::DropShadow;
+        bool isBlur = filter->type() == FilterOperation::Type::Blur;
+        bool needsExactSize = isDropShadow || isBlur;
+        bool needsCustomScale = scale != 1.0f;
+
+        IntSize scaledSize = contentSize();
+
+        if (isDropShadow) {
+            auto& shadow = static_cast<const DropShadowFilterOperation&>(*filter);
+
+            // We need to save the original content texture and draw it over the result surface
+            contentSurface = resultSurface;
+
+            scaledSize = IntSize((int)std::ceil(contentSize().width() * scale), (int)std::ceil(contentSize().height() * scale));
+
+            // When we use a custom scale, we first draw the content to a temporary surface at the custom scale.
+            intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
+            texmapUL.bindSurface(intermediateSurface.get());
+            texmapUL.drawTextureWithScale(*resultSurface.get(), contentSize(), scaledSize, FloatPoint());
+            std::swap(resultSurface, intermediateSurface);
+
+            // We then apply the filter to the temporary surface.
+            for (int j = 0; j < numPasses; ++j) {
+                intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
+                texmapUL.bindSurface(intermediateSurface.get());
+                texmapUL.drawFiltered(*resultSurface.get(), nullptr, filter, j, scale);
+                std::swap(resultSurface, intermediateSurface);
+            }
+
+            //FloatPoint dstOffset = shadow.location();
+            //dstOffset.scale((float)texmapUL.scale());
+            FloatPoint dstOffset = FloatPoint();
+
+            // We then draw the result to a full-sized surface at the original scale.
+            intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha, needsExactSize);
+            texmapUL.bindSurface(intermediateSurface.get());
+            texmapUL.drawTextureWithScale(*resultSurface.get(), scaledSize, contentSize(), dstOffset);
+
+            // Finally, we draw the original content texture over the result surface at the original scale.
+            texmapUL.drawTextureWithScale(*contentSurface.get(), contentSize(), contentSize(), FloatPoint());
+
+            std::swap(resultSurface, intermediateSurface);
+        } else if (needsCustomScale) {
+            scaledSize = IntSize((int)std::ceil(contentSize().width() * scale), (int)std::ceil(contentSize().height() * scale));
+            // When we use a custom scale, we first draw the content to a temporary surface at the custom scale.
+            intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
+            texmapUL.bindSurface(intermediateSurface.get());
+            texmapUL.drawTextureWithScale(*resultSurface.get(), contentSize(), scaledSize, FloatPoint());
+            std::swap(resultSurface, intermediateSurface);
+                
+            // We then apply the filter to the temporary surface.
+            for (int j = 0; j < numPasses; ++j) {
+                intermediateSurface = texmapUL.acquireTextureFromPool(scaledSize, BitmapTexture::SupportsAlpha, needsExactSize);
+                texmapUL.bindSurface(intermediateSurface.get());
+                texmapUL.drawFiltered(*resultSurface.get(), nullptr, filter, j, scale);
+                std::swap(resultSurface, intermediateSurface);
+            }
+
+            // We then draw the result to a full-sized surface at the original scale.
+            intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha, needsExactSize);
+            texmapUL.bindSurface(intermediateSurface.get());
+            texmapUL.drawTextureWithScale(*resultSurface.get(), scaledSize, contentSize(), FloatPoint());
+
+            std::swap(resultSurface, intermediateSurface);
+
+        } else {
+            for (int j = 0; j < numPasses; ++j) {
+                bool last = (i == filters.size() - 1) && (j == numPasses - 1);
+                if (defersLastFilter && last && !contentSurface) {
+                    toBitmapTextureUL(resultSurface.get())->filter_info_ = BitmapTextureUltralight::FilterInfo(filter.copyRef(), j, nullptr);
+                    break;
+                }
+
+                intermediateSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha, needsExactSize);
+                texmapUL.bindSurface(intermediateSurface.get());
+                texmapUL.drawFiltered(*resultSurface.get(), nullptr, filter, j, 1.0f);
+                std::swap(resultSurface, intermediateSurface);
+            }
+        }
     }
 
-    TextureMapperUltralight& texmapUL = static_cast<TextureMapperUltralight&>(textureMapper);
-    RefPtr<BitmapTexture> dstSurface = texmapUL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);
+    texmapUL.bindSurface(previousSurface.get());
+#endif
 
-    GraphicsContextUltralight ctx = BitmapTextureToGraphicsContext(*dstSurface);
-
-    double scale = texmapUL.scale();
-
-    FloatRect boundingBox = FloatRect(FloatPoint(), contentSize());
-
-    auto filter = FilterUltralight::create(filters, OptionSet<FilterRenderingMode> { FilterRenderingMode::Software },
-        FloatSize(scale, scale), Filter::ClipOperation::Intersect, boundingBox, ctx);
-
-    auto imageBuffer = ImageBuffer::create(boundingBox.size(), RenderingPurpose::LayerBacking, 1.0, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
-
-    CopyBitmaps(BitmapTextureToBitmap(*this), ImageBufferToBitmap(*imageBuffer));
-
-    FilterResults results;
-    IntRect absoluteSourceImageRect = enclosingIntRect(boundingBox);
-    auto filterImage = FilterImage::create(boundingBox, boundingBox, absoluteSourceImageRect, *imageBuffer, results.allocator());
-
-    auto resultImage = filter->apply(filterImage.get(), results);
-
-    if (!resultImage)
-      return this;
-
-    auto resultImageBuffer = resultImage->imageBuffer();
-    CopyBitmaps(ImageBufferToBitmap(*resultImageBuffer), BitmapTextureToBitmap(*dstSurface));
-
-    return dstSurface;
+    return resultSurface;
 }
 
 void BitmapTextureUltralight::resetCanvas(const IntSize& size) {
