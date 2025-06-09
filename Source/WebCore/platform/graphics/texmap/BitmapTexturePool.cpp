@@ -37,8 +37,9 @@
 
 namespace WebCore {
 
-static const Seconds releaseUnusedSecondsTolerance { 3_s };
-static const Seconds releaseUnusedTexturesTimerInterval { 500_ms };
+static const Seconds releaseUnusedSecondsTolerance { 1_s };
+static const Seconds releaseUnusedTexturesTimerInterval { 100_ms };
+static const size_t maxMemoryUsage = 128 * 1024 * 1024; // 128 MB
 
 #if USE(TEXTURE_MAPPER_GL)
 BitmapTexturePool::BitmapTexturePool(const TextureMapperContextAttributes& contextAttributes)
@@ -170,11 +171,20 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
     if (m_textures.isEmpty())
         return;
 
+    // Calculate current memory usage.
+    size_t currentMemoryUsage = 0;
+    for (const auto& entry : m_textures) {
+        if (entry.m_texture)
+            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
+    }
+
+    bool atMemoryPressure = currentMemoryUsage > maxMemoryUsage;
+
     // Delete entries, which have been unused in releaseUnusedSecondsTolerance.
     MonotonicTime minUsedTime = MonotonicTime::now() - releaseUnusedSecondsTolerance;
 
-    auto numRemoved = m_textures.removeAllMatching([&minUsedTime](const Entry& entry) {
-        return entry.canBeReleased(minUsedTime);
+    auto numRemoved = m_textures.removeAllMatching([&minUsedTime, atMemoryPressure](const Entry& entry) {
+        return entry.canBeReleased(minUsedTime, atMemoryPressure);
     });
 
     if (!m_textures.isEmpty())

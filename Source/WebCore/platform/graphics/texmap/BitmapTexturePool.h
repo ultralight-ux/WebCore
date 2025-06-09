@@ -64,7 +64,7 @@ private:
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
         void markIsInUse(uint32_t paintId) { m_lastUsedTime = MonotonicTime::now(); m_lastPaintId = paintId; }
 #endif
-        bool canBeReleased (MonotonicTime minUsedTime) const { return m_lastUsedTime < minUsedTime && m_texture->refCount() == 1; }
+        bool canBeReleased (MonotonicTime minUsedTime, bool atMemoryPressure) const { return (m_lastUsedTime < minUsedTime || atMemoryPressure) && m_texture->refCount() == 1; }
 
         RefPtr<BitmapTexture> m_texture;
         MonotonicTime m_lastUsedTime;
