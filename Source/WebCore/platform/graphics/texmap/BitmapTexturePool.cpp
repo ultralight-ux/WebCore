@@ -35,11 +35,13 @@
 #include "BitmapTextureUltralight.h"
 #endif
 
+//#define DEBUG_LOG
+
 namespace WebCore {
 
-static const Seconds releaseUnusedSecondsTolerance { 1_s };
-static const Seconds releaseUnusedTexturesTimerInterval { 100_ms };
-static const size_t maxMemoryUsage = 128 * 1024 * 1024; // 128 MB
+static const Seconds releaseUnusedSecondsTolerance { 2_s };
+static const Seconds releaseUnusedTexturesTimerInterval { 300_ms };
+static const size_t maxMemoryUsage = 150 * 1024 * 1024; // 150 MB
 
 #if USE(TEXTURE_MAPPER_GL)
 BitmapTexturePool::BitmapTexturePool(const TextureMapperContextAttributes& contextAttributes)
@@ -84,25 +86,23 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
         selectedEntry = std::find_if(m_textures.begin(), m_textures.end(),
             [&](Entry& entry) {
                 return entry.m_texture->refCount() == 1
-                    && entry.m_lastPaintId != currentPaintId()
                     && entry.m_texture->size() == size
                     && entry.m_texture->flags() == flags;
             });
     } else {
-        // Round to next highest multiple of 32
-        if (width % 32)
-            width += 32 - (width % 32);
-        if (height % 32)
-            height += 32 - (height % 32);
+        // Round to next highest multiple of 128
+        if (width % 128)
+            width += 128 - (width % 128);
+        if (height % 128)
+            height += 128 - (height % 128);
         paddedSize = IntSize(width, height);
 
         // Gather all the textures that match the size and flags into a vector.
         Vector<Entry*> candidates;
         for (auto& entry : m_textures) {
             if (entry.m_texture->refCount() == 1
-                && entry.m_lastPaintId != currentPaintId()
-                && entry.m_texture->size().width() >= paddedSize.width()
-                && entry.m_texture->size().height() >= paddedSize.height()
+                && entry.m_texture->size().width() >= size.width()
+                && entry.m_texture->size().height() >= size.height()
                 && entry.m_texture->flags() == flags) {
                 candidates.append(&entry);
             }
@@ -120,23 +120,38 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
             // We found an entry with dimensions big enough to satisfy the request, but we have to make
             // sure its excess area is within a reasonable range:
 
-            // If the excess area is more than 100% of the requested area or more than 150K pixels we
-            // won't use it to avoid wasting memory.
-            auto excessArea = selectedEntry->m_texture->size().area() - size.area();
-            if (excessArea > size.area() || excessArea > 150000) {
-                selectedEntry = nullptr;
+            unsigned int textureArea = selectedEntry->m_texture->size().area();
+            unsigned int paddedArea = paddedSize.area();
+
+            if (textureArea > paddedArea) {
+                // If the excess area is more than 100% of the requested area or more than 400K pixels we
+                // won't use it to avoid wasting memory.
+                auto excessArea = textureArea - paddedArea;
+                if (excessArea > paddedArea || excessArea > 400000) {
+                    selectedEntry = nullptr;
+                }
             }
         }
+    }
+
+        // Calculate current memory usage.
+    size_t currentMemoryUsage = 0;
+    for (const auto& entry : m_textures) {
+        if (entry.m_texture)
+            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
     }
 
     // Otherwise, we need to create a new texture.
     if (!selectedEntry || selectedEntry == m_textures.end()) {
         m_textures.append(Entry(createTexture(paddedSize, size, flags)));
         selectedEntry = &m_textures.last();
+#ifdef DEBUG_LOG
+        printf("BitmapTexturePool: [%zu MB] + texture with size %dx%d\n", currentMemoryUsage / (1024 * 1024), paddedSize.width(), paddedSize.height());
+#endif
     }
 
     scheduleReleaseUnusedTextures();
-    selectedEntry->markIsInUse(currentPaintId());
+    selectedEntry->markIsInUse();
     selectedEntry->m_texture->reset(size, flags);
     return selectedEntry->m_texture.copyRef();
 #else
@@ -186,6 +201,17 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
     auto numRemoved = m_textures.removeAllMatching([&minUsedTime, atMemoryPressure](const Entry& entry) {
         return entry.canBeReleased(minUsedTime, atMemoryPressure);
     });
+
+    currentMemoryUsage = 0;
+    for (const auto& entry : m_textures) {
+        if (entry.m_texture)
+            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
+    }
+
+#ifdef DEBUG_LOG
+    if (numRemoved)
+        printf("BitmapTexturePool: [%zu MB] - %zu textures, B\n", currentMemoryUsage / (1024 * 1024), (size_t)numRemoved);
+#endif
 
     if (!m_textures.isEmpty())
         scheduleReleaseUnusedTextures();

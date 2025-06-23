@@ -480,7 +480,6 @@ void TextureMapperUltralight::setDepthRange(double zNear, double zFar)
 void TextureMapperUltralight::beginPainting(PaintFlags)
 {
     paint_id_++;
-    m_texturePool->setCurrentPaintId(paint_id_);
     bindSurface(0);
 }
 
@@ -498,36 +497,8 @@ RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntS
     return selectedTexture;
 }
 
-RefPtr<BitmapTexture> TextureMapperUltralight::drawFiltered(RefPtr<BitmapTexture> src, const IntSize& srcSize, RefPtr<FilterOperation> filter)
-{
-    int numPasses = getPassesRequiredForFilter(filter, use_gpu());
-
-    float scale = getScaleRequiredForFilter(filter, srcSize, this->scale(), use_gpu());
-
-    bool isDropShadow = filter->type() == FilterOperation::Type::DropShadow;
-    bool isBlur = filter->type() == FilterOperation::Type::Blur;
-    bool needsExactSize = isDropShadow || isBlur;
-    bool needsCustomScale = scale != 1.0f;
-    IntSize scaledSize = srcSize;
-
-    RefPtr<BitmapTexture> previousSurface = currentSurface();
-    RefPtr<BitmapTexture> resultSurface = src;
-    RefPtr<BitmapTexture> intermediateSurface;
-
-    for (int i = 0; i < numPasses; ++i) {
-        intermediateSurface = acquireTextureFromPool(srcSize, BitmapTexture::SupportsAlpha, needsExactSize);
-        bindSurface(intermediateSurface.get());
-        drawFiltered(*resultSurface.get(), nullptr, filter, i, scale);
-        std::swap(resultSurface, intermediateSurface);
-    }
-
-    bindSurface(previousSurface.get());
-
-    return resultSurface;
-}
-
-void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
-    const BitmapTexture* contentTexture, RefPtr<FilterOperation> operation, int pass, float adjustScale)
+void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture, const IntSize& srcSize, 
+    const BitmapTexture* contentTexture, RefPtr<FilterOperation> operation, int pass, float adjustScale, bool blend)
 {
     ProfiledZone;
     if (!sourceTexture.isValid())
@@ -539,16 +510,16 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     //if (isInMaskMode())
      //   return;
 
-    auto filter = ToUltralightFilter(operation, sourceTexture.size(), pass, contentTexture, scale(), adjustScale);
+    auto filter = ToUltralightFilter(operation, srcSize, pass, contentTexture, scale(), adjustScale);
     if (filter->type() == ultralight::Filter::Type::None) {
-        drawTexture(sourceTexture, FloatRect(0, 0, sourceTexture.size().width(), sourceTexture.size().height()));
+        drawTexture(sourceTexture, FloatRect(0, 0, srcSize.width(), srcSize.height()));
         return;
     }
 
     auto bitmapTexture = static_cast<BitmapTextureUltralight*>(current_surface_.get());
     auto canvas = bitmapTexture->canvas();
 
-    FloatRect target(IntPoint::zero(), sourceTexture.contentSize());
+    FloatRect target(IntPoint::zero(), srcSize);
 
     auto srcCanvas = static_cast<const BitmapTextureUltralight&>(sourceTexture).canvas();
     ultralight::Rect src = { target.x(), target.y(), target.maxX(), target.maxY() };
@@ -562,8 +533,11 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
     }
 
     canvas->Save();
+    bool blendingEnabled = canvas->blending_enabled();
+    canvas->set_blending_enabled(blend);
     //bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
+    canvas->set_blending_enabled(blendingEnabled);
     canvas->Restore();
 
 #if 0
@@ -573,7 +547,7 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture,
 #endif
 }
 
-void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize, const FloatPoint& dstOffset)
+void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize, const FloatPoint& dstOffset, bool blend)
 {
     ProfiledZone;
     if (!sourceTexture.isValid())
@@ -595,8 +569,11 @@ void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTe
     Color color = UltralightColorWHITE;
 
     canvas->Save();
+    bool blendingEnabled = canvas->blending_enabled();
+    canvas->set_blending_enabled(blend);
     //bitmapTexture->applyClipIfNeeded(clip_stack_);
     canvas->DrawCanvas(srcCanvas, src, dest, color);
+    canvas->set_blending_enabled(blendingEnabled);
     canvas->Restore();
 
 #if 0

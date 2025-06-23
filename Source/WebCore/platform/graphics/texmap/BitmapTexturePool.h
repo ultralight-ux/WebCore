@@ -49,11 +49,6 @@ public:
 
     RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags, bool needsExactSize = false);
 
-#if USE(TEXTURE_MAPPER_ULTRALIGHT)
-    uint32_t currentPaintId() const { return m_currentPaintId; }
-    void setCurrentPaintId(uint32_t paintId) { m_currentPaintId = paintId; }
-#endif
-
 private:
     struct Entry {
         explicit Entry(RefPtr<BitmapTexture>&& texture)
@@ -61,9 +56,6 @@ private:
         { }
 
         void markIsInUse() { m_lastUsedTime = MonotonicTime::now(); }
-#if USE(TEXTURE_MAPPER_ULTRALIGHT)
-        void markIsInUse(uint32_t paintId) { m_lastUsedTime = MonotonicTime::now(); m_lastPaintId = paintId; }
-#endif
         bool canBeReleased (MonotonicTime minUsedTime, bool atMemoryPressure) const { return (m_lastUsedTime < minUsedTime || atMemoryPressure) && m_texture->refCount() == 1; }
 
         RefPtr<BitmapTexture> m_texture;
@@ -88,7 +80,6 @@ private:
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
     bool m_useGpu;
     TextureMapper* m_textureMapper;
-    uint32_t m_currentPaintId { 0 };
 #endif
 
     Vector<Entry> m_textures;
