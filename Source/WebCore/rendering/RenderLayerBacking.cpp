@@ -888,7 +888,7 @@ bool RenderLayerBacking::updateCompositedBounds()
 
         layerBounds.intersect(clippingBounds);
     }
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
     else {
       // Sanity check: always clip to the size of the document
       auto& view = renderer().view();
