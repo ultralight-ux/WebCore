@@ -140,7 +140,7 @@ void ImageBufferUltralightBackend::putPixelBuffer(const PixelBuffer& pixelBuffer
 void ImageBufferUltralightBackend::setUsesCachedNativeImage()
 {
     if (!m_cachedNativeImage)
-        m_cachedNativeImage = NativeImage::create(ultralight::Image::Create(m_bitmap, true));
+        m_cachedNativeImage = NativeImage::create(ultralight::Image::Create(m_bitmap, true, true));
 }
 
 void ImageBufferUltralightBackend::invalidateCachedNativeImage()
@@ -152,6 +152,11 @@ void ImageBufferUltralightBackend::invalidateCachedNativeImage()
 unsigned ImageBufferUltralightBackend::bytesPerRow() const
 {
     return m_bitmap->row_bytes();
+}
+
+void ImageBufferUltralightBackend::clearContents()
+{
+    m_bitmap->Erase();
 }
 
 } // namespace WebCore

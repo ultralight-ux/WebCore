@@ -38,6 +38,8 @@ public:
     void setUsesCachedNativeImage() override;
     void invalidateCachedNativeImage() override;
 
+    void clearContents() override;
+
     ultralight::Surface* surface() const { return m_surface.get(); }
     ultralight::RefPtr<ultralight::Bitmap> bitmap() { return m_bitmap; }
 

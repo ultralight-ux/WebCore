@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies)
  * Copyright (C) 2015 Igalia S.L.
+ * Copyright (C) 2025 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions

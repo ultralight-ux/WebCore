@@ -176,6 +176,8 @@ public:
 
     const Parameters& parameters() { return m_parameters; }
 
+    unsigned bpp() const { return bytesPerRow(); }
+
 protected:
     WEBCORE_EXPORT ImageBufferBackend(const Parameters&);
 

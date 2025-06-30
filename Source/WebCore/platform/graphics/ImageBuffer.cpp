@@ -442,7 +442,7 @@ void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, 
     srcRectScaled.scale(resolutionScale());
 
     if (auto* backend = ensureBackendCreated()) {
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
         // Ensure we make a copy of the image when drawing to GPU so we don't modify pixels mid-flight.
         bool drawingToGPU = destContext.hasPlatformContext() && !destContext.platformContext()->surface();
         bool shouldCopy = &destContext == &context() || drawingToGPU;

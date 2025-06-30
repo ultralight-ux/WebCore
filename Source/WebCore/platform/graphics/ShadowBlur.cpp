@@ -45,6 +45,8 @@
 
 #if USE(ULTRALIGHT)
 
+#include <Ultralight/private/Painter.h>
+
 namespace WebCore {
 
 // Shadow parameters
@@ -197,13 +199,10 @@ public:
         if (m_imageBuffer && m_imageBuffer->truncatedLogicalSize().width() >= size.width() && m_imageBuffer->truncatedLogicalSize().height() >= size.height())
             return m_imageBuffer;
 
-        // Round to the nearest 32 pixels so we do not grow the buffer for similar sized requests.
-        IntSize roundedSize(roundUpToMultipleOf32(size.width()), roundUpToMultipleOf32(size.height()));
-
         clearScratchBuffer();
 
-        // ShadowBlur is not used with accelerated drawing, so it's OK to make an unconditionally unaccelerated buffer.
-        m_imageBuffer = ImageBuffer::create(roundedSize, RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+        // Get buffer from pool
+        m_imageBuffer = ShadowBufferPool::singleton().acquireBuffer(size);
         return m_imageBuffer;
     }
 
@@ -299,6 +298,142 @@ static inline int roundUpToMultipleOf32(int d)
 {
     return (1 + (d >> 5)) << 5;
 }
+
+// ShadowBufferPool - manages a pool of reusable ImageBuffers for shadow rendering
+class ShadowBufferPool {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    ShadowBufferPool()
+        : m_releaseUnusedBuffersTimer(RunLoop::main(), this, &ShadowBufferPool::releaseUnusedBuffersTimerFired)
+    {
+    }
+
+    static ShadowBufferPool& singleton()
+    {
+        static NeverDestroyed<ShadowBufferPool> pool;
+        return pool;
+    }
+
+    RefPtr<ImageBuffer> acquireBuffer(const IntSize& size)
+    {
+        if (size.isEmpty() || size.width() < 1 || size.height() < 1)
+            return nullptr;
+
+        uint64_t currentFrameId = ultralight::Painter::instance().frame_id();
+
+        // Round to nearest 32 pixels
+        IntSize paddedSize(roundUpToMultipleOf32(size.width()), 
+                          roundUpToMultipleOf32(size.height()));
+
+        Entry* selectedEntry = nullptr;
+
+        // Find a buffer that:
+        // 1. Has refCount == 1 (not in use)
+        // 2. Wasn't used in the current frame
+        // 3. Matches our size requirements
+        for (auto& entry : m_buffers) {
+            if (entry.m_buffer->refCount() == 1 
+                && entry.m_lastUsedFrameId != currentFrameId
+                && entry.m_buffer->truncatedLogicalSize() == paddedSize) {
+                selectedEntry = &entry;
+                break;
+            }
+        }
+
+        // If no exact match, try to find one that's big enough
+        if (!selectedEntry) {
+            for (auto& entry : m_buffers) {
+                if (entry.m_buffer->refCount() == 1 
+                    && entry.m_lastUsedFrameId != currentFrameId
+                    && entry.m_buffer->truncatedLogicalSize().width() >= paddedSize.width()
+                    && entry.m_buffer->truncatedLogicalSize().height() >= paddedSize.height()) {
+                    
+                    // Check if the excess area is reasonable (not more than 100% or 100K pixels)
+                    auto bufferArea = entry.m_buffer->truncatedLogicalSize().area();
+                    auto requestedArea = paddedSize.area();
+                    auto excessArea = bufferArea - requestedArea;
+                    
+                    if (excessArea <= requestedArea && excessArea <= 100000) {
+                        selectedEntry = &entry;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If still no match, create a new buffer
+        if (!selectedEntry) {
+            auto imageBuffer = ImageBuffer::create(paddedSize, RenderingPurpose::Unspecified, 1, 
+                                                  DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+            if (!imageBuffer)
+                return nullptr;
+
+            imageBuffer->setUsesCachedNativeImage();
+            m_buffers.append(Entry(WTFMove(imageBuffer)));
+            selectedEntry = &m_buffers.last();
+        }
+
+        // Update tracking info
+        selectedEntry->m_lastUsedTime = MonotonicTime::now();
+        selectedEntry->m_lastUsedFrameId = currentFrameId;
+
+        // Clear the buffer for reuse
+        selectedEntry->m_buffer->clearContents();
+
+        scheduleReleaseUnusedBuffers();
+        return selectedEntry->m_buffer.copyRef();
+    }
+
+private:
+    struct Entry {
+        explicit Entry(RefPtr<ImageBuffer>&& buffer)
+            : m_buffer(WTFMove(buffer))
+            , m_lastUsedTime(MonotonicTime::now())
+            , m_lastUsedFrameId(0)
+        { }
+
+        RefPtr<ImageBuffer> m_buffer;
+        MonotonicTime m_lastUsedTime;
+        uint64_t m_lastUsedFrameId;
+    };
+
+    void scheduleReleaseUnusedBuffers()
+    {
+        if (m_releaseUnusedBuffersTimer.isActive())
+            return;
+
+        m_releaseUnusedBuffersTimer.startOneShot(300_ms);
+    }
+
+    void releaseUnusedBuffersTimerFired()
+    {
+        if (m_buffers.isEmpty())
+            return;
+
+        // Calculate current memory usage
+        size_t currentMemoryUsage = 0;
+        for (const auto& entry : m_buffers) {
+            if (entry.m_buffer)
+                currentMemoryUsage += entry.m_buffer->truncatedLogicalSize().area() * 4;
+        }
+
+        bool atMemoryPressure = currentMemoryUsage > m_maxMemoryBytes;
+        MonotonicTime minUsedTime = MonotonicTime::now() - 2_s;
+
+        // Remove buffers that haven't been used for 2 seconds or if we're over memory limit
+        m_buffers.removeAllMatching([&minUsedTime, atMemoryPressure](const Entry& entry) {
+            return entry.m_buffer->refCount() == 1 
+                && (entry.m_lastUsedTime < minUsedTime || atMemoryPressure);
+        });
+
+        if (!m_buffers.isEmpty())
+            scheduleReleaseUnusedBuffers();
+    }
+
+    Vector<Entry> m_buffers;
+    RunLoop::Timer m_releaseUnusedBuffersTimer;
+    static constexpr size_t m_maxMemoryBytes = 50 * 1024 * 1024; // 50MB
+};
 
 class ShadowCache {
     WTF_MAKE_FAST_ALLOCATED;
@@ -404,28 +539,6 @@ private:
         
         // Check if this shadow should be cached
         if (shouldCache(stats, params)) {
-            // Try to find a suitable buffer in cache we can repurpose
-            for (auto& entry : m_cachedEntries) {
-                if (entry.bufferSize.width() >= bufferSize.width() && 
-                    entry.bufferSize.height() >= bufferSize.height() &&
-                    entry.usageCount < stats.requestCount) {
-                    
-                    // Update entry info
-                    auto& oldParams = entry.params;
-                    auto it = m_usageStats.find(oldParams);
-                    if (it != m_usageStats.end())
-                        it->value.isCached = false;
-                    
-                    // Need to redraw since we're changing the entry's purpose
-                    needsRedraw = true;
-                    entry.params = params;
-                    entry.lastUsedTime = now;
-                    entry.usageCount = stats.requestCount;
-                    
-                    stats.isCached = true;
-                    return { entry.imageBuffer, needsRedraw };
-                }
-            }
             
             // No suitable buffer found, create new if we have room
             if (m_cachedEntries.size() < m_maxCachedEntries || ensureCacheSpace()) {
@@ -482,23 +595,16 @@ private:
     {
         ASSERT(lock().isHeld());
         
-        // Round to the nearest 32 pixels
-        IntSize roundedSize(roundUpToMultipleOf32(bufferSize.width()), 
-                           roundUpToMultipleOf32(bufferSize.height()));
-        
-        auto imageBuffer = ImageBuffer::create(roundedSize, RenderingPurpose::Unspecified, 1, 
-                                              DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+        auto imageBuffer = ShadowBufferPool::singleton().acquireBuffer(bufferSize);
         if (!imageBuffer)
             return {};
 
-        // This is needed to avoid needlessly re-uploading the buffer to the GPU, with the caveat that we will
-        // need to manually invalidate the image buffer each time we modify it.
-        imageBuffer->setUsesCachedNativeImage();
+        // The pool already sets usesCachedNativeImage
             
         CacheEntry entry;
         entry.imageBuffer = imageBuffer;
         entry.params = params;
-        entry.bufferSize = roundedSize;
+        entry.bufferSize = imageBuffer->truncatedLogicalSize();
         entry.lastUsedTime = MonotonicTime::now();
         entry.usageCount = 1;
         
@@ -509,6 +615,9 @@ private:
     {
         ASSERT(lock().isHeld());
         bool needsRedraw = true;
+
+        // Force re-creation.
+        m_scratchBuffer = nullptr;
         
         // Check if scratch buffer already contains this shadow
         if (m_scratchBuffer && 
@@ -522,12 +631,7 @@ private:
                 m_scratchBuffer->truncatedLogicalSize().width() < bufferSize.width() || 
                 m_scratchBuffer->truncatedLogicalSize().height() < bufferSize.height()) {
                 
-                // Round to the nearest 32 pixels
-                IntSize roundedSize(roundUpToMultipleOf32(bufferSize.width()), 
-                                  roundUpToMultipleOf32(bufferSize.height()));
-                
-                m_scratchBuffer = ImageBuffer::create(roundedSize, RenderingPurpose::Unspecified, 1, 
-                                                    DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+                m_scratchBuffer = ShadowBufferPool::singleton().acquireBuffer(bufferSize);
                 
                 scheduleScratchBufferPurge();
             }
@@ -1000,10 +1104,11 @@ void ShadowBlur::drawShadowBuffer(GraphicsContext& graphicsContext, ImageBuffer&
 
     IntSize bufferSize = layerImage.backendSize();
     if (bufferSize != layerSize) {
-        // The rect passed to clipToImageBuffer() has to be the size of the entire buffer,
-        // but we may not have cleared it all, so clip to the filled part first.
+        // The buffer from the pool may be larger than requested. We need to clip to the actual
+        // shadow area to avoid scaling issues.
         graphicsContext.clip(FloatRect(layerOrigin, layerSize));
     }
+    // Use layerSize for clipToImageBuffer to match the coordinate system used when drawing the shadow
     graphicsContext.clipToImageBuffer(layerImage, FloatRect(layerOrigin, bufferSize));
     graphicsContext.setFillColor(m_color);
 
@@ -1142,7 +1247,7 @@ void ShadowBlur::drawInsetShadow(const AffineTransform& transform, const IntRect
 
 void ShadowBlur::drawRectShadowWithoutTiling(const AffineTransform&, const FloatRoundedRect& shadowedRect, const LayerImageProperties& layerImageProperties, const DrawBufferCallback& drawBuffer)
 {
-    auto layerImage = ImageBuffer::create(expandedIntSize(layerImageProperties.layerSize), RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    auto layerImage = ShadowBufferPool::singleton().acquireBuffer(expandedIntSize(layerImageProperties.layerSize));
     if (!layerImage)
         return;
 
@@ -1170,7 +1275,7 @@ void ShadowBlur::drawRectShadowWithoutTiling(const AffineTransform&, const Float
 
 void ShadowBlur::drawInsetShadowWithoutTiling(const AffineTransform&, const FloatRect& fullRect, const FloatRoundedRect& holeRect, const LayerImageProperties& layerImageProperties, const DrawBufferCallback& drawBuffer)
 {
-    auto layerImage = ImageBuffer::create(expandedIntSize(layerImageProperties.layerSize), RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    auto layerImage = ShadowBufferPool::singleton().acquireBuffer(expandedIntSize(layerImageProperties.layerSize));
     if (!layerImage)
         return;
 
@@ -1263,7 +1368,7 @@ void ShadowBlur::drawRectShadowWithTiling(const AffineTransform& transform, cons
     UNUSED_PARAM(layerImageProperties);
 #endif
 
-    if (auto layerImageBuffer = ImageBuffer::create(templateSize, RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8))
+    if (auto layerImageBuffer = ShadowBufferPool::singleton().acquireBuffer(templateSize))
         drawRectShadowWithTilingWithLayerImageBuffer(*layerImageBuffer, transform, shadowedRect, templateSize, edgeSize, drawImage, fillRect, templateShadow);
 }
 
@@ -1337,7 +1442,7 @@ void ShadowBlur::drawInsetShadowWithTiling(const AffineTransform& transform, con
     }
 #endif
 
-    if (auto layerImageBuffer = ImageBuffer::create(templateSize, RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8))
+    if (auto layerImageBuffer = ShadowBufferPool::singleton().acquireBuffer(templateSize))
         drawInsetShadowWithTilingWithLayerImageBuffer(*layerImageBuffer, transform, fullRect, holeRect, templateSize, edgeSize, drawImage, fillRectWithHole, templateBounds, templateHole);
 }
 
@@ -1477,6 +1582,9 @@ void ShadowBlur::blurShadowBuffer(ImageBuffer& layerImage, const IntSize& templa
 
     blurLayerImage(layerData->bytes(), blurRect.size(), blurRect.width() * 4);
     layerImage.putPixelBuffer(*layerData, blurRect);
+#if USE(ULTRALIGHT)
+    layerImage.invalidateCachedNativeImage();
+#endif
 }
 
 void ShadowBlur::blurAndColorShadowBuffer(ImageBuffer& layerImage, const IntSize& templateSize)
@@ -1499,7 +1607,7 @@ void ShadowBlur::drawShadowLayer(const AffineTransform& transform, const IntRect
 
     adjustBlurRadius(transform);
 
-    auto layerImage = ImageBuffer::create(expandedIntSize(layerImageProperties->layerSize), RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    auto layerImage = ShadowBufferPool::singleton().acquireBuffer(expandedIntSize(layerImageProperties->layerSize));
     if (!layerImage)
         return;
 
