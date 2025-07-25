@@ -54,6 +54,7 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 }
 
 void BitmapTextureUltralight::applyClip() {
+  ProfiledZone;
   if (!canvas_)
     return;
 
@@ -252,6 +253,7 @@ inline GraphicsContextUltralight BitmapTextureToGraphicsContext(BitmapTexture& b
 }
 
 inline void CopyBitmaps(ultralight::RefPtr<ultralight::Bitmap> src, ultralight::RefPtr<ultralight::Bitmap> dst) {
+  ProfiledZone;
   ultralight::IntRect srcRect = { 0, 0, (int)src->width(), (int)src->height() };
   ultralight::IntRect dstRect = { 0, 0, (int)dst->width(), (int)dst->height() };
   if (srcRect.Intersects(dstRect)) {
@@ -392,6 +394,7 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
 }
 
 void BitmapTextureUltralight::resetCanvas(const IntSize& size) {
+  ProfiledZone;
   canvas_size_ = size;
 
   if (!use_gpu_) {

@@ -492,6 +492,7 @@ IntSize TextureMapperUltralight::maxTextureSize() const
 
 RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags, bool needsExactSize)
 {
+    ProfiledZone;
     RefPtr<BitmapTexture> selectedTexture = m_texturePool->acquireTexture(size, flags, needsExactSize);
     selectedTexture->reset(size, flags);
     return selectedTexture;
