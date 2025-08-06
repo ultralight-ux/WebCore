@@ -194,6 +194,13 @@ void TextureMapperLayer::paintSelf(TextureMapperPaintOptions& options)
     TransformationMatrix transform;
     transform.translate(options.offset.width(), options.offset.height());
     transform.multiply(options.transform);
+
+    IntRect bounds = computeViewportBoundingRect(options.textureMapper.clipBounds(), transform);
+    if (bounds.isEmpty()) {
+        // Bail out early if bounds is empty (layer is clipped out)
+        return;
+    }
+
     transform.multiply(m_layerTransforms.combined);
 
     TextureMapperSolidColorLayer solidColorLayer;
@@ -541,10 +548,10 @@ IntRect transformedBoundingBox(const TransformationMatrix& transform, FloatRect 
     return { };
 }
 
-void TextureMapperLayer::computeOverlapRegions(ComputeOverlapRegionData& data, const TransformationMatrix& accumulatedReplicaTransform, bool includesReplica)
+IntRect TextureMapperLayer::computeViewportBoundingRect(const IntRect& clipBounds, const TransformationMatrix& accumulatedReplicaTransform) const
 {
     if (!m_state.visible || !m_state.contentsVisible)
-        return;
+        return IntRect();
 
     FloatRect localBoundingRect;
     if (m_backingStore || m_state.masksToBounds || m_state.maskLayer || hasFilters())
@@ -561,7 +568,15 @@ void TextureMapperLayer::computeOverlapRegions(ComputeOverlapRegionData& data, c
     TransformationMatrix transform(accumulatedReplicaTransform);
     transform.multiply(m_layerTransforms.combined);
 
-    IntRect viewportBoundingRect = transformedBoundingBox(transform, localBoundingRect, data.clipBounds);
+    return transformedBoundingBox(transform, localBoundingRect, clipBounds);
+}
+
+void TextureMapperLayer::computeOverlapRegions(ComputeOverlapRegionData& data, const TransformationMatrix& accumulatedReplicaTransform, bool includesReplica)
+{
+    if (!m_state.visible || !m_state.contentsVisible)
+        return;
+
+    IntRect viewportBoundingRect = computeViewportBoundingRect(data.clipBounds, accumulatedReplicaTransform);
 
     switch (data.mode) {
     case ComputeOverlapRegionMode::Intersection:

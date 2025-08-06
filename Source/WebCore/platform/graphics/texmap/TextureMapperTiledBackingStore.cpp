@@ -197,6 +197,7 @@ void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& texture
 
 void TextureMapperTiledBackingStore::paintToTextureMapperWithClip(TextureMapper& textureMapper, const IntSize& offset, const FloatRect& targetRect, const TransformationMatrix& transform, float opacity)
 {
+    ProfiledZone;
     updateContentsFromImageIfNeeded(textureMapper);
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(targetRect);
     for (auto& tile : m_tiles) {
@@ -210,6 +211,7 @@ void TextureMapperTiledBackingStore::paintToTextureMapperWithClip(TextureMapper&
 
 void TextureMapperTiledBackingStore::updateContentsWithClip(TextureMapper& textureMapper, const IntSize& offset, GraphicsLayer* sourceLayer, const FloatRect& layerRect, const TransformationMatrix& transform)
 {
+    ProfiledZone;
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(layerRect);
     for (auto& tile : m_tiles) {
         FloatRect globalTileRect = transformRectFromLayerToGlobalCoordinateSpace(tile.rect(), adjustedTransform, offset);

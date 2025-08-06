@@ -129,6 +129,8 @@ private:
     void removeFromParent();
     void removeAllChildren();
 
+    IntRect computeViewportBoundingRect(const IntRect&, const TransformationMatrix&) const;
+
     enum class ComputeOverlapRegionMode : uint8_t {
         Intersection,
         Union,

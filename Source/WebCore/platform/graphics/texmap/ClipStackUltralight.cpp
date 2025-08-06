@@ -5,6 +5,8 @@ namespace WebCore {
 
 ClipStackUltralight::ClipStackUltralight(const IntRect& size) : m_size(size)
 {
+    FloatRoundedRect initialClipRect(FloatRect(FloatPoint(), FloatSize(size.width(), size.height())));
+    pushClip(initialClipRect, TransformationMatrix::identity);
 }
 
 void ClipStackUltralight::reset(const IntRect& size)
@@ -14,6 +16,9 @@ void ClipStackUltralight::reset(const IntRect& size)
     m_clipMatrices.clear();
     m_clipHashes.clear();
     m_scissorRects.clear();
+
+    FloatRoundedRect initialClipRect(FloatRect(FloatPoint(), FloatSize(size.width(), size.height())));
+    pushClip(initialClipRect, TransformationMatrix::identity);
 }
 
 void ClipStackUltralight::pushClip(const FloatRoundedRect& clipRect, const TransformationMatrix& clipMatrix)
