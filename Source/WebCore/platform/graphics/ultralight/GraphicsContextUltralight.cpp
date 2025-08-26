@@ -140,11 +140,12 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
     if (!std::isfinite(phase.x()) || !std::isfinite(phase.y()))
         return;
 
-    // Compute combined transform (patternTransform and phase)
-    AffineTransform combined = patternTransform;
-    combined.multiply(AffineTransform(1, 0, 0, 1,
+    // Compute combined transform with phase and tileRect offset
+    // Apply phase as translation before pattern transform
+    AffineTransform combined(1, 0, 0, 1, 
         phase.x() + tileRect.x() * patternTransform.a(),
-        phase.y() + tileRect.y() * patternTransform.d()));
+        phase.y() + tileRect.y() * patternTransform.d());
+    combined.multiply(patternTransform);
 
     save();
 
