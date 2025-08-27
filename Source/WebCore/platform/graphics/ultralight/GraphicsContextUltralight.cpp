@@ -157,7 +157,8 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
 
     ultralight::Rect dest = destRect;
     ultralight::Rect src = tileRect;
-    platformContext()->DrawPattern(image, src, dest, combined);
+    ultralight::Point spacingPoint = { spacing.width(), spacing.height() };
+    platformContext()->DrawPattern(image, src, dest, combined, spacingPoint);
 
     restore();
 }
