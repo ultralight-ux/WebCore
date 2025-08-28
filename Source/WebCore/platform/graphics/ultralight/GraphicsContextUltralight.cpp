@@ -157,7 +157,18 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
 
     ultralight::Rect dest = destRect;
     ultralight::Rect src = tileRect;
-    ultralight::Point spacingPoint = { spacing.width(), spacing.height() };
+    
+    // Spacing is in logical coordinates, but needs to be in pattern space
+    // (matching CoreGraphics and Cairo implementations)
+    // Divide by pattern transform scale to convert to pattern space
+    float spacingX = spacing.width();
+    float spacingY = spacing.height();
+    if (patternTransform.a() != 0)
+        spacingX /= patternTransform.a();
+    if (patternTransform.d() != 0)
+        spacingY /= patternTransform.d();
+    
+    ultralight::Point spacingPoint = { spacingX, spacingY };
     platformContext()->DrawPattern(image, src, dest, combined, spacingPoint);
 
     restore();
