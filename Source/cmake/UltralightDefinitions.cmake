@@ -115,3 +115,19 @@ if (UL_ENABLE_ALLOCATOR_OVERRIDE)
 
     add_definitions(-DULTRALIGHT_ENABLE_ALLOCATOR_OVERRIDE)
 endif ()
+
+# Canvas profiling support
+if(UL_ENABLE_CANVAS_TRACING AND NOT UL_ENABLE_CANVAS_PROFILING)
+  message(STATUS "Canvas tracing requires profiling, enabling UL_ENABLE_CANVAS_PROFILING")
+  set(UL_ENABLE_CANVAS_PROFILING ON)
+endif()
+
+if(UL_ENABLE_CANVAS_PROFILING)
+  add_definitions(-DENABLE_CANVAS_PROFILING)
+  message(STATUS "Canvas profiling enabled in WebCore.")
+  
+  if(UL_ENABLE_CANVAS_TRACING)
+    add_definitions(-DENABLE_CANVAS_TRACING)
+    message(STATUS "Canvas API tracing enabled in WebCore.")
+  endif()
+endif()

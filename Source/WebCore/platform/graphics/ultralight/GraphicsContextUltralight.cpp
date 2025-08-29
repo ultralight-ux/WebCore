@@ -3,6 +3,11 @@
 #include "NotImplemented.h"
 #include "ShadowBlur.h"
 
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
+
 #if USE(ULTRALIGHT)
 
 namespace WebCore {
@@ -51,6 +56,7 @@ ultralight::Canvas* GraphicsContextUltralight::platformContext() const
 
 void GraphicsContextUltralight::save()
 {
+    CANVAS_TRACE("GraphicsContextUltralight::save");
     GraphicsContext::save();
 
     m_canvas->Save();
@@ -58,6 +64,7 @@ void GraphicsContextUltralight::save()
 
 void GraphicsContextUltralight::restore()
 {
+    CANVAS_TRACE("GraphicsContextUltralight::restore");
     if (!stackSize())
         return;
 
@@ -68,6 +75,7 @@ void GraphicsContextUltralight::restore()
 
 void GraphicsContextUltralight::drawNativeImage(NativeImage& nativeImage, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawNativeImage");
     ProfiledZone;
     auto image = nativeImage.platformImage();
     auto imageRect = FloatRect { {}, imageSize };
@@ -129,6 +137,7 @@ bool GraphicsContextUltralight::needsCachedNativeImageInvalidationWorkaround(Ren
 
 void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawPattern");
     ProfiledZone;
     if (!patternTransform.isInvertible())
         return;
@@ -177,6 +186,7 @@ void GraphicsContextUltralight::drawPattern(NativeImage& nativeImage, const Floa
 // Draws a filled rectangle with a stroked border.
 void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThickness)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawRect");
     ProfiledZone;
     applyState();
     // FIXME: this function does not handle patterns and gradients like drawPath does, it probably should.
@@ -201,6 +211,7 @@ void GraphicsContextUltralight::drawRect(const FloatRect& rect, float borderThic
 // This is only used to draw borders.
 void GraphicsContextUltralight::drawLine(const FloatPoint& point1, const FloatPoint& point2)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawLine");
     ProfiledZone;
     if (strokeStyle() == NoStroke)
         return;
@@ -219,6 +230,7 @@ void GraphicsContextUltralight::drawLine(const FloatPoint& point1, const FloatPo
 
 void GraphicsContextUltralight::drawEllipse(const FloatRect& rect)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawEllipse");
     Path path;
     path.addEllipse(rect);
     drawPath(path);
@@ -226,6 +238,7 @@ void GraphicsContextUltralight::drawEllipse(const FloatRect& rect)
 
 void GraphicsContextUltralight::applyState()
 {
+    CANVAS_TRACE("GraphicsContextUltralight::applyState");
     auto context = platformContext();
     
     context->SetCompositeOp((ultralight::CompositeOp)state().compositeMode().operation);
@@ -235,6 +248,8 @@ void GraphicsContextUltralight::applyState()
 
 void GraphicsContextUltralight::applyStrokePattern()
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::applyStrokePattern", 
+        stream << "WARNING! Not implemented.");
     if (!strokePattern())
         return;
 
@@ -243,6 +258,8 @@ void GraphicsContextUltralight::applyStrokePattern()
 
 void GraphicsContextUltralight::applyFillPattern()
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::applyFillPattern", 
+        stream << "WARNING! Not implemented.");
     if (!fillPattern())
         return;
 
@@ -251,6 +268,7 @@ void GraphicsContextUltralight::applyFillPattern()
 
 void GraphicsContextUltralight::drawPath(const Path& path)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawPath");
     if (path.isEmpty())
         return;
 
@@ -260,6 +278,7 @@ void GraphicsContextUltralight::drawPath(const Path& path)
 
 void GraphicsContextUltralight::fillPath(const Path& path)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::fillPath");
     ProfiledZone;
 
     if (path.isEmpty())
@@ -282,6 +301,7 @@ void GraphicsContextUltralight::fillPath(const Path& path)
 
 void GraphicsContextUltralight::strokePath(const Path& path)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::strokePath");
     ProfiledZone;
     if (path.isEmpty())
         return;
@@ -327,6 +347,7 @@ void GraphicsContextUltralight::strokePath(const Path& path)
 
 void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::fillRect", stream << "rect=" << rect);
     ProfiledZone;
     applyState();
     if (auto fillGradient = this->fillGradient()) {
@@ -341,6 +362,7 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect)
 
 void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& color)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::fillRect", stream << "rect=" << rect << " color=" << color);
     ProfiledZone;
 
     applyState();
@@ -357,6 +379,7 @@ void GraphicsContextUltralight::fillRect(const FloatRect& rect, const Color& col
 
 void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect, const Color& color)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::fillRoundedRectImpl", stream << "rect=" << rect << " color=" << color);
     ProfiledZone;
 
     applyState();
@@ -373,6 +396,7 @@ void GraphicsContextUltralight::fillRoundedRectImpl(const FloatRoundedRect& rect
 
 void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, const FloatRoundedRect& roundedHoleRect, const Color& color)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::fillRectWithRoundedHole", stream << "rect=" << rect << " roundedHoleRect=" << roundedHoleRect << " color=" << color);
     ProfiledZone;
 
     applyState();
@@ -405,36 +429,42 @@ void GraphicsContextUltralight::fillRectWithRoundedHole(const FloatRect& rect, c
 
 void GraphicsContextUltralight::clip(const FloatRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clip", stream << "rect=" << rect);
     ProfiledZone;
     platformContext()->SetClip(rect, false);
 }
 
 void GraphicsContextUltralight::clipRoundedRect(const FloatRoundedRect& rrect)
 {
-	ProfiledZone;
-	platformContext()->SetClip(rrect, false);
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clipRoundedRect", stream << "rrect=" << rrect);
+    ProfiledZone;
+    platformContext()->SetClip(rrect, false);
 }
 
 void GraphicsContextUltralight::clipOut(const FloatRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clipOut", stream << "rect=" << rect);
     ProfiledZone;
     platformContext()->SetClip(rect, true);
 }
 
 void GraphicsContextUltralight::clipOutRoundedRect(const FloatRoundedRect& rrect)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clipOutRoundedRect", stream << "rrect=" << rrect);
     ProfiledZone;
     platformContext()->SetClip(rrect, true);
 }
 
 void GraphicsContextUltralight::clipOut(const Path& path)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clipOut", stream << "path=" << path);
     ProfiledZone;
     platformContext()->SetClip(path.platformPath(), ultralight::kFillRule_EvenOdd, true);
 }
 
 void GraphicsContextUltralight::clipPath(const Path& path, WindRule clipRule)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clipPath", stream << "path=" << path << " clipRule=" << clipRule);
     ProfiledZone;
     platformContext()->SetClip(path.platformPath(), 
       clipRule == WindRule::EvenOdd ? ultralight::kFillRule_EvenOdd : ultralight::kFillRule_NonZero, false);
@@ -447,6 +477,7 @@ IntRect GraphicsContextUltralight::clipBounds() const
 
 void GraphicsContextUltralight::beginTransparencyLayer(float opacity)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::beginTransparencyLayer", stream << "opacity=" << opacity);
     GraphicsContext::beginTransparencyLayer(opacity);
 
     save();
@@ -456,6 +487,7 @@ void GraphicsContextUltralight::beginTransparencyLayer(float opacity)
 
 void GraphicsContextUltralight::endTransparencyLayer()
 {
+    CANVAS_TRACE("GraphicsContextUltralight::endTransparencyLayer");
     GraphicsContext::endTransparencyLayer();
 
     platformContext()->EndTransparencyLayer();
@@ -467,6 +499,8 @@ void GraphicsContextUltralight::didUpdateState(GraphicsContextState& state)
 {
     if (!state.changes())
         return;
+
+    CANVAS_TRACE("GraphicsContextUltralight::didUpdateState");
 
     auto context = platformContext();
 
@@ -513,6 +547,7 @@ void GraphicsContextUltralight::setMiterLimit(float limit)
 
 void GraphicsContextUltralight::clearRect(const FloatRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::clearRect", stream << "rect=" << rect);
     ProfiledZone;
     auto canvas = platformContext();
     canvas->Save();
@@ -546,8 +581,11 @@ void GraphicsContextUltralight::strokeRect(const FloatRect& rect, float width)
 {
     if (auto strokeGradient = this->strokeGradient()) {
         // Ultralight TODO
+        CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::strokeRect", stream << "WARNING! Not implemented (stroke gradient).");
         return;
     }
+
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::strokeRect", stream << "rect=" << rect << " width=" << width);
 
     applyState();
 
@@ -635,6 +673,7 @@ void GraphicsContextUltralight::drawFocusRing(const Path& path, float width, con
 
 void GraphicsContextUltralight::drawFocusRing(const Vector<FloatRect>& rects, float outlineOffset, float width, const Color& color)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawFocusRing");
     unsigned rectCount = rects.size();
     int radius = (width - 1) / 2;
 
@@ -662,6 +701,7 @@ FloatRect GraphicsContextUltralight::roundToDevicePixels(const FloatRect& rect, 
 
 void GraphicsContextUltralight::drawLinesForText(const FloatPoint& point, float thickness, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle strokeStyle)
 {
+    CANVAS_TRACE("GraphicsContextUltralight::drawLinesForText");
     ProfiledZone;
     if (widths.isEmpty())
         return;

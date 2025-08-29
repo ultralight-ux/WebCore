@@ -14,6 +14,8 @@
 #include <math.h>
 #include <wtf/Assertions.h>
 #include <wtf/IsoMallocInlines.h>
+#include <Ultralight/private/CanvasProfiler.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -21,6 +23,7 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferUltralightBackend);
 
 std::unique_ptr<ImageBufferUltralightBackend> ImageBufferUltralightBackend::create(const Parameters& parameters, const ImageBufferCreationContext&)
 {
+    CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightBackend::create", stream << "logicalSize=" << parameters.logicalSize << " resolutionScale=" << parameters.resolutionScale);
     ProfiledZone;
     ASSERT(parameters.pixelFormat == PixelFormat::BGRA8);
 

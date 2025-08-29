@@ -48,6 +48,8 @@
 #endif
 #if USE(ULTRALIGHT)
 #include "ImageBufferUtilitiesUltralight.h"
+#include <Ultralight/private/CanvasProfiler.h>
+#include <wtf/text/TextStream.h>
 #endif
 
 namespace WebCore {
@@ -57,6 +59,7 @@ static const float MaxClampedArea = MaxClampedLength * MaxClampedLength;
 
 RefPtr<ImageBuffer> ImageBuffer::create(const FloatSize& size, RenderingPurpose purpose, float resolutionScale, const DestinationColorSpace& colorSpace, PixelFormat pixelFormat, OptionSet<ImageBufferOptions> options, const ImageBufferCreationContext& creationContext)
 {
+    CANVAS_TRACE_WITH_STREAM("ImageBuffer::create", stream << "size=" << size << " purpose=" << static_cast<int>(purpose) << " resolutionScale=" << resolutionScale << " pixelFormat=" << static_cast<int>(pixelFormat) << " options=" << options.toRaw());
     RefPtr<ImageBuffer> imageBuffer;
 
     // Give UseDisplayList a higher precedence since it is a debug option.
@@ -255,6 +258,7 @@ void ImageBuffer::flushContext()
 // CPU-backed Canvases also need to be flushed to ensure pixels are unlocked.
 void ImageBuffer::flushDrawingContext()
 {
+    CANVAS_TRACE("ImageBuffer::flushDrawingContext");
     if (auto* backend = ensureBackendCreated())
         backend->flushContext();
 }
@@ -278,6 +282,7 @@ IntSize ImageBuffer::backendSize() const
 
 RefPtr<NativeImage> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) const
 {
+    CANVAS_TRACE("ImageBuffer::copyNativeImage");
     ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushDrawingContext();
@@ -288,6 +293,7 @@ RefPtr<NativeImage> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) 
 
 RefPtr<NativeImage> ImageBuffer::copyNativeImageForDrawing(BackingStoreCopy copyBehavior) const
 {
+    CANVAS_TRACE("ImageBuffer::copyNativeImageForDrawing");
     ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushDrawingContext();
@@ -298,6 +304,7 @@ RefPtr<NativeImage> ImageBuffer::copyNativeImageForDrawing(BackingStoreCopy copy
 
 RefPtr<NativeImage> ImageBuffer::sinkIntoNativeImage()
 {
+    CANVAS_TRACE("ImageBuffer::sinkIntoNativeImage");
     if (auto* backend = ensureBackendCreated()) {
         flushDrawingContext();
         return backend->sinkIntoNativeImage();
@@ -321,6 +328,7 @@ RefPtr<ImageBuffer> ImageBuffer::sinkIntoBufferForDifferentThread()
 
 RefPtr<Image> ImageBuffer::filteredImage(Filter& filter)
 {
+    CANVAS_TRACE("ImageBuffer::filteredImage");
     ProfiledZone;
     ASSERT(!filter.filterRenderingModes().contains(FilterRenderingMode::GraphicsContext));
 
@@ -344,6 +352,7 @@ RefPtr<Image> ImageBuffer::filteredImage(Filter& filter)
 
 RefPtr<Image> ImageBuffer::filteredImage(Filter& filter, std::function<void(GraphicsContext&)> drawCallback)
 {
+    CANVAS_TRACE("ImageBuffer::filteredImage");
     ProfiledZone;
     std::unique_ptr<FilterTargetSwitcher> targetSwitcher;
 
@@ -408,6 +417,7 @@ RefPtr<NativeImage> ImageBuffer::sinkIntoNativeImage(RefPtr<ImageBuffer> source)
 
 RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, PreserveResolution preserveResolution) const
 {
+    CANVAS_TRACE("ImageBuffer::copyImage");
     ProfiledZone;
     auto image = copyImageBufferToNativeImage(const_cast<ImageBuffer&>(*this), copyBehavior, preserveResolution);
     if (!image)
@@ -417,6 +427,7 @@ RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, PreserveReso
 
 RefPtr<Image> ImageBuffer::sinkIntoImage(RefPtr<ImageBuffer> source, PreserveResolution preserveResolution)
 {
+    CANVAS_TRACE("ImageBuffer::sinkIntoImage");
     ProfiledZone;
     if (!source)
         return nullptr;
@@ -437,6 +448,7 @@ RefPtr<Image> ImageBuffer::sinkIntoImage(RefPtr<ImageBuffer> source, PreserveRes
 
 void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    CANVAS_TRACE("ImageBuffer::draw");
     ProfiledZone;
     FloatRect srcRectScaled = srcRect;
     srcRectScaled.scale(resolutionScale());
@@ -458,6 +470,7 @@ void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, 
 
 void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
+    CANVAS_TRACE("ImageBuffer::drawPattern");
     ProfiledZone;
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(resolutionScale());
@@ -478,6 +491,7 @@ void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& des
 
 void ImageBuffer::drawConsuming(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    CANVAS_TRACE("ImageBuffer::drawConsuming");
     ProfiledZone;
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(resolutionScale());
@@ -497,6 +511,7 @@ void ImageBuffer::drawConsuming(RefPtr<ImageBuffer> imageBuffer, GraphicsContext
 
 void ImageBuffer::clipToMask(GraphicsContext& destContext, const FloatRect& destRect)
 {
+    CANVAS_TRACE("ImageBuffer::clipToMask");
     ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         flushContext();
@@ -506,6 +521,8 @@ void ImageBuffer::clipToMask(GraphicsContext& destContext, const FloatRect& dest
 
 void ImageBuffer::convertToLuminanceMask()
 {
+    CANVAS_TRACE("ImageBuffer::convertToLuminanceMask");
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         flushContext();
         backend->convertToLuminanceMask();
@@ -553,6 +570,7 @@ Vector<uint8_t> ImageBuffer::toData(Ref<ImageBuffer> source, const String& mimeT
 
 RefPtr<PixelBuffer> ImageBuffer::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator& allocator) const
 {
+    CANVAS_TRACE("ImageBuffer::getPixelBuffer");
     ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         const_cast<ImageBuffer&>(*this).flushContext();
@@ -563,6 +581,8 @@ RefPtr<PixelBuffer> ImageBuffer::getPixelBuffer(const PixelBufferFormat& outputF
 
 void ImageBuffer::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
+    CANVAS_TRACE("ImageBuffer::putPixelBuffer");
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated()) {
         flushContext();
         backend->putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat);
@@ -578,6 +598,7 @@ PlatformLayer* ImageBuffer::platformLayer() const
 
 bool ImageBuffer::copyToPlatformTexture(GraphicsContextGL& context, GCGLenum target, PlatformGLObject destinationTexture, GCGLenum internalformat, bool premultiplyAlpha, bool flipY) const
 {
+    CANVAS_TRACE("ImageBuffer::copyToPlatformTexture");
     ProfiledZone;
     if (auto* backend = ensureBackendCreated())
         return backend->copyToPlatformTexture(context, target, destinationTexture, internalformat, premultiplyAlpha, flipY);
@@ -627,6 +648,8 @@ void ImageBuffer::setVolatilityState(VolatilityState volatilityState)
 
 void ImageBuffer::clearContents()
 {
+    CANVAS_TRACE("ImageBuffer::clearContents");
+    ProfiledZone;
     if (auto* backend = ensureBackendCreated())
         backend->clearContents();
 }
