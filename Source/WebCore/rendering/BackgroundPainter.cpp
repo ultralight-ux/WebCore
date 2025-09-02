@@ -328,6 +328,9 @@ void BackgroundPainter::paintFillLayer(const Color& color, const FillLayer& bgLa
         // The mask has been created. Now we just need to clip to it.
         backgroundClipStateSaver.save();
         context.clip(maskRect);
+#if USE(ULTRALIGHT)
+        context.clipToImageBuffer(*maskImage.get(), maskRect);
+#endif
         context.beginTransparencyLayer(1);
     }
 
@@ -414,7 +417,9 @@ void BackgroundPainter::paintFillLayer(const Color& color, const FillLayer& bgLa
     }
 
     if (maskImage && bgLayer.clip() == FillBox::Text) {
+#if !USE(ULTRALIGHT)
         context.drawConsumingImageBuffer(WTFMove(maskImage), maskRect, CompositeOperator::DestinationIn);
+#endif
         context.endTransparencyLayer();
     }
 }
