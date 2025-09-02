@@ -93,13 +93,6 @@ void GraphicsContextUltralight::drawNativeImage(NativeImage& nativeImage, const 
     else
         setCompositeOperation(options.compositeOperator(), options.blendMode());
 
-    bool needs_transparency_layer = !(options.compositeOperator() == CompositeOperator::SourceOver || 
-                                      options.compositeOperator() == CompositeOperator::Copy) || 
-                                      options.blendMode() != BlendMode::Normal;
-
-    if (needs_transparency_layer)
-        beginTransparencyLayer(1.0);
-
 #if ENABLE(IMAGE_DECODER_DOWN_SAMPLING)
     IntSize scaledSize = nativeImageSize(image);
     FloatRect adjustedSrcRect = adjustSourceRectForDownSampling(srcRect, scaledSize);
@@ -123,8 +116,6 @@ void GraphicsContextUltralight::drawNativeImage(NativeImage& nativeImage, const 
     }
 
     platformContext()->DrawImage(image, adjustedSrcRect, adjustedDestRect, UltralightColorWHITE);
-    if (needs_transparency_layer)
-        endTransparencyLayer();
         
     restore();
 }
