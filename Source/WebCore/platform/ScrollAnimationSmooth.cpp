@@ -85,7 +85,6 @@ static constexpr float omega = 0.025f;      // Stiffness of spring (see above)
 static constexpr float omega = 0.022f;      // Stiffness of spring (see above)
 #endif
 static constexpr float zeta = 1.0f;         // Critical damping (see above)
-static constexpr float maxStepMs = 300.0f;  // Max time delta (to avoid large jumps)
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollAnimationClient& client)
     : ScrollAnimation(Type::Smooth, client)
@@ -151,27 +150,41 @@ bool ScrollAnimationSmooth::animateScroll(MonotonicTime now)
     if (!m_lastTime)
         m_lastTime = now;
 
-    float dtMs = static_cast<float>((now - *m_lastTime).milliseconds());
-    if (dtMs <= 0)
+    float elapsedMs = static_cast<float>((now - *m_lastTime).milliseconds());
+    if (elapsedMs <= 0)
         return true; // no time traveling
-    if (dtMs > maxStepMs)
-        dtMs = maxStepMs; // clamp huge gaps in case FPS drops
 
-    // 1. spring acceleration (critically-damped) 
-    FloatSize dispBefore = m_currentOffset - m_destinationOffset; // initial displacement (in px)
+    // Fixed timestep physics to handle variable frame rates
+    const float fixedStepMs = 4.0f;  // 4ms = 250Hz physics
+    const int maxIterations = 400;   // Safety cap: 400 * 4ms = 1.6 seconds
 
-    float ax = -omega * omega * dispBefore.width()
-        - 2.0f * zeta * omega * m_velocity.x();
-    float ay = -omega * omega * dispBefore.height()
-        - 2.0f * zeta * omega * m_velocity.y();
+    // Track displacement before physics updates
+    FloatSize dispBefore = m_currentOffset - m_destinationOffset;
 
-    // 2. integrate velocity  
-    m_velocity.setX(m_velocity.x() + ax * dtMs);
-    m_velocity.setY(m_velocity.y() + ay * dtMs);
+    // Process all elapsed time in fixed steps
+    int iterations = 0;
+    while (elapsedMs > 0 && iterations < maxIterations) {
+        float dt = std::min(elapsedMs, fixedStepMs);
 
-    // 3. integrate position 
-    m_currentOffset.move(m_velocity.x() * dtMs,
-        m_velocity.y() * dtMs);
+        // 1. spring acceleration (critically-damped)
+        FloatSize disp = m_currentOffset - m_destinationOffset;
+
+        float ax = -omega * omega * disp.width()
+            - 2.0f * zeta * omega * m_velocity.x();
+        float ay = -omega * omega * disp.height()
+            - 2.0f * zeta * omega * m_velocity.y();
+
+        // 2. integrate velocity
+        m_velocity.setX(m_velocity.x() + ax * dt);
+        m_velocity.setY(m_velocity.y() + ay * dt);
+
+        // 3. integrate position
+        m_currentOffset.move(m_velocity.x() * dt,
+            m_velocity.y() * dt);
+
+        elapsedMs -= dt;
+        iterations++;
+    }
 
     // 4. test if we should stop (we overshot or are close enough)
     FloatSize dispAfter = m_currentOffset - m_destinationOffset; // new displacement (in px)
