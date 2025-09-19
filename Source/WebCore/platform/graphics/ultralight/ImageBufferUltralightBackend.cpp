@@ -159,7 +159,7 @@ unsigned ImageBufferUltralightBackend::bytesPerRow() const
 
 void ImageBufferUltralightBackend::clearContents()
 {
-    m_bitmap->Erase();
+    static_cast<GraphicsContextUltralight&>(context()).platformContext()->Clear();
 }
 
 } // namespace WebCore

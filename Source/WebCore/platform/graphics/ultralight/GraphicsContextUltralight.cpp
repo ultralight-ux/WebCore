@@ -547,9 +547,10 @@ void GraphicsContextUltralight::clearRect(const FloatRect& rect)
     ultralight::Rect aabb = rect;
     aabb = mat.Apply(aabb);
 
-    canvas->set_scissor_enabled(true);
+    // Set scissor clip for this operation
+    canvas->Save();
     ultralight::IntRect scissorRect = { (int)aabb.left, (int)aabb.top, (int)ceilf(aabb.right), (int)ceilf(aabb.bottom) };
-    canvas->SetScissorRect(scissorRect);
+    canvas->SetScissorClip(scissorRect);
 
     // Add 2 pixel buffer around drawn area to avoid artifacts
     aabb.Outset(2.0f, 2.0f);
@@ -563,8 +564,8 @@ void GraphicsContextUltralight::clearRect(const FloatRect& rect)
     canvas->set_blending_enabled(false);
     canvas->DrawRect(aabb, UltralightColorTRANSPARENT);
     canvas->set_blending_enabled(true);
-    canvas->set_scissor_enabled(false);
-
+    
+    canvas->Restore(); // Restore scissor clip
     canvas->Restore();
 }
 

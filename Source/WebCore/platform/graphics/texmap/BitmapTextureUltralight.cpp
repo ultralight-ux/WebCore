@@ -137,6 +137,9 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
   // Amount of padding to add around the target rect (used to prevent artifacts when doing partial draws)
   int pad = 2;
 
+  // Save state before setting scissor clip
+  canvas_->Save();
+  
   // Set scissor rect to the target area
   ultralight::IntRect scissorRect = { 
       targetRect.x(), 
@@ -144,9 +147,7 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
       targetRect.maxX(), 
       targetRect.maxY() 
   };
-
-  canvas_->SetScissorRect(scissorRect);
-  canvas_->set_scissor_enabled(true);
+  canvas_->SetScissorClip(scissorRect);
 
   IntRect paddedTargetRect = targetRect;
   paddedTargetRect.inflate(pad);
@@ -182,7 +183,8 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
   }
   canvas_->Restore();
   
-  canvas_->set_scissor_enabled(false);
+  // Restore state (clears scissor clip)
+  canvas_->Restore();
 }
 
 void BitmapTextureUltralight::updateContents(const void* data, const IntRect& target,
