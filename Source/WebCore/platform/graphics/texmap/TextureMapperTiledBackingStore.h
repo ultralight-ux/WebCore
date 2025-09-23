@@ -47,7 +47,7 @@ public:
     void updateContents(TextureMapper&, GraphicsLayer*, const FloatSize&, const IntRect&);
 
 #if USE(ULTRALIGHT)
-    void setNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize&, const IntRect&);
+    void setNeedsUpdateInRect(TextureMapper& textureMapper, GraphicsLayer*, const FloatSize&, const IntRect&);
     void paintToTextureMapperWithClip(TextureMapper&, const IntSize&, const FloatRect&, const TransformationMatrix&, float);
     void updateContentsWithClip(TextureMapper&, const IntSize&, GraphicsLayer*, const FloatRect&, const TransformationMatrix&);
     void recycleTexturesIfNeeded(TextureMapper&);
@@ -58,7 +58,8 @@ public:
 private:
     TextureMapperTiledBackingStore() = default;
 
-    void createOrDestroyTilesIfNeeded(const FloatSize& backingStoreSize, const IntSize& tileSize, bool hasAlpha);
+    void createOrDestroyTilesIfNeeded(GraphicsLayer* layer, const FloatSize& backingStoreSize, const IntSize& tileSize, bool hasAlpha, TextureMapper& textureMapper);
+    bool shouldUseTiling(GraphicsLayer* layer, const FloatSize& size, TextureMapper& textureMapper) const;
     void updateContentsFromImageIfNeeded(TextureMapper&);
     TransformationMatrix adjustedTransformForRect(const FloatRect&);
     inline FloatRect rect() const

@@ -970,6 +970,14 @@ bool RenderLayerCompositor::updateCompositingLayers(CompositingUpdateType update
         m_renderView.setNeedsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly(false);
     }
 
+#if USE(ULTRALIGHT) && 0
+    // Dump the graphics layer tree to understand the layer hierarchy
+    if (rootGraphicsLayer()) {
+        String output = rootGraphicsLayer()->layerTreeAsText(WebCore::AllLayerTreeAsTextOptions);
+        printf("=== Graphics Layer Tree ===\n%s\n=========================\n", output.utf8().data());
+    }
+#endif
+
     return true;
 }
 

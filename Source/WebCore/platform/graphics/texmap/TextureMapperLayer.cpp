@@ -1103,7 +1103,7 @@ void TextureMapperLayer::setBackingStoreNeedsUpdateInRect(TextureMapper& texture
         return;
     
     auto* tiledBackingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore);
-    tiledBackingStore->setNeedsUpdateInRect(textureMapper, totalSize, rect);
+    tiledBackingStore->setNeedsUpdateInRect(textureMapper, m_owner, totalSize, rect);
 }
 
 void TextureMapperLayer::updateBackingStore(TextureMapper& textureMapper, const IntSize& offset, const FloatRect& layerRect, const TransformationMatrix& transform)

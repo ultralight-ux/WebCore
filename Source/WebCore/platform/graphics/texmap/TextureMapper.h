@@ -89,6 +89,7 @@ public:
     void setMaskMode(bool m) { m_isMaskMode = m; }
 
     virtual IntSize maxTextureSize() const = 0;
+    virtual IntSize tileSize() const { return IntSize(512, 512); }
 
     virtual RefPtr<BitmapTexture> acquireTextureFromPool(const IntSize&, const BitmapTexture::Flags = BitmapTexture::SupportsAlpha);
 

@@ -840,6 +840,33 @@ void GraphicsLayer::dumpProperties(TextStream& ts, OptionSet<LayerTreeAsTextOpti
     if (type() == Type::Normal && tiledBacking())
         ts << indent << "(usingTiledLayer 1)\n";
 
+#if USE(ULTRALIGHT)
+    // Always output the layer type for debugging
+    switch (type()) {
+    case Type::Normal:
+        ts << indent << "(type Normal)\n";
+        break;
+    case Type::PageTiledBacking:
+        ts << indent << "(type PageTiledBacking)\n";
+        break;
+    case Type::TiledBacking:
+        ts << indent << "(type TiledBacking)\n";
+        break;
+    case Type::Structural:
+        ts << indent << "(type Structural)\n";
+        break;
+    case Type::ScrollContainer:
+        ts << indent << "(type ScrollContainer)\n";
+        break;
+    case Type::ScrolledContents:
+        ts << indent << "(type ScrolledContents)\n";
+        break;
+    case Type::Shape:
+        ts << indent << "(type Shape)\n";
+        break;
+    }
+#endif
+
     bool needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack = client().needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack(*this);
     if (m_contentsOpaque || needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack)
         ts << indent << "(contentsOpaque " << (m_contentsOpaque || needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack) << ")\n";

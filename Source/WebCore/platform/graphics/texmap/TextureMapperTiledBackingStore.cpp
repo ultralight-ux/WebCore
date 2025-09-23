@@ -25,6 +25,7 @@
 #include "TextureMapperUltralight.h"
 #endif
 
+#include "GraphicsLayer.h"
 #include "ImageBuffer.h"
 #include "ImageObserver.h"
 #include "TextureMapper.h"
@@ -93,7 +94,25 @@ void TextureMapperTiledBackingStore::updateContentsScale(float scale)
     m_contentsScale = scale;
 }
 
-void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(const FloatSize& size, const IntSize& tileSize, bool hasAlpha)
+bool TextureMapperTiledBackingStore::shouldUseTiling(GraphicsLayer* layer, const FloatSize& size, TextureMapper& textureMapper) const
+{
+    if (!layer)
+        return true; // Default to tiling if no layer info available
+
+    // Always tile PageTiledBacking and TiledBacking layers regardless of size
+    if (layer->type() == GraphicsLayer::Type::PageTiledBacking ||
+        layer->type() == GraphicsLayer::Type::TiledBacking)
+        return true;
+
+    // For normal layers, check if they exceed the maximum texture size
+    float scale = layer->pageScaleFactor() * layer->deviceScaleFactor();
+    IntSize maxSize = textureMapper.maxTextureSize(); // Now 2048x2048
+
+    return (size.width() * scale > maxSize.width() ||
+            size.height() * scale > maxSize.height());
+}
+
+void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer* layer, const FloatSize& size, const IntSize& tileSize, bool hasAlpha, TextureMapper& textureMapper)
 {
     if (size == m_size && !m_isScaleDirty)
         return;
@@ -111,12 +130,18 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(const FloatSiz
 
     // This method recycles tiles. We check which tiles we need to add, which to remove, and use as many
     // removable tiles as replacement for new tiles when possible.
-    for (float y = 0; y < scaledSize.height(); y += tileSize.height()) {
-        for (float x = 0; x < scaledSize.width(); x += tileSize.width()) {
-            FloatRect tileRect(x, y, tileSize.width(), tileSize.height());
-            tileRect.intersect(rect());
-            tileRectsToAdd.append(tileRect);
+    if (shouldUseTiling(layer, scaledSize, textureMapper)) {
+        // Create multiple tiles
+        for (float y = 0; y < scaledSize.height(); y += tileSize.height()) {
+            for (float x = 0; x < scaledSize.width(); x += tileSize.width()) {
+                FloatRect tileRect(x, y, tileSize.width(), tileSize.height());
+                tileRect.intersect(rect());
+                tileRectsToAdd.append(tileRect);
+            }
         }
+    } else {
+        // Create a single "tile" covering the entire layer
+        tileRectsToAdd.append(rect());
     }
 
     // Check which tiles need to be removed, and which already exist.
@@ -173,22 +198,22 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(const FloatSiz
 
 void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper, Image* image, const FloatSize& totalSize, const IntRect& dirtyRect)
 {
-    createOrDestroyTilesIfNeeded(totalSize, textureMapper.maxTextureSize(), !image->currentFrameKnownToBeOpaque());
+    createOrDestroyTilesIfNeeded(nullptr, totalSize, textureMapper.tileSize(), !image->currentFrameKnownToBeOpaque(), textureMapper);
     for (auto& tile : m_tiles)
         tile.updateContents(textureMapper, image, dirtyRect);
 }
 
 void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper, GraphicsLayer* sourceLayer, const FloatSize& totalSize, const IntRect& dirtyRect)
 {
-    createOrDestroyTilesIfNeeded(totalSize, textureMapper.maxTextureSize(), true);
+    createOrDestroyTilesIfNeeded(sourceLayer, totalSize, textureMapper.tileSize(), true, textureMapper);
     for (auto& tile : m_tiles)
         tile.updateContents(textureMapper, sourceLayer, dirtyRect, m_contentsScale);
 }
 
 #if USE(ULTRALIGHT)
-void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& textureMapper, const FloatSize& totalSize, const IntRect& rect)
+void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& textureMapper, GraphicsLayer* layer, const FloatSize& totalSize, const IntRect& rect)
 {
-    createOrDestroyTilesIfNeeded(totalSize, textureMapper.maxTextureSize(), true);
+    createOrDestroyTilesIfNeeded(layer, totalSize, textureMapper.tileSize(), true, textureMapper);
     for (auto& tile : m_tiles) {
         if (tile.rect().intersects(rect))
             tile.setNeedsUpdateInRect(rect);

@@ -85,9 +85,11 @@ public:
     void setShowDebugBorder(bool) override;
     void setDebugBorder(const Color&, float width) override;
     void setShowRepaintCounter(bool) override;
+    void getDebugBorderInfo(Color&, float& width) const override;
 
     void flushCompositingState(const FloatRect&) override;
     void flushCompositingStateForThisLayerOnly() override;
+    bool backingStoreAttached() const override { return m_backingStore != nullptr; }
 
     void updateBackingStoreIncludingSubLayers(TextureMapper&);
 

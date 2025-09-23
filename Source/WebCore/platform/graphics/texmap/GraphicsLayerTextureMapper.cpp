@@ -448,6 +448,19 @@ void GraphicsLayerTextureMapper::setDebugBorder(const Color& color, float width)
     m_changeMask |= DebugVisualsChange;
 }
 
+void GraphicsLayerTextureMapper::getDebugBorderInfo(Color& color, float& width) const
+{
+    if (type() == Type::PageTiledBacking) {
+        // Distinct purple color for PageTiledBacking layers
+        color = SRGBA<uint8_t> { 128, 0, 128, 255 }; // Purple with 50% opacity
+        width = 8.0; // Slightly thicker border for visibility
+        return;
+    }
+
+    // Fall back to base implementation for other layer types
+    GraphicsLayer::getDebugBorderInfo(color, width);
+}
+
 void GraphicsLayerTextureMapper::commitLayerChanges()
 {
 #if USE(ULTRALIGHT)
