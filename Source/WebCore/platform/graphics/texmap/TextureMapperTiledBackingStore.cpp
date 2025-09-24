@@ -205,7 +205,9 @@ void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper
 
 void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper, GraphicsLayer* sourceLayer, const FloatSize& totalSize, const IntRect& dirtyRect)
 {
-    createOrDestroyTilesIfNeeded(sourceLayer, totalSize, textureMapper.tileSize(), true, textureMapper);
+    // Use layer's contentsOpaque property to determine if we need alpha support
+    bool hasAlpha = sourceLayer ? !sourceLayer->contentsOpaque() : true;
+    createOrDestroyTilesIfNeeded(sourceLayer, totalSize, textureMapper.tileSize(), hasAlpha, textureMapper);
     for (auto& tile : m_tiles)
         tile.updateContents(textureMapper, sourceLayer, dirtyRect, m_contentsScale);
 }
@@ -213,7 +215,9 @@ void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper
 #if USE(ULTRALIGHT)
 void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& textureMapper, GraphicsLayer* layer, const FloatSize& totalSize, const IntRect& rect)
 {
-    createOrDestroyTilesIfNeeded(layer, totalSize, textureMapper.tileSize(), true, textureMapper);
+    // Use layer's contentsOpaque property to determine if we need alpha support
+    bool hasAlpha = layer ? !layer->contentsOpaque() : true;
+    createOrDestroyTilesIfNeeded(layer, totalSize, textureMapper.tileSize(), hasAlpha, textureMapper);
     for (auto& tile : m_tiles) {
         if (tile.rect().intersects(rect))
             tile.setNeedsUpdateInRect(rect);

@@ -20,6 +20,7 @@
 
 #include "TextureMapperTile.h"
 
+#include "GraphicsLayer.h"
 #include "Image.h"
 #include "TextureMapper.h"
 
@@ -66,7 +67,10 @@ void TextureMapperTile::updateContents(TextureMapper& textureMapper, GraphicsLay
     targetRect.move(-m_rect.x(), -m_rect.y());
 
     if (!m_texture) {
-        m_texture = textureMapper.acquireTextureFromPool(tileSize);
+        // Check if the source layer is opaque to determine texture flags
+        BitmapTexture::Flags flags = (sourceLayer && sourceLayer->contentsOpaque())
+            ? 0 : BitmapTexture::SupportsAlpha;
+        m_texture = textureMapper.acquireTextureFromPool(tileSize, flags);
     }
 
     m_texture->updateContents(sourceLayer, targetRect, sourceOffset, scale);

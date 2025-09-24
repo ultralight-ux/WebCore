@@ -380,14 +380,30 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
 
     if (isInMaskMode())
         canvas->SetCompositeOp(ultralight::kCompositeOp_DestinationIn);
-    
+
+    // Optimize for opaque textures: disable blending when we can do a direct copy
+    bool isOpaque = texture.isOpaque() && opacity >= 1.0f && !isInMaskMode() && !filter;
+
+    // Save current blending state
+    bool previousBlendingEnabled = canvas->blending_enabled();
+
+    if (isOpaque) {
+        // Disable blending for opaque content (will use SkBlendMode::kSrc for direct copy)
+        canvas->set_blending_enabled(false);
+    }
+
     if (filter) {
         canvas->DrawCanvasWithFilter(srcCanvas, filter.get(), src, dest, color);
     } else {
         // Use DrawCanvas method to composite this tile
         canvas->DrawCanvas(srcCanvas, src, dest, color);
     }
-    
+
+    // Restore previous blending state
+    if (isOpaque) {
+        canvas->set_blending_enabled(previousBlendingEnabled);
+    }
+
     canvas->Restore();
 
 #if 0
