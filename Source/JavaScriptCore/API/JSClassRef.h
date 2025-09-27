@@ -37,15 +37,51 @@ struct StaticValueEntry {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     StaticValueEntry(JSObjectGetPropertyCallback _getProperty, JSObjectSetPropertyCallback _setProperty, JSPropertyAttributes _attributes, String& propertyName)
-        : getProperty(_getProperty)
-        , setProperty(_setProperty)
+        : version(0)
+        , v0{ _getProperty, _setProperty }
         , attributes(_attributes)
         , propertyNameRef(OpaqueJSString::tryCreate(propertyName))
     {
     }
-    
-    JSObjectGetPropertyCallback getProperty;
-    JSObjectSetPropertyCallback setProperty;
+
+    StaticValueEntry(JSObjectGetPropertyCallbackEx _getPropertyEx, JSObjectSetPropertyCallbackEx _setPropertyEx, JSPropertyAttributes _attributes, String& propertyName)
+        : version(1000)
+        , v1000{ _getPropertyEx, _setPropertyEx }
+        , attributes(_attributes)
+        , propertyNameRef(OpaqueJSString::tryCreate(propertyName))
+    {
+    }
+
+    StaticValueEntry(int _version, JSObjectGetPropertyCallback _getProperty, JSObjectSetPropertyCallback _setProperty,
+                     JSObjectGetPropertyCallbackEx _getPropertyEx, JSObjectSetPropertyCallbackEx _setPropertyEx,
+                     JSPropertyAttributes _attributes, String& propertyName)
+        : version(_version)
+        , attributes(_attributes)
+        , propertyNameRef(OpaqueJSString::tryCreate(propertyName))
+    {
+        if (_version == 0) {
+            v0.getProperty = _getProperty;
+            v0.setProperty = _setProperty;
+        } else if (_version == 1000) {
+            v1000.getPropertyEx = _getPropertyEx;
+            v1000.setPropertyEx = _setPropertyEx;
+        }
+    }
+
+    int version;
+
+    union {
+        struct {
+            JSObjectGetPropertyCallback getProperty;
+            JSObjectSetPropertyCallback setProperty;
+        } v0;
+
+        struct {
+            JSObjectGetPropertyCallbackEx getPropertyEx;
+            JSObjectSetPropertyCallbackEx setPropertyEx;
+        } v1000;
+    };
+
     JSPropertyAttributes attributes;
     RefPtr<OpaqueJSString> propertyNameRef;
 };
@@ -54,11 +90,43 @@ struct StaticFunctionEntry {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     StaticFunctionEntry(JSObjectCallAsFunctionCallback _callAsFunction, JSPropertyAttributes _attributes)
-        : callAsFunction(_callAsFunction), attributes(_attributes)
+        : version(0)
+        , v0{ _callAsFunction }
+        , attributes(_attributes)
     {
     }
 
-    JSObjectCallAsFunctionCallback callAsFunction;
+    StaticFunctionEntry(JSObjectCallAsFunctionCallbackEx _callAsFunctionEx, JSPropertyAttributes _attributes)
+        : version(1000)
+        , v1000{ _callAsFunctionEx }
+        , attributes(_attributes)
+    {
+    }
+
+    StaticFunctionEntry(int _version, JSObjectCallAsFunctionCallback _callAsFunction,
+                       JSObjectCallAsFunctionCallbackEx _callAsFunctionEx, JSPropertyAttributes _attributes)
+        : version(_version)
+        , attributes(_attributes)
+    {
+        if (_version == 0) {
+            v0.callAsFunction = _callAsFunction;
+        } else if (_version == 1000) {
+            v1000.callAsFunctionEx = _callAsFunctionEx;
+        }
+    }
+
+    int version;
+
+    union {
+        struct {
+            JSObjectCallAsFunctionCallback callAsFunction;
+        } v0;
+
+        struct {
+            JSObjectCallAsFunctionCallbackEx callAsFunctionEx;
+        } v1000;
+    };
+
     JSPropertyAttributes attributes;
 };
 
@@ -99,18 +167,40 @@ struct OpaqueJSClass : public ThreadSafeRefCounted<OpaqueJSClass> {
 
     OpaqueJSClass* parentClass;
     OpaqueJSClass* prototypeClass;
-    
-    JSObjectInitializeCallback initialize;
-    JSObjectFinalizeCallback finalize;
-    JSObjectHasPropertyCallback hasProperty;
-    JSObjectGetPropertyCallback getProperty;
-    JSObjectSetPropertyCallback setProperty;
-    JSObjectDeletePropertyCallback deleteProperty;
-    JSObjectGetPropertyNamesCallback getPropertyNames;
-    JSObjectCallAsFunctionCallback callAsFunction;
-    JSObjectCallAsConstructorCallback callAsConstructor;
-    JSObjectHasInstanceCallback hasInstance;
-    JSObjectConvertToTypeCallback convertToType;
+
+    unsigned version; // 0 for standard callbacks, 1000 for extended callbacks
+
+    union {
+        struct {
+            JSObjectInitializeCallback initialize;
+            JSObjectFinalizeCallback finalize;
+            JSObjectHasPropertyCallback hasProperty;
+            JSObjectGetPropertyCallback getProperty;
+            JSObjectSetPropertyCallback setProperty;
+            JSObjectDeletePropertyCallback deleteProperty;
+            JSObjectGetPropertyNamesCallback getPropertyNames;
+            JSObjectCallAsFunctionCallback callAsFunction;
+            JSObjectCallAsConstructorCallback callAsConstructor;
+            JSObjectHasInstanceCallback hasInstance;
+            JSObjectConvertToTypeCallback convertToType;
+        } v0;
+
+        struct {
+            JSObjectInitializeCallbackEx initializeEx;
+            JSObjectFinalizeCallbackEx finalizeEx;
+            JSObjectHasPropertyCallbackEx hasPropertyEx;
+            JSObjectGetPropertyCallbackEx getPropertyEx;
+            JSObjectSetPropertyCallbackEx setPropertyEx;
+            JSObjectDeletePropertyCallbackEx deletePropertyEx;
+            JSObjectGetPropertyNamesCallbackEx getPropertyNamesEx;
+            JSObjectCallAsFunctionCallbackEx callAsFunctionEx;
+            JSObjectCallAsConstructorCallbackEx callAsConstructorEx;
+            JSObjectHasInstanceCallbackEx hasInstanceEx;
+            JSObjectConvertToTypeCallbackEx convertToTypeEx;
+        } v1000;
+    };
+
+    void* privateData; // Private data for version 1000 classes
 
 private:
     friend struct OpaqueJSClassContextData;

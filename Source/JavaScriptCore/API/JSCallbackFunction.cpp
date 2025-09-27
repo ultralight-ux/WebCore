@@ -36,15 +36,28 @@ STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSCallbackFunction);
 const ClassInfo JSCallbackFunction::s_info = { "CallbackFunction"_s, &InternalFunction::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackFunction) };
 
 static JSC_DECLARE_HOST_FUNCTION(callJSCallbackFunction);
+static JSC_DECLARE_HOST_FUNCTION(callJSCallbackFunctionEx);
 
 JSC_DEFINE_HOST_FUNCTION(callJSCallbackFunction, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     return APICallbackFunction::callImpl<JSCallbackFunction>(globalObject, callFrame);
 }
 
+JSC_DEFINE_HOST_FUNCTION(callJSCallbackFunctionEx, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return APICallbackFunction::callImplEx<JSCallbackFunction>(globalObject, callFrame);
+}
+
 JSCallbackFunction::JSCallbackFunction(VM& vm, Structure* structure, JSObjectCallAsFunctionCallback callback)
     : InternalFunction(vm, structure, callJSCallbackFunction, nullptr)
     , m_callback(callback)
+{
+}
+
+JSCallbackFunction::JSCallbackFunction(VM& vm, Structure* structure, JSClassRef clazz, JSObjectCallAsFunctionCallbackEx callback)
+    : InternalFunction(vm, structure, callJSCallbackFunctionEx, nullptr)
+    , m_callbackEx(callback)
+    , m_clazz(clazz)
 {
 }
 
@@ -58,6 +71,14 @@ JSCallbackFunction* JSCallbackFunction::create(VM& vm, JSGlobalObject* globalObj
 {
     Structure* structure = globalObject->callbackFunctionStructure();
     JSCallbackFunction* function = new (NotNull, allocateCell<JSCallbackFunction>(vm)) JSCallbackFunction(vm, structure, callback);
+    function->finishCreation(vm, name);
+    return function;
+}
+
+JSCallbackFunction* JSCallbackFunction::create(VM& vm, JSGlobalObject* globalObject, JSClassRef clazz, JSObjectCallAsFunctionCallbackEx callback, const String& name)
+{
+    Structure* structure = globalObject->callbackFunctionStructure();
+    JSCallbackFunction* function = new (NotNull, allocateCell<JSCallbackFunction>(vm)) JSCallbackFunction(vm, structure, clazz, callback);
     function->finishCreation(vm, name);
     return function;
 }

@@ -43,23 +43,34 @@ public:
     }
 
     static JSCallbackFunction* create(VM&, JSGlobalObject*, JSObjectCallAsFunctionCallback, const String& name);
+    static JSCallbackFunction* create(VM&, JSGlobalObject*, JSClassRef, JSObjectCallAsFunctionCallbackEx, const String& name);
 
     DECLARE_INFO;
-    
-    // InternalFunction mish-mashes constructor and function behavior -- we should 
+
+    // InternalFunction mish-mashes constructor and function behavior -- we should
     // refactor the code so this override isn't necessary
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto) 
-    { 
-        return Structure::create(vm, globalObject, proto, TypeInfo(InternalFunctionType, StructureFlags), info()); 
+    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
+    {
+        return Structure::create(vm, globalObject, proto, TypeInfo(InternalFunctionType, StructureFlags), info());
     }
 
 private:
     JSCallbackFunction(VM&, Structure*, JSObjectCallAsFunctionCallback);
+    JSCallbackFunction(VM&, Structure*, JSClassRef, JSObjectCallAsFunctionCallbackEx);
     void finishCreation(VM&, const String& name);
 
     JSObjectCallAsFunctionCallback functionCallback() { return m_callback; }
+    JSObjectCallAsFunctionCallbackEx functionCallbackEx() { return m_callbackEx; }
+    JSClassRef callClass() { return m_clazz; }
 
-    JSObjectCallAsFunctionCallback m_callback { nullptr };
+    union {
+        JSObjectCallAsFunctionCallback m_callback { nullptr };
+
+        struct {
+            JSObjectCallAsFunctionCallbackEx m_callbackEx;
+            JSClassRef m_clazz;
+        };
+    };
 };
 
 } // namespace JSC

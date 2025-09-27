@@ -36,6 +36,7 @@ namespace JSC {
 
 struct APICallbackFunction {
     template <typename T> static EncodedJSValue callImpl(JSGlobalObject*, CallFrame*);
+    template <typename T> static EncodedJSValue callImplEx(JSGlobalObject*, CallFrame*);
     template <typename T> static EncodedJSValue constructImpl(JSGlobalObject*, CallFrame*);
 };
 
@@ -59,6 +60,42 @@ EncodedJSValue APICallbackFunction::callImpl(JSGlobalObject* globalObject, CallF
     {
         JSLock::DropAllLocks dropAllLocks(globalObject);
         result = jsCast<T*>(toJS(functionRef))->functionCallback()(execRef, functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
+    }
+    if (exception) {
+        throwException(globalObject, scope, toJS(globalObject, exception));
+        return JSValue::encode(jsUndefined());
+    }
+
+    // result must be a valid JSValue.
+    if (!result)
+        return JSValue::encode(jsUndefined());
+
+    return JSValue::encode(toJS(globalObject, result));
+}
+
+template <typename T>
+EncodedJSValue APICallbackFunction::callImplEx(JSGlobalObject* globalObject, CallFrame* callFrame)
+{
+    VM& vm = getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSContextRef execRef = toRef(globalObject);
+    JSObjectRef functionRef = toRef(callFrame->jsCallee());
+    JSObjectRef thisObjRef = toRef(jsCast<JSObject*>(callFrame->thisValue().toThis(globalObject, ECMAMode::sloppy())));
+
+    int argumentCount = static_cast<int>(callFrame->argumentCount());
+    Vector<JSValueRef, 16> arguments;
+    arguments.reserveInitialCapacity(argumentCount);
+    for (int i = 0; i < argumentCount; i++)
+        arguments.uncheckedAppend(toRef(globalObject, callFrame->uncheckedArgument(i)));
+
+    JSValueRef exception = nullptr;
+    JSValueRef result;
+    {
+        JSLock::DropAllLocks dropAllLocks(globalObject);
+        T* functionInstance = jsCast<T*>(toJS(functionRef));
+
+        RefPtr<OpaqueJSString> name = OpaqueJSString::tryCreate(functionInstance->name());
+        result = functionInstance->functionCallbackEx()(execRef, functionInstance->callClass(), name.get(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
     }
     if (exception) {
         throwException(globalObject, scope, toJS(globalObject, exception));

@@ -33,46 +33,87 @@
 
 using namespace JSC;
 
-const JSClassDefinition kJSClassDefinitionEmpty = { 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+const JSClassDefinition kJSClassDefinitionEmpty = { 0, 0, nullptr, nullptr, { { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr } }, nullptr };
 
-OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass* protoClass) 
+OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass* protoClass)
     : parentClass(definition->parentClass)
     , prototypeClass(nullptr)
-    , initialize(definition->initialize)
-    , finalize(definition->finalize)
-    , hasProperty(definition->hasProperty)
-    , getProperty(definition->getProperty)
-    , setProperty(definition->setProperty)
-    , deleteProperty(definition->deleteProperty)
-    , getPropertyNames(definition->getPropertyNames)
-    , callAsFunction(definition->callAsFunction)
-    , callAsConstructor(definition->callAsConstructor)
-    , hasInstance(definition->hasInstance)
-    , convertToType(definition->convertToType)
+    , version(definition->version)
     , m_className(String::fromUTF8(definition->className))
 {
+    ASSERT(version == 0 || version == 1000);
+
     JSC::initialize();
 
-    if (const JSStaticValue* staticValue = definition->staticValues) {
-        m_staticValues = makeUnique<OpaqueJSClassStaticValuesTable>();
-        while (staticValue->name) {
-            String valueName = String::fromUTF8(staticValue->name);
-            if (!valueName.isNull())
-                m_staticValues->set(valueName.impl(), makeUnique<StaticValueEntry>(staticValue->getProperty, staticValue->setProperty, staticValue->attributes, valueName));
-            ++staticValue;
+    // Initialize callbacks based on version
+    if (version == 0) {
+        privateData = nullptr; // No private data for version 0
+        v0.initialize = definition->initialize;
+        v0.finalize = definition->finalize;
+        v0.hasProperty = definition->hasProperty;
+        v0.getProperty = definition->getProperty;
+        v0.setProperty = definition->setProperty;
+        v0.deleteProperty = definition->deleteProperty;
+        v0.getPropertyNames = definition->getPropertyNames;
+        v0.callAsFunction = definition->callAsFunction;
+        v0.callAsConstructor = definition->callAsConstructor;
+        v0.hasInstance = definition->hasInstance;
+        v0.convertToType = definition->convertToType;
+
+        if (const JSStaticValue* staticValue = definition->staticValues) {
+            m_staticValues = makeUnique<OpaqueJSClassStaticValuesTable>();
+            while (staticValue->name) {
+                String valueName = String::fromUTF8(staticValue->name);
+                if (!valueName.isNull())
+                    m_staticValues->set(valueName.impl(), makeUnique<StaticValueEntry>(staticValue->getProperty, staticValue->setProperty, staticValue->attributes, valueName));
+                ++staticValue;
+            }
+        }
+
+        if (const JSStaticFunction* staticFunction = definition->staticFunctions) {
+            m_staticFunctions = makeUnique<OpaqueJSClassStaticFunctionsTable>();
+            while (staticFunction->name) {
+                String functionName = String::fromUTF8(staticFunction->name);
+                if (!functionName.isNull())
+                    m_staticFunctions->set(functionName.impl(), makeUnique<StaticFunctionEntry>(staticFunction->callAsFunction, staticFunction->attributes));
+                ++staticFunction;
+            }
+        }
+    } else if (version == 1000) {
+        v1000.initializeEx = definition->initializeEx;
+        v1000.finalizeEx = definition->finalizeEx;
+        v1000.hasPropertyEx = definition->hasPropertyEx;
+        v1000.getPropertyEx = definition->getPropertyEx;
+        v1000.setPropertyEx = definition->setPropertyEx;
+        v1000.deletePropertyEx = definition->deletePropertyEx;
+        v1000.getPropertyNamesEx = definition->getPropertyNamesEx;
+        v1000.callAsFunctionEx = definition->callAsFunctionEx;
+        v1000.callAsConstructorEx = definition->callAsConstructorEx;
+        v1000.hasInstanceEx = definition->hasInstanceEx;
+        v1000.convertToTypeEx = definition->convertToTypeEx;
+        privateData = definition->privateData;
+
+        if (const JSStaticValueEx* staticValue = definition->staticValuesEx) {
+            m_staticValues = makeUnique<OpaqueJSClassStaticValuesTable>();
+            while (staticValue->name) {
+                String valueName = String::fromUTF8(staticValue->name);
+                if (!valueName.isNull())
+                    m_staticValues->set(valueName.impl(), makeUnique<StaticValueEntry>(staticValue->getPropertyEx, staticValue->setPropertyEx, staticValue->attributes, valueName));
+                ++staticValue;
+            }
+        }
+
+        if (const JSStaticFunctionEx* staticFunction = definition->staticFunctionsEx) {
+            m_staticFunctions = makeUnique<OpaqueJSClassStaticFunctionsTable>();
+            while (staticFunction->name) {
+                String functionName = String::fromUTF8(staticFunction->name);
+                if (!functionName.isNull())
+                    m_staticFunctions->set(functionName.impl(), makeUnique<StaticFunctionEntry>(staticFunction->callAsFunctionEx, staticFunction->attributes));
+                ++staticFunction;
+            }
         }
     }
 
-    if (const JSStaticFunction* staticFunction = definition->staticFunctions) {
-        m_staticFunctions = makeUnique<OpaqueJSClassStaticFunctionsTable>();
-        while (staticFunction->name) {
-            String functionName = String::fromUTF8(staticFunction->name);
-            if (!functionName.isNull())
-                m_staticFunctions->set(functionName.impl(), makeUnique<StaticFunctionEntry>(staticFunction->callAsFunction, staticFunction->attributes));
-            ++staticFunction;
-        }
-    }
-        
     if (protoClass)
         prototypeClass = JSClassRetain(protoClass);
 }
@@ -128,7 +169,13 @@ OpaqueJSClassContextData::OpaqueJSClassContextData(JSC::VM&, OpaqueJSClass* jsCl
         for (OpaqueJSClassStaticValuesTable::const_iterator it = jsClass->m_staticValues->begin(); it != end; ++it) {
             ASSERT(!it->key->isAtom());
             String valueName = it->key->isolatedCopy();
-            staticValues->add(valueName.impl(), makeUnique<StaticValueEntry>(it->value->getProperty, it->value->setProperty, it->value->attributes, valueName));
+            staticValues->add(valueName.impl(), makeUnique<StaticValueEntry>(
+                it->value->version,
+                it->value->version == 0 ? it->value->v0.getProperty : nullptr,
+                it->value->version == 0 ? it->value->v0.setProperty : nullptr,
+                it->value->version == 1000 ? it->value->v1000.getPropertyEx : nullptr,
+                it->value->version == 1000 ? it->value->v1000.setPropertyEx : nullptr,
+                it->value->attributes, valueName));
         }
     }
 
@@ -137,7 +184,11 @@ OpaqueJSClassContextData::OpaqueJSClassContextData(JSC::VM&, OpaqueJSClass* jsCl
         OpaqueJSClassStaticFunctionsTable::const_iterator end = jsClass->m_staticFunctions->end();
         for (OpaqueJSClassStaticFunctionsTable::const_iterator it = jsClass->m_staticFunctions->begin(); it != end; ++it) {
             ASSERT(!it->key->isAtom());
-            staticFunctions->add(it->key->isolatedCopy(), makeUnique<StaticFunctionEntry>(it->value->callAsFunction, it->value->attributes));
+            staticFunctions->add(it->key->isolatedCopy(), makeUnique<StaticFunctionEntry>(
+                it->value->version,
+                it->value->version == 0 ? it->value->v0.callAsFunction : nullptr,
+                it->value->version == 1000 ? it->value->v1000.callAsFunctionEx : nullptr,
+                it->value->attributes));
         }
     }
 }
