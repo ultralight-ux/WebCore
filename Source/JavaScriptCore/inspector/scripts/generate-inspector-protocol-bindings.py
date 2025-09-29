@@ -118,6 +118,7 @@ def generate_from_specification(primary_specification_filepath=None,
                                 output_dirpath=None,
                                 force_output=False,
                                 framework_name="",
+                                preprocessor=None,
                                 generate_frontend=True,
                                 generate_backend=True):
 
@@ -230,7 +231,10 @@ def generate_from_specification(primary_specification_filepath=None,
             temporary_input_file.write(output)
             temporary_input_file.close()
 
-            subprocess.check_call(["perl", os.path.join(os.path.dirname(__file__), "codegen", "preprocess.pl"), "--input", temporary_input_filepath, "--defines", protocol.condition_flags, "--output", temporary_output_filepath])
+            preprocess_cmd = ["perl", os.path.join(os.path.dirname(__file__), "codegen", "preprocess.pl"), "--input", temporary_input_filepath, "--defines", protocol.condition_flags, "--output", temporary_output_filepath]
+            if preprocessor:
+                preprocess_cmd.extend(["--preprocessor", preprocessor])
+            subprocess.check_call(preprocess_cmd)
 
             temporary_output_file = open(temporary_output_filepath, "r")
             output = temporary_output_file.read()
@@ -267,6 +271,7 @@ if __name__ == '__main__':
     cli_parser = optparse.OptionParser(usage="usage: %prog [options] PrimaryProtocol.json [SupplementalProtocol.json ...]")
     cli_parser.add_option("-o", "--outputDir", help="Directory where generated files should be written.")
     cli_parser.add_option("--framework", type="choice", choices=allowed_framework_names, help="The framework that the primary specification belongs to.")
+    cli_parser.add_option("--preprocessor", help="C preprocessor to use for preprocessing generated files.")
     cli_parser.add_option("--force", action="store_true", help="Force output of generated scripts, even if nothing changed.")
     cli_parser.add_option("-v", "--debug", action="store_true", help="Log extra output for debugging the generator itself.")
     cli_parser.add_option("-t", "--test", action="store_true", help="Enable test mode. Use unique output filenames created by prepending the input filename.")
@@ -297,6 +302,7 @@ if __name__ == '__main__':
         'output_dirpath': arg_options.outputDir,
         'concatenate_output': arg_options.test,
         'framework_name': arg_options.framework,
+        'preprocessor': arg_options.preprocessor,
         'force_output': arg_options.force,
         'generate_backend': generate_backend,
         'generate_frontend': generate_frontend,

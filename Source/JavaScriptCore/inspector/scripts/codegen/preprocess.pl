@@ -85,11 +85,14 @@ if ($Config{osname} eq "cygwin") {
             sleep 1;
         }
     }
-} elsif ($Config::Config{"osname"} eq "MSWin32") {
+} elsif ($Config::Config{"osname"} eq "MSWin32" || $Config::Config{"osname"} eq "msys") {
     # Suppress STDERR so that if we're using cl.exe, the output
     # name isn't needlessly echoed.
+    # On MSYS, disable automatic path conversion for compiler flags
+    $ENV{MSYS_NO_PATHCONV} = 1 if $Config::Config{"osname"} eq "msys";
+    $ENV{MSYS2_ARG_CONV_EXCL} = "*" if $Config::Config{"osname"} eq "msys";
     use Symbol 'gensym'; my $err = gensym;
-    $pid = open3(\*PP_IN, \*PP_OUT, $err, $preprocessor, @args, @macros, $inputPath);
+    $pid = open3(\*PP_IN, \*PP_OUT, $err, shellwords($preprocessor), @args, @macros, $inputPath);
 } else {
     $pid = open2(\*PP_OUT, \*PP_IN, shellwords($preprocessor), @args, @macros, $inputPath);
 }
