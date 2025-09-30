@@ -70,7 +70,7 @@ public:
     WEBCORE_EXPORT void removeChild(AbstractFrame&);
 
     AbstractFrame* child(unsigned index) const;
-    AbstractFrame* child(const AtomString& name) const;
+    WEBCORE_EXPORT AbstractFrame* child(const AtomString& name) const;
     WEBCORE_EXPORT AbstractFrame* find(const AtomString& name, AbstractFrame& activeFrame) const;
     WEBCORE_EXPORT unsigned childCount() const;
     unsigned descendantCount() const;
