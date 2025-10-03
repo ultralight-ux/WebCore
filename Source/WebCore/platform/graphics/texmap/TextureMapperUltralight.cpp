@@ -383,6 +383,7 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
 
     // Optimize for opaque textures: disable blending when we can do a direct copy
     bool isOpaque = texture.isOpaque() && opacity >= 1.0f && !isInMaskMode() && !filter;
+    isOpaque = false;
 
     // Save current blending state
     bool previousBlendingEnabled = canvas->blending_enabled();
