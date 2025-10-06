@@ -1075,6 +1075,9 @@ private:
     std::pair<Path, WindRule> computeClipPath(const LayoutSize& offsetFromRoot, const LayoutRect& rootRelativeBoundsForNonBoxes) const;
 
     void setupClipPath(GraphicsContext&, GraphicsContextStateSaver&, EventRegionContextStateSaver&, const LayerPaintingInfo&, OptionSet<PaintLayerFlag>, const LayoutSize& offsetFromRoot);
+#if USE(ULTRALIGHT)
+    void setupMaskClip(GraphicsContext&, GraphicsContextStateSaver&, const LayerPaintingInfo&, const LayoutSize& offsetFromRoot);
+#endif
 
     void ensureLayerFilters();
     void clearLayerFilters();

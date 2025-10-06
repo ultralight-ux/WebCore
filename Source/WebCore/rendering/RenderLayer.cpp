@@ -46,6 +46,8 @@
 #include "config.h"
 #include "RenderLayer.h"
 
+#include "BackgroundPainter.h"
+#include "BorderPainter.h"
 #include "BoxShape.h"
 #include "CSSFilter.h"
 #include "CSSPropertyNames.h"
@@ -3099,6 +3101,84 @@ void RenderLayer::setupClipPath(GraphicsContext& context, GraphicsContextStateSa
     }
 }
 
+#if USE(ULTRALIGHT)
+void RenderLayer::setupMaskClip(GraphicsContext& context, GraphicsContextStateSaver& maskStateSaver, const LayerPaintingInfo& paintingInfo, const LayoutSize& offsetFromRoot)
+{
+    // Check if renderer has mask (similar to shouldPaintMask checks)
+    if (!renderer().hasMask())
+        return;
+
+    if (context.paintingDisabled())
+        return;
+
+    // Only RenderBox supports mask-image
+    if (!is<RenderBox>(renderer()))
+        return;
+
+    auto& renderBox = downcast<RenderBox>(renderer());
+
+    // Skip if compositor handles the mask
+    bool compositedMask = hasCompositedMask();
+    bool flattenCompositingLayers = paintingInfo.paintBehavior.contains(PaintBehavior::FlattenCompositingLayers);
+    if (compositedMask && !flattenCompositingLayers)
+        return;
+
+    // Check if all mask images are loaded
+    bool allMaskImagesLoaded = true;
+    if (auto* maskBoxImage = renderBox.style().maskBoxImage().image())
+        allMaskImagesLoaded &= maskBoxImage->isLoaded();
+    allMaskImagesLoaded &= renderBox.style().maskLayers().imagesAreLoaded();
+
+    if (!allMaskImagesLoaded) {
+        // Prevent flash of unmasked content by clipping to empty rect
+        // (replicates behavior of empty DestinationIn transparency layer)
+        maskStateSaver.save();
+        context.clip(FloatRect()); // Empty clip = no content visible
+        return;
+    }
+
+    // Calculate mask rendering rect
+    float deviceScaleFactor = renderer().document().deviceScaleFactor();
+    LayoutRect borderBox = renderBox.borderBoxRect();
+
+    // Apply layer offset to get rect in painting coordinate space
+    LayoutSize paintingOffsetFromRoot = offsetFromRoot + paintingInfo.subpixelOffset;
+    borderBox.move(paintingOffsetFromRoot);
+
+    // Snap to device pixels
+    FloatRect maskRect = snapRectToDevicePixels(borderBox, deviceScaleFactor);
+
+    // Create ImageBuffer for rendering mask
+    auto maskImage = context.createAlignedImageBuffer(maskRect.size());
+    if (!maskImage)
+        return;
+
+    // Get the ImageBuffer's context for rendering
+    GraphicsContext& maskContext = maskImage->context();
+
+    // Translate so content at maskRect position draws at origin in buffer
+    maskContext.translate(-maskRect.x(), -maskRect.y());
+
+    // Create PaintInfo for mask rendering
+    // Use PaintPhase::Foreground (not Mask) since we're rendering the mask content itself
+    PaintInfo maskPaintInfo(maskContext, enclosingIntRect(maskRect), PaintPhase::Foreground, paintingInfo.paintBehavior);
+
+    // Render mask layers into ImageBuffer using BackgroundPainter
+    // This renders the mask-image CSS property layers
+    BackgroundPainter backgroundPainter(renderBox, maskPaintInfo);
+    backgroundPainter.paintFillLayers(Color(), renderBox.style().maskLayers(), borderBox, BackgroundBleedNone, CompositeOperator::SourceOver);
+
+    // Render mask-box-image into ImageBuffer using BorderPainter
+    BorderPainter borderPainter(renderBox, maskPaintInfo);
+    borderPainter.paintNinePieceImage(borderBox, renderBox.style(), renderBox.style().maskBoxImage(), CompositeOperator::SourceOver);
+
+    // Apply the rendered mask as a clip region
+    maskStateSaver.save();
+    context.clip(maskRect); // Clip to mask bounds first
+    context.clipToImageBuffer(*maskImage, maskRect); // Then clip to mask alpha
+}
+#endif // USE(ULTRALIGHT)
+
 RenderLayerFilters* RenderLayer::filtersForPainting(GraphicsContext& context, OptionSet<PaintLayerFlag> paintFlags) const
 {
     if (context.paintingDisabled())
@@ -3216,9 +3296,19 @@ void RenderLayer::paintLayerContents(GraphicsContext& context, const LayerPainti
 
     GraphicsContextStateSaver stateSaver(context, false);
     EventRegionContextStateSaver eventRegionStateSaver(paintingInfo.eventRegionContext);
+#if USE(ULTRALIGHT)
+    GraphicsContextStateSaver maskStateSaver(context, false);
+#endif
 
     if (shouldApplyClipPath(paintingInfo.paintBehavior, localPaintFlags))
         setupClipPath(context, stateSaver, eventRegionStateSaver, paintingInfo, localPaintFlags, columnAwareOffsetFromRoot);
+
+#if USE(ULTRALIGHT)
+    // Apply mask as clip region before content painting (instead of compositing after)
+    // This avoids relying on DestinationIn composite operator which isn't fully implemented in GPU backend
+    if (shouldPaintMask(paintingInfo.paintBehavior, localPaintFlags))
+        setupMaskClip(context, maskStateSaver, paintingInfo, offsetFromRoot);
+#endif
 
     bool selectionAndBackgroundsOnly = paintingInfo.paintBehavior.contains(PaintBehavior::SelectionAndBackgroundsOnly);
     bool selectionOnly = paintingInfo.paintBehavior.contains(PaintBehavior::SelectionOnly);
@@ -3779,6 +3869,12 @@ void RenderLayer::paintOutlineForFragments(const LayerFragments& layerFragments,
 void RenderLayer::paintMaskForFragments(const LayerFragments& layerFragments, GraphicsContext& context, const LayerPaintingInfo& localPaintingInfo,
     OptionSet<PaintBehavior> paintBehavior, RenderObject* subtreePaintRootForRenderer)
 {
+#if USE(ULTRALIGHT)
+    // For ULTRALIGHT, mask is already applied as clip region in setupMaskClip()
+    // Skip the transparency layer + DestinationIn approach
+    return;
+#endif
+
     for (const auto& fragment : layerFragments) {
         if (!fragment.shouldPaintContent)
             continue;
