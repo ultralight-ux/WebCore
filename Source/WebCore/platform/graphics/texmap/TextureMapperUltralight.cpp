@@ -124,6 +124,7 @@ float TextureMapperUltralight::getBlurRadiusForFilter(RefPtr<FilterOperation> fi
         // Clamp radius to reasonable limit (max dimension of the texture).
         return std::min(blurAmount, (float)std::max(size.width(), size.height()));
     }
+    default: return 0.0f;
     }
 
     return 0.0f;
@@ -508,11 +509,19 @@ IntSize TextureMapperUltralight::maxTextureSize() const
     return IntSize(2048, 2048);
 }
 
+RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags)
+{
+    return acquireTextureFromPool(size, flags, false);
+}
+
 RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags, bool needsExactSize)
 {
     ProfiledZone;
-    RefPtr<BitmapTexture> selectedTexture = m_texturePool->acquireTexture(size, flags, needsExactSize);
-    selectedTexture->reset(size, flags);
+    // TODO: get opaque tracking working properly with texture mapper textures,
+    // for now, force flags to always allow alpha:
+    BitmapTexture::Flags alphaFlags = BitmapTexture::SupportsAlpha;
+    RefPtr<BitmapTexture> selectedTexture = m_texturePool->acquireTexture(size, alphaFlags, needsExactSize);
+    selectedTexture->reset(size, alphaFlags);
     return selectedTexture;
 }
 

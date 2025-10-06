@@ -195,7 +195,6 @@ void BitmapTextureUltralight::updateContents(const void* data, const IntRect& ta
     
   // Create a temporary bitmap with the source data
   // We need to calculate proper dimensions for the bitmap
-  int bpp = 4; // Assuming BGRA8 format (32-bits per pixel)
   int width = target.width();
   int height = target.height();
   
@@ -309,15 +308,11 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
         float scale = TextureMapperUltralight::getScaleRequiredForFilter(filter, contentSize(), texmapUL.scale(), use_gpu());
             
         bool isDropShadow = filter->type() == FilterOperation::Type::DropShadow;
-        bool isBlur = filter->type() == FilterOperation::Type::Blur;
-        bool needsExactSize = isDropShadow || isBlur;
         bool needsCustomScale = scale != 1.0f;
 
         IntSize scaledSize = contentSize();
 
         if (isDropShadow) {
-            auto& shadow = static_cast<const DropShadowFilterOperation&>(*filter);
-
             // We need to save the original content texture and draw it over the result surface
             contentSurface = resultSurface;
 

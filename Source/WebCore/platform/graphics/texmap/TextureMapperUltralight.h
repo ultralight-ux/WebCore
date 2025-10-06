@@ -67,6 +67,8 @@ public:
 
     virtual IntSize maxTextureSize() const override;
 
+    virtual RefPtr<BitmapTexture> acquireTextureFromPool(const IntSize&, const BitmapTexture::Flags = BitmapTexture::SupportsAlpha) override;
+
     virtual RefPtr<BitmapTexture> acquireTextureFromPool(const IntSize&, const BitmapTexture::Flags = BitmapTexture::SupportsAlpha, bool needsExactSize = false);
 
     // Unique ID for the current paint op (increments with each call to beginPainting).
