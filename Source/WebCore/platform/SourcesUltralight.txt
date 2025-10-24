@@ -60,6 +60,8 @@ platform/graphics/ultralight/GraphicsContextUltralight.cpp
 platform/graphics/ultralight/GraphicsContextUltralight.h
 platform/graphics/ultralight/ImageBufferUltralightBackend.cpp
 platform/graphics/ultralight/ImageBufferUltralightBackend.h
+platform/graphics/ultralight/ImageBufferUltralightGPUBackend.cpp
+platform/graphics/ultralight/ImageBufferUltralightGPUBackend.h
 platform/graphics/ultralight/ImageBufferUtilitiesUltralight.cpp
 platform/graphics/ultralight/ImageBufferUtilitiesUltralight.h
 platform/graphics/ultralight/ImageSourceImage.cpp

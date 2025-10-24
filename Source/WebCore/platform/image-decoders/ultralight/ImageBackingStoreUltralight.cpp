@@ -22,7 +22,7 @@ PlatformImagePtr ImageBackingStore::image() const
 {
     if (m_image) {
         if (m_pixelsDirty) {
-            m_image->set_is_bitmap_dirty(true);
+            m_image->Invalidate();
             m_pixelsDirty = false;
         }
 
@@ -40,7 +40,7 @@ PlatformImagePtr ImageBackingStore::image() const
       size().height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, rowBytes,
       const_cast<uint32_t*>(m_pixelsPtr), pixelDataSize, userData, OnDestroyImage);
 
-    m_image = ultralight::Image::Create(bitmap, true);
+    m_image = ultralight::Image::Create(bitmap);
 
     return m_image;
 }

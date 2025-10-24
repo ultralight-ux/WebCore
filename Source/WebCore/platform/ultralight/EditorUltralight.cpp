@@ -1,6 +1,7 @@
 #include "config.h"
 #include "Editor.h"
 #include "DocumentFragment.h"
+#include "FrameDestructionObserverInlines.h"
 #include "NotImplemented.h"
 #include "Pasteboard.h"
 #include "markup.h"

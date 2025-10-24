@@ -758,7 +758,19 @@ void GraphicsContextUltralight::setURLForRect(const URL& link, const FloatRect& 
 
 RenderingMode GraphicsContextUltralight::renderingMode() const
 {
-    return RenderingMode::Unaccelerated;
+    // Determine rendering mode based on the actual canvas type
+    RenderingMode mode = (m_canvas->type() == ultralight::CanvasType::GPU)
+        ? RenderingMode::Accelerated
+        : RenderingMode::Unaccelerated;
+
+#if defined(ENABLE_CANVAS_TRACING)
+    const char* canvasType = (m_canvas->type() == ultralight::CanvasType::Skia) ? "CPU" : "GPU";
+    const char* modeStr = (mode == RenderingMode::Accelerated) ? "Accelerated" : "Unaccelerated";
+    CANVAS_TRACE_WITH_STREAM("GraphicsContextUltralight::renderingMode",
+        stream << "canvas_type=" << canvasType << " result=" << modeStr);
+#endif
+
+    return mode;
 }
 
 void GraphicsContextUltralight::applyDeviceScaleFactor(float deviceScaleFactor)

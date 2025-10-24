@@ -59,12 +59,21 @@ static const float MaxClampedArea = MaxClampedLength * MaxClampedLength;
 
 RefPtr<ImageBuffer> ImageBuffer::create(const FloatSize& size, RenderingPurpose purpose, float resolutionScale, const DestinationColorSpace& colorSpace, PixelFormat pixelFormat, OptionSet<ImageBufferOptions> options, const ImageBufferCreationContext& creationContext)
 {
-    CANVAS_TRACE_WITH_STREAM("ImageBuffer::create", stream << "size=" << size << " purpose=" << static_cast<int>(purpose) << " resolutionScale=" << resolutionScale << " pixelFormat=" << static_cast<int>(pixelFormat) << " options=" << options.toRaw());
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+    bool requestedAccelerated = options.contains(ImageBufferOptions::Accelerated);
+    CANVAS_TRACE_WITH_STREAM("ImageBuffer::create",
+        stream << "size=" << size << " accelerated=" << requestedAccelerated);
+#endif
     RefPtr<ImageBuffer> imageBuffer;
 
     // Give UseDisplayList a higher precedence since it is a debug option.
     if (options.contains(ImageBufferOptions::UseDisplayList)) {
+#if USE(ULTRALIGHT)
+        // For Ultralight, only use GPU acceleration for Canvas rendering purpose
+        if (options.contains(ImageBufferOptions::Accelerated) && purpose == RenderingPurpose::Canvas)
+#else
         if (options.contains(ImageBufferOptions::Accelerated))
+#endif
             imageBuffer = DisplayList::ImageBuffer::create<AcceleratedImageBufferBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);
 
         if (!imageBuffer)
@@ -79,11 +88,18 @@ RefPtr<ImageBuffer> ImageBuffer::create(const FloatSize& size, RenderingPurpose 
     if (imageBuffer)
         return imageBuffer;
 
+#if USE(ULTRALIGHT)
+    // For Ultralight, only use GPU acceleration for Canvas rendering purpose
+    if (options.contains(ImageBufferOptions::Accelerated) && purpose == RenderingPurpose::Canvas && ProcessCapabilities::canUseAcceleratedBuffers()) {
+        imageBuffer = create<AcceleratedImageBufferBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);
+    }
+#else
     if (options.contains(ImageBufferOptions::Accelerated) && ProcessCapabilities::canUseAcceleratedBuffers()) {
 #if HAVE(IOSURFACE)
         imageBuffer = IOSurfaceImageBuffer::create(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);
 #endif
     }
+#endif
 
     if (!imageBuffer)
         imageBuffer = create<UnacceleratedImageBufferBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);

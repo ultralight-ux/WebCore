@@ -46,6 +46,11 @@
 #include <atomic>
 #include <wtf/Vector.h>
 
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+#include <Ultralight/private/CanvasProfiler.h>
+#include <wtf/text/TextStream.h>
+#endif
+
 static std::atomic<size_t> s_activePixelMemory { 0 };
 
 namespace WebCore {
@@ -308,7 +313,7 @@ bool CanvasBase::shouldAccelerate(unsigned area) const
     if (area > scriptExecutionContext()->settingsValues().maximumAccelerated2dCanvasSize)
         return false;
 
-#if USE(IOSURFACE_CANVAS_BACKING_STORE)
+#if USE(IOSURFACE_CANVAS_BACKING_STORE) || USE(ULTRALIGHT)
     return scriptExecutionContext()->settingsValues().canvasUsesAcceleratedDrawing;
 #else
     return false;
@@ -352,6 +357,13 @@ void CanvasBase::createImageBuffer(bool usesDisplayListDrawing, bool avoidBacken
     ImageBufferCreationContext context = { };
     context.graphicsClient = graphicsClient();
     context.avoidIOSurfaceSizeCheckInWebProcessForTesting = avoidBackendSizeCheckForTesting;
+
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+    bool accelerated = shouldAccelerate(area);
+    CANVAS_TRACE_WITH_STREAM("CanvasBase::createImageBuffer",
+        stream << "size=" << size() << " accelerated=" << accelerated);
+#endif
+
     setImageBuffer(ImageBuffer::create(size(), RenderingPurpose::Canvas, 1, colorSpace, pixelFormat, bufferOptions, context));
 }
 

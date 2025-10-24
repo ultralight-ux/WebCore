@@ -208,7 +208,7 @@ void BitmapTextureUltralight::updateContents(const void* data, const IntRect& ta
     return;
     
   // Create an image from the bitmap
-  auto image = ultralight::Image::Create(bitmap, true);
+  auto image = ultralight::Image::Create(bitmap);
   if (!image)
     return;
   

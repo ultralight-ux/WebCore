@@ -34,6 +34,7 @@
 #include "ImageBufferCairoImageSurfaceBackend.h"
 #elif USE(ULTRALIGHT)
 #include "ImageBufferUltralightBackend.h"
+#include "ImageBufferUltralightGPUBackend.h"
 #endif
 
 #if HAVE(IOSURFACE)
@@ -52,6 +53,8 @@ using UnacceleratedImageBufferBackend = ImageBufferUltralightBackend;
 
 #if HAVE(IOSURFACE)
 using AcceleratedImageBufferBackend = ImageBufferIOSurfaceBackend;
+#elif USE(ULTRALIGHT)
+using AcceleratedImageBufferBackend = ImageBufferUltralightGPUBackend;
 #else
 using AcceleratedImageBufferBackend = UnacceleratedImageBufferBackend;
 #endif

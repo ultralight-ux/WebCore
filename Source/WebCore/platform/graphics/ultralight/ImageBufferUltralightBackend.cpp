@@ -23,7 +23,6 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferUltralightBackend);
 
 std::unique_ptr<ImageBufferUltralightBackend> ImageBufferUltralightBackend::create(const Parameters& parameters, const ImageBufferCreationContext&)
 {
-    CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightBackend::create", stream << "logicalSize=" << parameters.logicalSize << " resolutionScale=" << parameters.resolutionScale);
     ProfiledZone;
     ASSERT(parameters.pixelFormat == PixelFormat::BGRA8);
 
@@ -50,6 +49,12 @@ std::unique_ptr<ImageBufferUltralightBackend> ImageBufferUltralightBackend::crea
     auto canvas = ultralight::Canvas::Create(width, height, ultralight::BitmapFormat::BGRA8_UNORM_SRGB, surface.get());
     if (!canvas)
         return nullptr;
+
+#if defined(ENABLE_CANVAS_TRACING)
+    const char* canvasType = (canvas->type() == ultralight::CanvasType::Skia) ? "CPU" : "GPU";
+    CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightBackend::create",
+        stream << "size=" << IntSize(width, height) << " canvas_type=" << canvasType);
+#endif
 
     auto context = makeUnique<GraphicsContextUltralight>(canvas);
     if (!context)
@@ -107,12 +112,12 @@ RefPtr<NativeImage> ImageBufferUltralightBackend::copyNativeImage(BackingStoreCo
     ProfiledZone;
     switch (copyBehavior) {
     case CopyBackingStore:
-        return NativeImage::create(ultralight::Image::Create(ultralight::Bitmap::Create(*m_bitmap.get()), true));
+        return NativeImage::create(ultralight::Image::Create(ultralight::Bitmap::Create(*m_bitmap.get())));
 
     case DontCopyBackingStore: {
         if (m_cachedNativeImage)
             return m_cachedNativeImage;
-        return NativeImage::create(ultralight::Image::Create(m_bitmap, true));
+        return NativeImage::create(ultralight::Image::Create(m_bitmap));
     }
     }
 
@@ -143,13 +148,13 @@ void ImageBufferUltralightBackend::putPixelBuffer(const PixelBuffer& pixelBuffer
 void ImageBufferUltralightBackend::setUsesCachedNativeImage()
 {
     if (!m_cachedNativeImage)
-        m_cachedNativeImage = NativeImage::create(ultralight::Image::Create(m_bitmap, true, true));
+        m_cachedNativeImage = NativeImage::create(ultralight::Image::Create(m_bitmap));
 }
 
 void ImageBufferUltralightBackend::invalidateCachedNativeImage()
 {
     if (m_cachedNativeImage)
-        m_cachedNativeImage->platformImage()->set_is_bitmap_dirty(true);
+        m_cachedNativeImage->platformImage()->Invalidate();
 }
 
 unsigned ImageBufferUltralightBackend::bytesPerRow() const

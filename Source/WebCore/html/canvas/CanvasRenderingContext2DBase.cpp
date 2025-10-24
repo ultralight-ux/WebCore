@@ -78,6 +78,10 @@
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/TextStream.h>
 
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+#include <Ultralight/private/CanvasProfiler.h>
+#endif
+
 namespace WebCore {
 
 using namespace HTMLNames;
@@ -252,12 +256,19 @@ CanvasRenderingContext2DBase::~CanvasRenderingContext2DBase()
 
 bool CanvasRenderingContext2DBase::isAccelerated() const
 {
-#if USE(IOSURFACE_CANVAS_BACKING_STORE)
+#if USE(IOSURFACE_CANVAS_BACKING_STORE) || USE(ULTRALIGHT)
     auto* context = canvasBase().existingDrawingContext();
-    return context && context->renderingMode() == RenderingMode::Accelerated;
+    bool result = context && context->renderingMode() == RenderingMode::Accelerated;
 #else
-    return false;
+    bool result = false;
 #endif
+
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+    CANVAS_TRACE_WITH_STREAM("CanvasRenderingContext2DBase::isAccelerated",
+        stream << "result=" << result);
+#endif
+
+    return result;
 }
 
 void CanvasRenderingContext2DBase::reset()

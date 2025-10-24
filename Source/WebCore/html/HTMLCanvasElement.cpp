@@ -109,6 +109,11 @@
 #include <pal/cf/CoreMediaSoftLink.h>
 #endif
 
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+#include <Ultralight/private/CanvasProfiler.h>
+#include "GraphicsContextUltralight.h"
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLCanvasElement);
@@ -684,6 +689,16 @@ void HTMLCanvasElement::paint(GraphicsContext& context, const LayoutRect& r)
         if (shouldPaint) {
             if (hasCreatedImageBuffer()) {
                 if (ImageBuffer* imageBuffer = buffer()) {
+#if USE(ULTRALIGHT) && defined(ENABLE_CANVAS_TRACING)
+                    if (context.hasPlatformContext() && imageBuffer->context().hasPlatformContext()) {
+                        auto* srcCanvas = static_cast<const GraphicsContextUltralight&>(imageBuffer->context()).platformContext();
+                        auto* destCanvas = static_cast<const GraphicsContextUltralight&>(context).platformContext();
+                        const char* srcType = (srcCanvas->type() == ultralight::CanvasType::Skia) ? "CPU" : "GPU";
+                        const char* destType = (destCanvas->type() == ultralight::CanvasType::Skia) ? "CPU" : "GPU";
+                        CANVAS_TRACE_WITH_STREAM("HTMLCanvasElement::paint",
+                            stream << "src=" << srcType << " dest=" << destType);
+                    }
+#endif
                     context.drawImageBuffer(*imageBuffer, snappedIntRect(r));
 #if PLATFORM(COCOA)
                     m_mustGuardAgainstUseByPendingLayerTransaction |= imageDrawingRequiresGuardAgainstUseByPendingLayerTransaction(context, *imageBuffer);
