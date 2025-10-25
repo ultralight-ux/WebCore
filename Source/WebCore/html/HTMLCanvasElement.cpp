@@ -966,6 +966,13 @@ void HTMLCanvasElement::setImageBufferAndMarkDirty(RefPtr<ImageBuffer>&& buffer)
 
 Image* HTMLCanvasElement::copiedImage() const
 {
+#if USE(ULTRALIGHT)
+    // TODO: Implement image copying for Ultralight backend.
+#ifdef _DEBUG
+    fprintf(stderr, "Warning: HTMLCanvasElement::copiedImage() is not implemented for Ultralight backend.\n");
+#endif
+    return nullptr;
+#endif
     if (!m_copiedImage && buffer()) {
         if (m_context)
             m_context->paintRenderingResultsToCanvas();
