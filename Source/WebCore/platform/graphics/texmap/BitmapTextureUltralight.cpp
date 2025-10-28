@@ -135,7 +135,7 @@ void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const I
     return;
   
   // Amount of padding to add around the target rect (used to prevent artifacts when doing partial draws)
-  int pad = 2;
+  int pad = 4;
 
   // Save state before setting scissor clip
   canvas_->Save();

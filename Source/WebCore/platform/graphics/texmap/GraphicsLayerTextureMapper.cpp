@@ -640,6 +640,13 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
     FloatRect scaled_needsDisplayRect = m_needsDisplayRect;
     scaled_needsDisplayRect.scale(pageScaleFactor() * deviceScaleFactor());
 
+#if 1
+    // Pad the display rect to avoid artifacts when using tiled backing stores
+    int pad = 4;
+    if (!scaled_needsDisplayRect.isEmpty())
+        scaled_needsDisplayRect.inflate(pad);
+#endif
+
     if (!is_forcing_repaint) {
       if (!m_needsDisplay)
         dirtyRect.intersect(enclosingIntRect(scaled_needsDisplayRect));
