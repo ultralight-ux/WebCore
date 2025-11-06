@@ -640,9 +640,10 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
     FloatRect scaled_needsDisplayRect = m_needsDisplayRect;
     scaled_needsDisplayRect.scale(pageScaleFactor() * deviceScaleFactor());
 
-#if 1
+#if 1 && USE(ULTRALIGHT)
     // Pad the display rect to avoid artifacts when using tiled backing stores
-    int pad = 4;
+    // FIXME: This shouldn't be necessary, need to investigate further.
+    int pad = 16;
     if (!scaled_needsDisplayRect.isEmpty())
         scaled_needsDisplayRect.inflate(pad);
 #endif
