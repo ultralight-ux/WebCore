@@ -167,6 +167,7 @@ list(APPEND WebCore_PRIVATE_LIBRARIES
     "${WEBKIT_LIBRARIES_DIR}/lib/libjpeg.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libnghttp2_static.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libpng16.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libpsl.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libssl.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libtls.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libcrypto.a"
