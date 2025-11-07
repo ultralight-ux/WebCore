@@ -90,7 +90,7 @@ RefPtr<ImageBuffer> ImageBuffer::create(const FloatSize& size, RenderingPurpose 
 
 #if USE(ULTRALIGHT)
     // For Ultralight, only use GPU acceleration for Canvas rendering purpose
-    if (options.contains(ImageBufferOptions::Accelerated) && purpose == RenderingPurpose::Canvas && ProcessCapabilities::canUseAcceleratedBuffers()) {
+    if (options.contains(ImageBufferOptions::Accelerated) && (purpose == RenderingPurpose::Canvas) && ProcessCapabilities::canUseAcceleratedBuffers()) {
         imageBuffer = create<AcceleratedImageBufferBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);
     }
 #else

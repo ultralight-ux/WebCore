@@ -8,7 +8,7 @@ namespace WebCore {
 
 IntSize NativeImage::size() const
 {
-    return IntSize(m_platformImage->bitmap()->width(), m_platformImage->bitmap()->height());
+    return IntSize(m_platformImage->width(), m_platformImage->height());
 }
 
 bool NativeImage::hasAlpha() const

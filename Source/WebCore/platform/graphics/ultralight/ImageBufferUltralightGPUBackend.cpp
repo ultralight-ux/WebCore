@@ -290,11 +290,7 @@ RefPtr<NativeImage> ImageBufferUltralightGPUBackend::copyNativeImage(BackingStor
 void ImageBufferUltralightGPUBackend::clipToMask(GraphicsContext& context, const FloatRect& dest)
 {
     ProfiledZone;
-
-    // TODO: Clipping to GPU canvas requires reading back GPU texture
-    // This is currently not implemented
-
-    notImplemented();
+    static_cast<GraphicsContextUltralight&>(context).platformContext()->SetClip(copyNativeImage(DontCopyBackingStore)->platformImage(), dest);
 }
 
 RefPtr<PixelBuffer> ImageBufferUltralightGPUBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect, const ImageBufferAllocator& allocator) const
