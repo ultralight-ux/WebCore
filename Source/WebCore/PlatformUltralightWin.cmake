@@ -1,6 +1,6 @@
 add_definitions(/bigobj -D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
                 -DSTATICALLY_LINKED_WITH_JavaScriptCore -DSTATICALLY_LINKED_WITH_PAL -DULTRALIGHT_IMPLEMENTATION
-                -DCURL_STATICLIB)
+                -DCURL_STATICLIB -DPSL_STATIC)
 
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
