@@ -649,7 +649,15 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded(TextureMapper& textu
 #endif
 
     if (!is_forcing_repaint) {
-      if (!m_needsDisplay)
+      // Check if we should paint the full layer when dirty
+      bool paint_full_layer = false;
+#if USE(ULTRALIGHT)
+      if (ultralight::Platform::instance().config().paint_full_layers)
+        paint_full_layer = true;
+#endif
+
+      // Only intersect with dirty region if not painting full layers
+      if (!m_needsDisplay && !paint_full_layer)
         dirtyRect.intersect(enclosingIntRect(scaled_needsDisplayRect));
       if (dirtyRect.isEmpty())
         return;

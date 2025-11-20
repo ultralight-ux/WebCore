@@ -16,6 +16,10 @@ void CurlSSLHandle::platformInitialize()
     ProfiledMemoryZone(MemoryTag::Resource);
     auto& platform = ultralight::Platform::instance();
     auto config = platform.config();
+
+    // Set SSL error handling based on config
+    setIgnoreSSLErrors(config.ignore_ssl_errors);
+
     ultralight::RefPtr<ultralight::Buffer> certData = ResourceFileLoader::openFile("cacert.pem"_s);
     size_t fileSize = 0;
     CertificateInfo::Certificate buffer;
