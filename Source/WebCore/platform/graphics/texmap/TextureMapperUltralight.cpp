@@ -15,6 +15,13 @@
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/private/Filter.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
+#endif
+
 namespace WebCore {
 
 std::unique_ptr<ultralight::Filter> ToUltralightFilter(RefPtr<FilterOperation> operation, const IntSize& size, int pass, const BitmapTexture* contentTexture, float deviceScale, float adjustScale)
@@ -337,6 +344,13 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     float opacity, unsigned exposedEdges)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::drawTexture",
+                             stream << "target=" << target
+                             << " opacity=" << opacity
+                             << " exposedEdges=" << exposedEdges
+                             << " textureSize=" << texture.size()
+                             << " contentSize=" << texture.contentSize());
+
     if (!texture.isValid())
         return;
 
@@ -578,6 +592,12 @@ void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture, c
 void TextureMapperUltralight::drawTextureWithScale(const BitmapTexture& sourceTexture, const IntSize& srcSize, const IntSize& dstSize, const FloatPoint& dstOffset, bool blend)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::drawTextureWithScale",
+                             stream << "srcSize=" << srcSize
+                             << " dstSize=" << dstSize
+                             << " dstOffset=" << dstOffset
+                             << " blend=" << blend);
+
     if (!sourceTexture.isValid())
         return;
 

@@ -17,6 +17,13 @@
 #include "ImageBufferUltralightBackend.h"
 #include "NotImplemented.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
+#endif
+
 namespace WebCore {
 
 BitmapTextureUltralight* toBitmapTextureUL(BitmapTexture* texture)
@@ -88,6 +95,10 @@ void BitmapTextureUltralight::didReset() {
 void BitmapTextureUltralight::updateContents(Image* image,
     const IntRect& targetRect, const IntPoint& offset) {
     ProfiledZone;
+
+    CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::updateContents(Image)",
+                             stream << "targetRect=" << targetRect << " offset=" << offset);
+
     if (!image || !canvas_)
       return;
 
@@ -131,6 +142,10 @@ void BitmapTextureUltralight::updateContents(Image* image,
 void BitmapTextureUltralight::updateContents(GraphicsLayer* sourceLayer, const IntRect& targetRect,
   const IntPoint& offset, float scale) {
   ProfiledZone;
+
+  CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::updateContents(GraphicsLayer)",
+                           stream << "targetRect=" << targetRect << " offset=" << offset << " scale=" << scale);
+
   if (!canvas_ || !sourceLayer)
     return;
   
@@ -267,6 +282,11 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
   const FilterOperations& filters, bool defersLastFilter)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::applyFilters",
+                             stream << "filterCount=" << filters.size()
+                             << " defersLastFilter=" << defersLastFilter
+                             << " contentSize=" << contentSize());
+
     if (filters.isEmpty())
       return this;
 

@@ -90,6 +90,13 @@
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/StackStats.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(RenderBox);
@@ -1880,6 +1887,8 @@ void RenderBox::paintClippingMask(PaintInfo& paintInfo, const LayoutPoint& paint
 
 void RenderBox::paintMaskImages(const PaintInfo& paintInfo, const LayoutRect& paintRect)
 {
+    CANVAS_TRACE_WITH_STREAM("RenderBox::paintMaskImages", stream << "paintRect=" << paintRect);
+
     // Figure out if we need to push a transparency layer to render our mask.
     bool pushTransparencyLayer = false;
     bool compositedMask = hasLayer() && layer()->hasCompositedMask();

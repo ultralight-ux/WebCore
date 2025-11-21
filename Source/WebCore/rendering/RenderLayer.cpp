@@ -147,6 +147,10 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/TextStream.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/CanvasProfiler.h>
+#endif
+
 namespace WebCore {
 
 using namespace HTMLNames;
@@ -3240,6 +3244,11 @@ void RenderLayer::applyFilters(GraphicsContext& originalContext, const LayerPain
 void RenderLayer::paintLayerContents(GraphicsContext& context, const LayerPaintingInfo& paintingInfo, OptionSet<PaintLayerFlag> paintFlags)
 {
     ProfiledZone;
+
+    CANVAS_TRACE_WITH_STREAM("RenderLayer::paintLayerContents", stream << "paintDirtyRect=" << paintingInfo.paintDirtyRect
+                             << " subtreePaintRoot=" << paintingInfo.subtreePaintRoot
+                             << " paintFlags=" << paintFlags.toRaw());
+
     ASSERT(isSelfPaintingLayer() || hasSelfPaintingLayerDescendant());
 
     if (context.detectingContentfulPaint() && context.contentfulPaintDetected())
@@ -3296,14 +3305,14 @@ void RenderLayer::paintLayerContents(GraphicsContext& context, const LayerPainti
 
     GraphicsContextStateSaver stateSaver(context, false);
     EventRegionContextStateSaver eventRegionStateSaver(paintingInfo.eventRegionContext);
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
     GraphicsContextStateSaver maskStateSaver(context, false);
 #endif
 
     if (shouldApplyClipPath(paintingInfo.paintBehavior, localPaintFlags))
         setupClipPath(context, stateSaver, eventRegionStateSaver, paintingInfo, localPaintFlags, columnAwareOffsetFromRoot);
 
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
     // Apply mask as clip region before content painting (instead of compositing after)
     // This avoids relying on DestinationIn composite operator which isn't fully implemented in GPU backend
     if (shouldPaintMask(paintingInfo.paintBehavior, localPaintFlags))
@@ -3869,7 +3878,7 @@ void RenderLayer::paintOutlineForFragments(const LayerFragments& layerFragments,
 void RenderLayer::paintMaskForFragments(const LayerFragments& layerFragments, GraphicsContext& context, const LayerPaintingInfo& localPaintingInfo,
     OptionSet<PaintBehavior> paintBehavior, RenderObject* subtreePaintRootForRenderer)
 {
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
     // For ULTRALIGHT, mask is already applied as clip region in setupMaskClip()
     // Skip the transparency layer + DestinationIn approach
     return;
