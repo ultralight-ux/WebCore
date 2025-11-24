@@ -57,6 +57,9 @@ list(APPEND WebCore_SOURCES
     
     platform/win/WebCoreInstanceHandle.cpp
 #    platform/generic/ScrollAnimatorGeneric.cpp
+
+    platform/win/KeyEventWin.cpp
+    platform/win/WindowsKeyNames.cpp
 )
 
 if (USE_GSTREAMER)

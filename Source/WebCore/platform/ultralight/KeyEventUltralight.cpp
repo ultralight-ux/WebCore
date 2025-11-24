@@ -2,6 +2,8 @@
 #include "PlatformKeyboardEvent.h"
 #include "NotImplemented.h"
 
+#if !(OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
+
 namespace WebCore {
 
 void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCompatibilityMode) {
@@ -39,3 +41,5 @@ OptionSet<PlatformEvent::Modifier> PlatformKeyboardEvent::currentStateOfModifier
 }
 
 } // namespace WebCore
+
+#endif

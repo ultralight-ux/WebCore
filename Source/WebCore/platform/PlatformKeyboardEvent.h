@@ -124,7 +124,7 @@ namespace WebCore {
 #endif
 #endif
 
-#if PLATFORM(WIN)
+#if PLATFORM(WIN) || (USE(ULTRALIGHT) && OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
         WEBCORE_EXPORT PlatformKeyboardEvent(HWND, WPARAM, LPARAM, Type, bool);
 #endif
 
