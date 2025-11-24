@@ -22,6 +22,10 @@
 #include "TextureMapperLayer.h"
 #if USE(ULTRALIGHT)
 #include "TextureMapperTiledBackingStore.h"
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
 #endif
 
 #include "FloatQuad.h"
@@ -172,6 +176,10 @@ void TextureMapperLayer::computeTransformsRecursive(ComputeTransformData& data)
 
 void TextureMapperLayer::paint(TextureMapper& textureMapper)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperLayer::paint",
+                             stream << "layerSize=" << m_state.size
+                             << " visible=" << m_state.visible
+                             << " opacity=" << m_state.opacity);
     ComputeTransformData data;
     computeTransformsRecursive(data);
     textureMapper.setDepthRange(data.zNear, data.zFar);
@@ -656,6 +664,11 @@ void TextureMapperLayer::paintUsingOverlapRegions(TextureMapperPaintOptions& opt
 
 void TextureMapperLayer::paintSelfChildrenFilterAndMask(TextureMapperPaintOptions& options)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperLayer::paintSelfChildrenFilterAndMask",
+                             stream << "hasFilters=" << !m_state.filters.isEmpty()
+                             << " hasMask=" << !!m_state.maskLayer
+                             << " hasBackdrop=" << !!m_state.backdropLayer
+                             << " filterCount=" << m_state.filters.size());
     Region overlapRegion;
     Region nonOverlapRegion;
     auto mode = ComputeOverlapRegionMode::Union;
@@ -730,6 +743,9 @@ static void commitSurface(TextureMapperPaintOptions& options, BitmapTexture& sur
 
 void TextureMapperLayer::paintWithIntermediateSurface(TextureMapperPaintOptions& options, const IntRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperLayer::paintWithIntermediateSurface",
+                             stream << "rect=" << rect
+                             << " opacity=" << options.opacity);
     auto surface = options.textureMapper.acquireTextureFromPool(rect.size(), BitmapTexture::SupportsAlpha);
     {
         SetForScope scopedSurface(options.surface, surface);
@@ -785,6 +801,13 @@ void TextureMapperLayer::paintRecursive(TextureMapperPaintOptions& options)
 {
     if (!isVisible())
         return;
+
+    CANVAS_TRACE_WITH_STREAM("TextureMapperLayer::paintRecursive",
+                             stream << "opacity=" << options.opacity
+                             << " currentOpacity=" << m_currentOpacity
+                             << " preserves3D=" << m_state.preserves3D
+                             << " shouldBlend=" << shouldBlend()
+                             << " transform=" << options.transform);
 
     SetForScope scopedOpacity(options.opacity, options.opacity * m_currentOpacity);
 

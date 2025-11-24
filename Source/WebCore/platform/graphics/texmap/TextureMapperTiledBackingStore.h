@@ -64,13 +64,12 @@ private:
     TransformationMatrix adjustedTransformForRect(const FloatRect&);
     inline FloatRect rect() const
     {
-        FloatRect rect(FloatPoint::zero(), m_size);
-        rect.scale(m_contentsScale);
-        return rect;
+        return FloatRect(FloatPoint::zero(), m_scaledSize);
     }
 
     Vector<TextureMapperTile> m_tiles;
     FloatSize m_size;
+    FloatSize m_scaledSize; // Effective size used for tiling (consistent with tile creation)
     RefPtr<Image> m_image;
     float m_contentsScale { 1 };
     bool m_isScaleDirty { false };

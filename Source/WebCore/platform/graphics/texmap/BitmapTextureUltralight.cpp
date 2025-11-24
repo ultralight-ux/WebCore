@@ -62,6 +62,8 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 
 void BitmapTextureUltralight::applyClip() {
   ProfiledZone;
+  CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::applyClip",
+                           stream << "clipRect=" << clipStack().scissorRect());
   if (!canvas_)
     return;
 
@@ -70,6 +72,10 @@ void BitmapTextureUltralight::applyClip() {
 
 void BitmapTextureUltralight::didReset() {
   ProfiledZone;
+  CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::didReset",
+                           stream << "contentSize=" << contentSize()
+                           << " canvasSize=" << (canvas_ ? IntSize(canvas_->width(), canvas_->height()) : IntSize())
+                           << " owns_canvas=" << owns_canvas_);
   if (!owns_canvas_)
     return;
 
@@ -412,6 +418,9 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
 
 void BitmapTextureUltralight::resetCanvas(const IntSize& size) {
   ProfiledZone;
+  CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::resetCanvas",
+                           stream << "size=" << size
+                           << " use_gpu=" << use_gpu_);
   canvas_size_ = size;
 
   if (!use_gpu_) {

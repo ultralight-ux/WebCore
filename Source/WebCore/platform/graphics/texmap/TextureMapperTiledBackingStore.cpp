@@ -23,6 +23,10 @@
 
 #if USE(ULTRALIGHT)
 #include "TextureMapperUltralight.h"
+#include <Ultralight/private/CanvasProfiler.h>
+#if defined(ENABLE_CANVAS_TRACING)
+#include <wtf/text/TextStream.h>
+#endif
 #endif
 
 #include "GraphicsLayer.h"
@@ -65,6 +69,10 @@ TransformationMatrix TextureMapperTiledBackingStore::adjustedTransformForRect(co
 
 void TextureMapperTiledBackingStore::paintToTextureMapper(TextureMapper& textureMapper, const FloatRect& targetRect, const TransformationMatrix& transform, float opacity)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::paintToTextureMapper",
+                             stream << "targetRect=" << targetRect
+                             << " opacity=" << opacity
+                             << " tileCount=" << m_tiles.size());
     updateContentsFromImageIfNeeded(textureMapper);
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(targetRect);
     for (auto& tile : m_tiles)
@@ -114,6 +122,14 @@ bool TextureMapperTiledBackingStore::shouldUseTiling(GraphicsLayer* layer, const
 
 void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer* layer, const FloatSize& size, const IntSize& tileSize, bool hasAlpha, TextureMapper& textureMapper)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded",
+                             stream << "size=" << size
+                             << " tileSize=" << tileSize
+                             << " hasAlpha=" << hasAlpha
+                             << " contentsScale=" << m_contentsScale
+                             << " currentTileCount=" << m_tiles.size()
+                             << " isScaleDirty=" << m_isScaleDirty);
+
     if (size == m_size && !m_isScaleDirty)
         return;
 
@@ -124,13 +140,19 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer*
     if (!m_image)
         scaledSize.scale(m_contentsScale);
 
+    m_scaledSize = scaledSize; // Store for use in rect()
+
     Vector<FloatRect> tileRectsToAdd;
     Vector<int> tileIndicesToRemove;
     static const size_t TileEraseThreshold = 6;
 
     // This method recycles tiles. We check which tiles we need to add, which to remove, and use as many
     // removable tiles as replacement for new tiles when possible.
-    if (shouldUseTiling(layer, scaledSize, textureMapper)) {
+    bool useTiling = shouldUseTiling(layer, scaledSize, textureMapper);
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded.tiling",
+                             stream << "useTiling=" << useTiling
+                             << " scaledSize=" << scaledSize);
+    if (useTiling) {
         // Create multiple tiles
         for (float y = 0; y < scaledSize.height(); y += tileSize.height()) {
             for (float x = 0; x < scaledSize.width(); x += tileSize.width()) {
@@ -194,6 +216,11 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer*
             break;
         m_tiles.remove(index);
     }
+
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded.result",
+                             stream << "finalTileCount=" << m_tiles.size()
+                             << " tilesCreated=" << tileRectsToAdd.size()
+                             << " tilesRemoved=" << tileIndicesToRemove.size());
 }
 
 void TextureMapperTiledBackingStore::updateContents(TextureMapper& textureMapper, Image* image, const FloatSize& totalSize, const IntRect& dirtyRect)
@@ -227,6 +254,11 @@ void TextureMapperTiledBackingStore::setNeedsUpdateInRect(TextureMapper& texture
 void TextureMapperTiledBackingStore::paintToTextureMapperWithClip(TextureMapper& textureMapper, const IntSize& offset, const FloatRect& targetRect, const TransformationMatrix& transform, float opacity)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::paintToTextureMapperWithClip",
+                             stream << "targetRect=" << targetRect
+                             << " offset=" << offset
+                             << " opacity=" << opacity
+                             << " tileCount=" << m_tiles.size());
     updateContentsFromImageIfNeeded(textureMapper);
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(targetRect);
     for (auto& tile : m_tiles) {
@@ -241,6 +273,11 @@ void TextureMapperTiledBackingStore::paintToTextureMapperWithClip(TextureMapper&
 void TextureMapperTiledBackingStore::updateContentsWithClip(TextureMapper& textureMapper, const IntSize& offset, GraphicsLayer* sourceLayer, const FloatRect& layerRect, const TransformationMatrix& transform)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperTiledBackingStore::updateContentsWithClip",
+                             stream << "layerRect=" << layerRect
+                             << " offset=" << offset
+                             << " contentsScale=" << m_contentsScale
+                             << " tileCount=" << m_tiles.size());
     TransformationMatrix adjustedTransform = transform * adjustedTransformForRect(layerRect);
     for (auto& tile : m_tiles) {
         FloatRect globalTileRect = transformRectFromLayerToGlobalCoordinateSpace(tile.rect(), adjustedTransform, offset);

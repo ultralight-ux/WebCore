@@ -166,6 +166,9 @@ TextureMapperUltralight::~TextureMapperUltralight() {}
 void TextureMapperUltralight::setRootSurface(
     ultralight::RefPtr<ultralight::Canvas> canvas)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::setRootSurface",
+                             stream << "canvas=" << (canvas ? "valid" : "null")
+                             << " canvasSize=" << (canvas ? IntSize(canvas->width(), canvas->height()) : IntSize()));
     if (canvas) {
         if (root_surface_ && static_cast<BitmapTextureUltralight*>(root_surface_.get())->canvas() == canvas)
             return;
@@ -433,6 +436,11 @@ void TextureMapperUltralight::drawSolidColor(const FloatRect& target,
     const TransformationMatrix& modelViewMatrix, const Color& color, bool isBlendingAllowed)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::drawSolidColor",
+                             stream << "target=" << target
+                             << " color=" << color
+                             << " blendingAllowed=" << isBlendingAllowed
+                             << " transform=" << modelViewMatrix);
 
     if (!current_surface_)
         return;
@@ -465,6 +473,11 @@ void TextureMapperUltralight::clearColor(const Color&)
 // makes a surface the target for the following drawTexture calls.
 void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::bindSurface",
+                             stream << "surface=" << (surface ? "valid" : "null")
+                             << " surfaceSize=" << (surface ? surface->size() : IntSize())
+                             << " contentSize=" << (surface ? surface->contentSize() : IntSize())
+                             << " isRoot=" << (!surface));
     if (!surface) {
         current_surface_ = root_surface_;
         return;
@@ -475,6 +488,10 @@ void TextureMapperUltralight::bindSurface(BitmapTexture* surface)
 
 void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const FloatRoundedRect& rect)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::beginClip",
+                             stream << "rect=" << rect.rect()
+                             << " isRounded=" << rect.isRounded()
+                             << " transform=" << mat);
     auto* clip = clipStack();
     if (clip)
         clip->pushClip(rect, mat);
@@ -482,6 +499,7 @@ void TextureMapperUltralight::beginClip(const TransformationMatrix& mat, const F
 
 void TextureMapperUltralight::endClip()
 {
+    CANVAS_TRACE("TextureMapperUltralight::endClip");
     if (clipStack())
         clipStack()->popClip();
 }
@@ -509,13 +527,19 @@ void TextureMapperUltralight::setDepthRange(double zNear, double zFar)
     notImplemented();
 }
 
-void TextureMapperUltralight::beginPainting(PaintFlags)
+void TextureMapperUltralight::beginPainting(PaintFlags flags)
 {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::beginPainting",
+                             stream << "paintId=" << paint_id_
+                             << " flags=" << static_cast<int>(flags));
     paint_id_++;
     bindSurface(0);
 }
 
-void TextureMapperUltralight::endPainting() {}
+void TextureMapperUltralight::endPainting() {
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::endPainting",
+                             stream << "paintId=" << paint_id_);
+}
 
 IntSize TextureMapperUltralight::maxTextureSize() const
 {
@@ -531,6 +555,10 @@ RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntS
 RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags, bool needsExactSize)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::acquireTextureFromPool",
+                             stream << "requestedSize=" << size
+                             << " flags=" << static_cast<int>(flags)
+                             << " needsExactSize=" << needsExactSize);
     // TODO: get opaque tracking working properly with texture mapper textures,
     // for now, force flags to always allow alpha:
     BitmapTexture::Flags alphaFlags = BitmapTexture::SupportsAlpha;
@@ -539,10 +567,17 @@ RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntS
     return selectedTexture;
 }
 
-void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture, const IntSize& srcSize, 
+void TextureMapperUltralight::drawFiltered(const BitmapTexture& sourceTexture, const IntSize& srcSize,
     const BitmapTexture* contentTexture, RefPtr<FilterOperation> operation, int pass, float adjustScale, bool blend)
 {
     ProfiledZone;
+    CANVAS_TRACE_WITH_STREAM("TextureMapperUltralight::drawFiltered",
+                             stream << "srcSize=" << srcSize
+                             << " filterType=" << (operation ? static_cast<int>(operation->type()) : -1)
+                             << " pass=" << pass
+                             << " adjustScale=" << adjustScale
+                             << " blend=" << blend
+                             << " hasContentTexture=" << (contentTexture != nullptr));
     if (!sourceTexture.isValid())
         return;
 
