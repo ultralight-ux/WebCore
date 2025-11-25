@@ -11,7 +11,11 @@ static bool encodeImage(ultralight::Image* image, const String& mimeType, Vector
     if (mimeType != "image/png"_s)
         return false;
 
-    ultralight::RefPtr<ultralight::Buffer> buffer = image->bitmap()->EncodePNG();
+    auto bitmap = image->bitmap();
+    if (!bitmap)
+        return false;
+
+    ultralight::RefPtr<ultralight::Buffer> buffer = bitmap->EncodePNG();
     if (!buffer)
         return false;
 
