@@ -55,7 +55,7 @@ BitmapTextureUltralight::BitmapTextureUltralight(TextureMapper* textureMapper, c
 
 BitmapTextureUltralight::~BitmapTextureUltralight() {
   if (canvas_ && owns_canvas_) {
-    canvas_->RecycleRenderTexture();
+    //canvas_->RecycleRenderTexture();
     canvas_ = nullptr;
   }
 }
@@ -91,6 +91,7 @@ void BitmapTextureUltralight::didReset() {
     }
       
     canvas_->Clear();
+    //canvas_->RecycleRenderTexture();
     return;
   }
 

@@ -34,6 +34,7 @@
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 #include "BitmapTextureUltralight.h"
+#include "TextureMapperUltralight.h"
 #endif
 
 //#define DEBUG_LOG
@@ -83,12 +84,23 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
     int height = size.height();
     IntSize paddedSize(width, height);
 
+    // In GPU mode, get current paint_id to prevent reusing textures from current frame
+    // (GPU commands may still be pending that reference the texture's canvas)
+    uint32_t currentPaintId = 0;
+    if (m_useGpu && m_textureMapper)
+        currentPaintId = static_cast<TextureMapperUltralight*>(m_textureMapper)->paint_id();
+
     if (needsExactSize) {
         selectedEntry = std::find_if(m_textures.begin(), m_textures.end(),
             [&](Entry& entry) {
-                return entry.m_texture->refCount() == 1
-                    && entry.m_texture->size() == size
-                    && entry.m_texture->flags() == flags;
+                if (entry.m_texture->refCount() != 1
+                    || entry.m_texture->size() != size
+                    || entry.m_texture->flags() != flags)
+                    return false;
+                // In GPU mode, skip textures used this frame (deferred commands may still reference them)
+                if (m_useGpu && entry.m_lastPaintId == currentPaintId)
+                    return false;
+                return true;
             });
     } else {
         // Round to next highest multiple of 128
@@ -105,6 +117,9 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
                 && entry.m_texture->size().width() >= size.width()
                 && entry.m_texture->size().height() >= size.height()
                 && entry.m_texture->flags() == flags) {
+                // In GPU mode, skip textures used this frame (deferred commands may still reference them)
+                if (m_useGpu && entry.m_lastPaintId == currentPaintId)
+                    continue;
                 candidates.append(&entry);
             }
         }
@@ -153,6 +168,7 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
 
     scheduleReleaseUnusedTextures();
     selectedEntry->markIsInUse();
+    selectedEntry->m_lastPaintId = currentPaintId;
     selectedEntry->m_texture->reset(size, flags);
     return selectedEntry->m_texture.copyRef();
 #else
