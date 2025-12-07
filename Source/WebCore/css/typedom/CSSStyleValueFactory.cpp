@@ -337,6 +337,12 @@ RefPtr<CSSStyleValue> CSSStyleValueFactory::constructStyleValueForCustomProperty
     }, [&](const StyleColor& colorValue) -> RefPtr<CSSStyleValue> {
         if (colorValue.isCurrentColor())
             return CSSKeywordValue::rectifyKeywordish(nameLiteral(CSSValueCurrentcolor));
+#if USE(ULTRALIGHT)
+        // ULTRALIGHT PATCH: Avoid crash with color-mix() in CSS Typed OM.
+        // Fixed upstream in WebKit commit f99a53e73e5181fada3cf04e56adfa01a2e05563
+        if (colorValue.isColorMix())
+            return nullptr;  // color-mix() not fully supported in CSS Typed OM yet
+#endif
         return CSSStyleValue::create(CSSValuePool::singleton().createColorValue(colorValue.absoluteColor()));
     }, [&](const URL& urlValue) -> RefPtr<CSSStyleValue> {
         return CSSStyleValue::create(CSSPrimitiveValue::create(urlValue.string(), CSSUnitType::CSS_URI));

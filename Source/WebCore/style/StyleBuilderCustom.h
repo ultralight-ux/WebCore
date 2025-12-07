@@ -2128,11 +2128,16 @@ inline void BuilderCustom::applyValueColor(BuilderState& builderState, CSSValue&
 
     // For the color property, current color is actually the inherited computed color.
     auto absoluteColorOrInheritColor = [&](const StyleColor& color) {
-        if (color.isCurrentColor()) {
-            auto& parentStyle = builderState.parentStyle();
+        auto& parentStyle = builderState.parentStyle();
+#if USE(ULTRALIGHT)
+        // ULTRALIGHT PATCH: Fix crash with color-mix() in color property.
+        // Fixed upstream in WebKit commit f99a53e73e5181fada3cf04e56adfa01a2e05563
+        return color.resolveColor(parentStyle.color());
+#else
+        if (color.isCurrentColor())
             return parentStyle.color();
-        }
         return color.absoluteColor();
+#endif
     };
     
     if (builderState.applyPropertyToRegularStyle()) {

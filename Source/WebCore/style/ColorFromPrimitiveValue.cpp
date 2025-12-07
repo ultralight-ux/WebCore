@@ -72,7 +72,13 @@ Color colorFromPrimitiveValueWithResolvedCurrentColor(const Document& document, 
         return style.color();
     }
 
+#if USE(ULTRALIGHT)
+    // ULTRALIGHT PATCH: Fix crash with color-mix() values.
+    // Fixed upstream in WebKit commit f99a53e73e5181fada3cf04e56adfa01a2e05563
+    return colorFromPrimitiveValue(document, style, value, ForVisitedLink::No).resolveColor(style.color());
+#else
     return colorFromPrimitiveValue(document, style, value, ForVisitedLink::No).absoluteColor();
+#endif
 }
 
 } // namespace Style
