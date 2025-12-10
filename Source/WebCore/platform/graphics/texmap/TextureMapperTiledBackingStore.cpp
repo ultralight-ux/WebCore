@@ -33,6 +33,7 @@
 #include "ImageBuffer.h"
 #include "ImageObserver.h"
 #include "TextureMapper.h"
+#include <cmath>
 
 namespace WebCore {
 
@@ -129,6 +130,17 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer*
                              << " contentsScale=" << m_contentsScale
                              << " currentTileCount=" << m_tiles.size()
                              << " isScaleDirty=" << m_isScaleDirty);
+
+    // Sanity check: sizes should be reasonable (< 100K pixels in any dimension)
+    // This guards against memory corruption causing garbage values in layer size.
+    static constexpr float kMaxReasonableSize = 100000.0f;
+    if (size.width() > kMaxReasonableSize || size.height() > kMaxReasonableSize
+        || size.width() < 0 || size.height() < 0
+        || std::isnan(size.width()) || std::isnan(size.height())
+        || std::isinf(size.width()) || std::isinf(size.height())) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
 
     if (size == m_size && !m_isScaleDirty)
         return;
