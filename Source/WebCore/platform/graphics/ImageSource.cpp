@@ -336,7 +336,7 @@ bool ImageSource::canUseAsyncDecoding()
     if (!isDecoderAvailable())
         return false;
     // FIXME: figure out the best heuristic for enabling async image decoding.
-    return size().area() * sizeof(uint32_t) >= (frameCount() > 1 ? 100 * KB : 500 * KB);
+    return size().area() * sizeof(uint32_t) >= (frameCount() > 1 ? 100 * KB : 128 * KB);
 }
 
 void ImageSource::startAsyncDecodingQueue()
