@@ -9,6 +9,8 @@
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 #include FT_BITMAP_H
+#include FT_STROKER_H
+#include FT_GLYPH_H
 
 struct RenderContext {
   ultralight::RefPtr<ultralight::Path> path;
@@ -194,6 +196,94 @@ public:
     ctx.path->Close();
 
     out_path = ctx.path;
+    return true;
+  }
+
+  virtual bool RenderStrokedGlyph(uint32_t glyph_index, FontHinting hinting,
+      float stroke_width, RefPtr<Bitmap>& out_bitmap, Point& out_offset) override {
+    ProfiledZone;
+
+    FT_Library lib = WebCore::GetFreeTypeLib();
+
+    // Load glyph outline (not rendered)
+    FT_Int32 load_flags = FT_LOAD_NO_BITMAP;
+    if (hinting == ultralight::FontHinting::Smooth)
+      load_flags |= FT_LOAD_TARGET_LIGHT;
+    else if (hinting == ultralight::FontHinting::Normal)
+      load_flags |= FT_LOAD_TARGET_NORMAL;
+    else if (hinting == ultralight::FontHinting::Monochrome)
+      load_flags |= FT_LOAD_TARGET_MONO;
+    else if (hinting == ultralight::FontHinting::None)
+      load_flags |= FT_LOAD_NO_HINTING;
+
+    FT_Error error = FT_Load_Glyph(face(), glyph_index, load_flags);
+    if (error)
+      return false;
+
+    FT_GlyphSlot slot = face()->glyph;
+    if (slot->format != FT_GLYPH_FORMAT_OUTLINE)
+      return false;
+
+    // Get glyph object
+    FT_Glyph glyph;
+    error = FT_Get_Glyph(slot, &glyph);
+    if (error)
+      return false;
+
+    // Create and configure stroker
+    FT_Stroker stroker;
+    error = FT_Stroker_New(lib, &stroker);
+    if (error) {
+      FT_Done_Glyph(glyph);
+      return false;
+    }
+
+    // stroke_width is full width, radius is half
+    // Convert to 26.6 fixed point (multiply by 64)
+    FT_Fixed radius = static_cast<FT_Fixed>(stroke_width * 0.5f * 64.0f);
+    // Miter limit 4.0 in 16.16 fixed point (CSS default, matches Chrome/Safari)
+    FT_Fixed miter_limit = 0x40000;
+
+    // Use MITER_FIXED for sharp corners (PostScript/PDF style, matches Chrome)
+    // Use BUTT line cap since glyph outlines are closed paths
+    FT_Stroker_Set(stroker, radius,
+        FT_STROKER_LINECAP_BUTT,
+        FT_STROKER_LINEJOIN_MITER_FIXED,
+        miter_limit);
+
+    // Use FT_Glyph_Stroke to create a proper hollow stroke ring (both inner and outer borders)
+    // FT_Glyph_StrokeBorder only returns one border which fills solid when rasterized
+    error = FT_Glyph_Stroke(&glyph, stroker, 1 /*destroy orig*/);
+    FT_Stroker_Done(stroker);
+    if (error) {
+      FT_Done_Glyph(glyph);
+      return false;
+    }
+
+    // Render to bitmap
+    error = FT_Glyph_To_Bitmap(&glyph, FT_RENDER_MODE_NORMAL, nullptr, 1);
+    if (error) {
+      FT_Done_Glyph(glyph);
+      return false;
+    }
+
+    FT_BitmapGlyph bitmap_glyph = reinterpret_cast<FT_BitmapGlyph>(glyph);
+    FT_Bitmap* bitmap = &bitmap_glyph->bitmap;
+
+    if (bitmap->width == 0 || bitmap->rows == 0) {
+      FT_Done_Glyph(glyph);
+      return false;
+    }
+
+    // Create Ultralight bitmap
+    out_bitmap = Bitmap::Create(bitmap->width, bitmap->rows,
+        BitmapFormat::A8_UNORM, bitmap->width, bitmap->buffer,
+        bitmap->width * bitmap->rows);
+
+    out_offset = Point(static_cast<float>(bitmap_glyph->left),
+                       static_cast<float>(bitmap_glyph->top) * -1.0f);
+
+    FT_Done_Glyph(glyph);
     return true;
   }
 

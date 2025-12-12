@@ -85,6 +85,23 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   }
 
   if (glyphBuf.size()) {
+    // Get text drawing mode and stroke info from context state
+    auto& state = context.state();
+    auto textMode = state.textDrawingMode();
+
+    // Determine fill color - use transparent if Fill mode is not requested
+    ultralight::Color fillColor = UltralightColorTRANSPARENT;
+    if (textMode.contains(TextDrawingMode::Fill))
+      fillColor = context.fillColor();
+
+    // Determine stroke info
+    float strokeWidth = 0.0f;
+    ultralight::Color strokeColor = UltralightColorTRANSPARENT;
+    if (textMode.contains(TextDrawingMode::Stroke)) {
+      strokeWidth = state.strokeThickness();
+      strokeColor = state.strokeBrush().color();
+    }
+
     if (context.hasVisibleShadow()) {
 
       // TODO: Handle text shadows properly with offscreen blur filter
@@ -96,10 +113,12 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       context.getShadow(shadow_size, shadow_blur, shadow_color);
 
       ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
-      canvas->DrawGlyphs(ultraFont, shadow_color, origin, glyphBuf.data(), glyphBuf.size(), shadow_offset);
+      canvas->DrawGlyphs(ultraFont, shadow_color, origin, glyphBuf.data(), glyphBuf.size(), shadow_offset,
+                         strokeWidth, strokeColor);
     }
 
-    canvas->DrawGlyphs(ultraFont, context.fillColor(), origin, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
+    canvas->DrawGlyphs(ultraFont, fillColor, origin, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f),
+                       strokeWidth, strokeColor);
     glyphBuf.resize(0);
   }
 }
