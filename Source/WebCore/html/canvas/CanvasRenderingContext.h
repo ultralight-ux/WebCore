@@ -72,6 +72,7 @@ public:
     virtual bool isPlaceholder() const { return false; }
     virtual bool isOffscreen2d() const { return false; }
     virtual bool isPaint() const { return false; }
+    virtual bool willReadFrequently() const;
 
     virtual void clearAccumulatedDirtyRect() { }
 

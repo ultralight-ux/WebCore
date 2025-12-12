@@ -104,6 +104,11 @@ DestinationColorSpace CanvasRenderingContext::colorSpace() const
     return DestinationColorSpace::SRGB();
 }
 
+bool CanvasRenderingContext::willReadFrequently() const
+{
+    return false;
+}
+
 bool CanvasRenderingContext::taintsOrigin(const CanvasPattern* pattern)
 {
     if (m_canvas.originClean() && pattern && !pattern->originClean())

@@ -92,6 +92,7 @@ public:
     virtual ~CanvasRenderingContext2DBase();
 
     const CanvasRenderingContext2DSettings& getContextAttributes() const { return m_settings; }
+    bool willReadFrequently() const final { return m_settings.willReadFrequently; }
 
     double lineWidth() const { return state().lineWidth; }
     void setLineWidth(double);

@@ -343,7 +343,14 @@ void CanvasBase::createImageBuffer(bool usesDisplayListDrawing, bool avoidBacken
         return;
 
     OptionSet<ImageBufferOptions> bufferOptions;
-    if (shouldAccelerate(area))
+
+    // Check willReadFrequently hint - if true, use CPU rendering for efficient getImageData()
+    // Per upstream WebKit: https://bugs.webkit.org/show_bug.cgi?id=244117
+    bool willReadFrequently = false;
+    if (auto* context = renderingContext())
+        willReadFrequently = context->willReadFrequently();
+
+    if (!willReadFrequently && shouldAccelerate(area))
         bufferOptions.add(ImageBufferOptions::Accelerated);
     // FIXME: Add a new setting for DisplayList drawing on canvas.
     if (usesDisplayListDrawing || scriptExecutionContext()->settingsValues().displayListDrawingEnabled)
