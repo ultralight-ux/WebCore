@@ -489,7 +489,20 @@ void ImageBitmap::createPromise(ScriptExecutionContext& scriptExecutionContext, 
     }
 
     auto outputSize = outputSizeForSourceRectangle(sourceRectangle.returnValue(), options);
+
+#if USE(ULTRALIGHT)
+    // Preserve GPU acceleration from source canvas to avoid GPU->CPU->GPU round-trips.
+    // When the source canvas uses a GPU-backed ImageBuffer, create a GPU-backed ImageBitmap
+    // so that subsequent drawing operations stay on the GPU path.
+    RenderingMode effectiveRenderingMode = bufferRenderingMode;
+    if (auto* sourceBuffer = canvas.buffer()) {
+        if (sourceBuffer->renderingMode() == RenderingMode::Accelerated)
+            effectiveRenderingMode = RenderingMode::Accelerated;
+    }
+    auto bitmapData = createImageBuffer(scriptExecutionContext, outputSize, effectiveRenderingMode, imageForRender->colorSpace());
+#else
     auto bitmapData = createImageBuffer(scriptExecutionContext, outputSize, bufferRenderingMode, imageForRender->colorSpace());
+#endif
 
     if (!bitmapData) {
         resolveWithBlankImageBuffer(scriptExecutionContext, canvas.originClean(), WTFMove(promise));

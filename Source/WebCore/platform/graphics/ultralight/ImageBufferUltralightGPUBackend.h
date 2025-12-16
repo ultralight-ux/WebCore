@@ -48,13 +48,6 @@ protected:
     std::unique_ptr<GraphicsContext> m_context;
     mutable RefPtr<NativeImage> m_cachedNativeImage;
     IntSize m_backendSize;
-
-    // Deferred rendering support for HTML5 Canvas elements
-    // When RenderingPurpose::Canvas is detected, we use CanvasRecorder to record
-    // drawing operations thread-safely, then replay to GPU canvas during paint phase
-    mutable ultralight::RefPtr<ultralight::Canvas> m_deferredGPUCanvas;       // Lazy-created GPU canvas for replay
-    ultralight::RefPtr<ultralight::Canvas> m_deferredRecordingCanvas;         // CanvasRecorder for recording
-    bool m_usesDeferredRendering = false;                                     // Flag indicating deferred mode
 };
 
 }  // namespace WebCore

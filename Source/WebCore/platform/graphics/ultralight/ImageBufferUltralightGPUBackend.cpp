@@ -8,7 +8,6 @@
 #include "GraphicsContextUltralight.h"
 #include "NotImplemented.h"
 #include <Ultralight/private/Canvas.h>
-#include <Ultralight/private/CanvasRecorder.h>
 #include <Ultralight/private/Image.h>
 #include <Ultralight/private/Paint.h>
 #include <wtf/IsoMallocInlines.h>
@@ -31,60 +30,28 @@ std::unique_ptr<ImageBufferUltralightGPUBackend> ImageBufferUltralightGPUBackend
     uint32_t width = static_cast<uint32_t>(backendSize.width());
     uint32_t height = static_cast<uint32_t>(backendSize.height());
 
-    ultralight::RefPtr<ultralight::Canvas> canvas;
-    bool usesDeferredRendering = false;
+    // Use CreateGPUDeferred for deferred GPU rendering
+    // CanvasGPUDeferred records commands to a CanvasRecorder and syncs to a CanvasGPU at paint time
+    auto canvas = ultralight::Canvas::CreateGPUDeferred(width, height, ultralight::BitmapFormat::BGRA8_UNORM_SRGB);
+    if (!canvas)
+        return nullptr;
 
-    // HTML5 Canvas elements require deferred rendering to handle thread-safe operations
-    if (parameters.purpose == RenderingPurpose::Canvas) {
-        // Create CanvasRecorder for deferred rendering
-        // The recorder will capture all drawing operations thread-safely
-        canvas = ultralight::Canvas::CreateRecorder(width, height, ultralight::BitmapFormat::BGRA8_UNORM_SRGB);
-        if (!canvas)
-            return nullptr;
-
-        // Verify we got a recorder canvas
-        if (canvas->type() != ultralight::CanvasType::Recorder) {
-            return nullptr;
-        }
-
-        usesDeferredRendering = true;
-
-#if defined(ENABLE_CANVAS_TRACING)
-        CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::create",
-            stream << "size=" << IntSize(width, height) << " canvas_type=Recorder mode=deferred");
-#endif
-    } else {
-        // Create CanvasGPU by passing nullptr for surface parameter
-        // This forces the Canvas factory to create a GPU backend instead of CPU/Skia
-        canvas = ultralight::Canvas::Create(width, height, ultralight::BitmapFormat::BGRA8_UNORM_SRGB, nullptr);
-        if (!canvas)
-            return nullptr;
-
-        // Verify we got a GPU canvas
-        if (canvas->type() != ultralight::CanvasType::GPU) {
-            // If we didn't get a GPU canvas, creation failed
-            return nullptr;
-        }
-
-#if defined(ENABLE_CANVAS_TRACING)
-        CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::create",
-            stream << "size=" << IntSize(width, height) << " canvas_type=GPU mode=direct");
-#endif
+    // Verify we got a GPUDeferred canvas
+    if (canvas->type() != ultralight::CanvasType::GPUDeferred) {
+        return nullptr;
     }
+
+#if defined(ENABLE_CANVAS_TRACING)
+    CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::create",
+        stream << "size=" << IntSize(width, height) << " canvas_type=GPUDeferred");
+#endif
 
     auto context = makeUnique<GraphicsContextUltralight>(canvas);
     if (!context)
         return nullptr;
 
-    auto backend = std::unique_ptr<ImageBufferUltralightGPUBackend>(new ImageBufferUltralightGPUBackend(parameters, WTFMove(context)));
-
-    // Store deferred rendering state
-    if (usesDeferredRendering) {
-        backend->m_usesDeferredRendering = true;
-        backend->m_deferredRecordingCanvas = canvas;
-    }
-
-    return backend;
+    return std::unique_ptr<ImageBufferUltralightGPUBackend>(
+        new ImageBufferUltralightGPUBackend(parameters, WTFMove(context)));
 }
 
 size_t ImageBufferUltralightGPUBackend::calculateMemoryCost(const ImageBufferBackend::Parameters& parameters)
@@ -124,58 +91,9 @@ GraphicsContext& ImageBufferUltralightGPUBackend::context() const
 
 void ImageBufferUltralightGPUBackend::flushContext()
 {
-    if (m_usesDeferredRendering) {
-        // Ensure GPU canvas exists (lazy-create if needed)
-        if (!m_deferredGPUCanvas) {
-            m_deferredGPUCanvas = ultralight::Canvas::Create(
-                m_backendSize.width(),
-                m_backendSize.height(),
-                ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
-                nullptr  // nullptr = GPU canvas
-            );
-
-            // Verify we got a GPU canvas
-            if (!m_deferredGPUCanvas || m_deferredGPUCanvas->type() != ultralight::CanvasType::GPU) {
-                return;
-            }
-
-#if defined(ENABLE_CANVAS_TRACING)
-            CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::flushContext",
-                stream << "lazy-created GPU canvas for flush");
-#endif
-        }
-
-        // Replay recorded commands to GPU canvas
-        auto* recorder = m_deferredRecordingCanvas->as<ultralight::CanvasRecorder>();
-        if (recorder) {
-            recorder->ReplayTo(m_deferredGPUCanvas);
-
-#if defined(ENABLE_CANVAS_TRACING)
-            CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::flushContext",
-                stream << "replayed commands during flush");
-#endif
-        }
-
-        // Flush the GPU canvas
-        m_deferredGPUCanvas->FlushSurface();
-        m_deferredGPUCanvas->ShrinkAllocators();
-
-        // Clear recorder commands to prevent memory accumulation
-        // State (transform, alpha, etc.) is preserved for continued recording
-        if (recorder) {
-            recorder->ClearCommands();
-        }
-
-        // Invalidate cached native image since we've updated the canvas
-        m_cachedNativeImage = nullptr;
-    } else {
-        // Direct GPU rendering path (non-Canvas ImageBuffers)
-        // Flush GPU command queue
-        // Note: GPU canvas doesn't have a surface, but we still need to flush commands
-        auto* canvas = static_cast<GraphicsContextUltralight&>(context()).platformContext();
-        canvas->FlushSurface();  // This will be a no-op for GPU canvas but ensures command queue is flushed
-        canvas->ShrinkAllocators();
-    }
+    // CanvasGPUDeferred handles sync internally at paint time
+    // Just invalidate our cached native image
+    m_cachedNativeImage = nullptr;
 }
 
 IntSize ImageBufferUltralightGPUBackend::backendSize() const
@@ -187,94 +105,42 @@ RefPtr<NativeImage> ImageBufferUltralightGPUBackend::copyNativeImage(BackingStor
 {
     ProfiledZone;
 
-    // Preprocessing: Handle deferred rendering for HTML5 Canvas elements
-    if (m_usesDeferredRendering) {
-        // Lazy-create GPU canvas on first paint
-        if (!m_deferredGPUCanvas) {
-            m_deferredGPUCanvas = ultralight::Canvas::Create(
-                m_backendSize.width(),
-                m_backendSize.height(),
-                ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
-                nullptr  // nullptr = GPU canvas
-            );
-
-            // Verify we got a GPU canvas
-            if (!m_deferredGPUCanvas || m_deferredGPUCanvas->type() != ultralight::CanvasType::GPU) {
-                return nullptr;
-            }
-
-#if defined(ENABLE_CANVAS_TRACING)
-            CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::copyNativeImage",
-                stream << "lazy-created GPU canvas size=" << m_backendSize);
-#endif
-        }
-
-        // Replay recorded commands to GPU canvas
-        // ReplayTo() drains commands but preserves recorder state for continued recording
-        auto* recorder = m_deferredRecordingCanvas->as<ultralight::CanvasRecorder>();
-        if (recorder) {
-            recorder->ReplayTo(m_deferredGPUCanvas);
-
-#if defined(ENABLE_CANVAS_TRACING)
-            CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::copyNativeImage",
-                stream << "replayed commands to GPU canvas");
-#endif
-        }
-    }
-
-    // Get the canvas to use (either deferred GPU canvas or direct GPU canvas)
-    auto* canvas = m_usesDeferredRendering
-        ? m_deferredGPUCanvas.get()
-        : static_cast<GraphicsContextUltralight&>(context()).platformContext();
-
-    if (!canvas || canvas->type() != ultralight::CanvasType::GPU)
+    auto* canvas = static_cast<GraphicsContextUltralight&>(context()).platformContext();
+    if (!canvas)
         return nullptr;
+
+#if defined(ENABLE_CANVAS_TRACING)
+    CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::copyNativeImage",
+        stream << "copyBehavior=" << (copyBehavior == CopyBackingStore ? "CopyBackingStore" : "DontCopyBackingStore")
+               << " canvas_id=" << canvas->id()
+               << " canvas_type=" << static_cast<int>(canvas->type()));
+#endif
 
     switch (copyBehavior) {
     case CopyBackingStore: {
-        // Create a deep copy by creating a new GPU Canvas and drawing to it
-
-        // Create new GPU Canvas with same dimensions and format
-        // IMPORTANT: Pass nullptr for surface parameter to get GPU canvas
-        auto newCanvas = ultralight::Canvas::Create(
-            m_backendSize.width(),
-            m_backendSize.height(),
-            ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
-            nullptr  // nullptr = GPU canvas
-        );
-
-        // Verify we got a GPU canvas
-        if (!newCanvas || newCanvas->type() != ultralight::CanvasType::GPU)
+        // Use Canvas::Clone() to create a deep copy
+        // Clone captures both GPU content and pending recorder commands
+        auto clone = canvas->Clone();
+        if (!clone) {
+#if defined(ENABLE_CANVAS_TRACING)
+            CANVAS_TRACE("ImageBufferUltralightGPUBackend::copyNativeImage: Clone() returned null");
+#endif
             return nullptr;
+        }
 
-        // Define source and destination rectangles
-        ultralight::Rect src = {
-            0.0f, 0.0f,
-            static_cast<float>(m_backendSize.width()),
-            static_cast<float>(m_backendSize.height())
-        };
-        ultralight::Rect dest = src;  // Same dimensions
-
-        // Draw the source canvas to the new canvas (GPU→GPU copy)
-        // UltralightColorWHITE = no tinting
-        newCanvas->DrawCanvas(canvas, src, dest, UltralightColorWHITE);
-
-        // NOTE: No Flush() needed - DrawCanvas sets up draw dependency
-
-        // Create an Image wrapping the new canvas
-        auto image = ultralight::Image::Create(newCanvas);
-
-        // Return NativeImage wrapping the new canvas
-        return NativeImage::create(WTFMove(image));
+#if defined(ENABLE_CANVAS_TRACING)
+        CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::copyNativeImage",
+            stream << "cloned canvas_id=" << clone->id() << " canvas_type=" << static_cast<int>(clone->type()));
+#endif
+        return NativeImage::create(ultralight::Image::Create(clone));
     }
 
     case DontCopyBackingStore: {
-        // Return cached image if available (following CPU ImageBuffer pattern)
+        // Return cached image if available
         if (m_cachedNativeImage)
             return m_cachedNativeImage;
 
         // Create Image wrapping our existing canvas (no copy)
-        // This creates a reference, not a copy
         auto image = ultralight::Image::Create(canvas);
 
         // Cache and return the NativeImage
@@ -347,26 +213,11 @@ unsigned ImageBufferUltralightGPUBackend::bytesPerRow() const
 
 void ImageBufferUltralightGPUBackend::clearContents()
 {
-    if (m_usesDeferredRendering) {
-        // Clear the recorder (clears commands and resets state)
-        m_deferredRecordingCanvas->Clear();
+    // CanvasGPUDeferred handles Clear() by forwarding to recorder and marking as unsynced
+    static_cast<GraphicsContextUltralight&>(context()).platformContext()->Clear();
 
-        // Clear the GPU canvas if it exists
-        if (m_deferredGPUCanvas) {
-            m_deferredGPUCanvas->Clear();
-        }
-
-        // Invalidate cached native image
-        m_cachedNativeImage = nullptr;
-
-#if defined(ENABLE_CANVAS_TRACING)
-        CANVAS_TRACE_WITH_STREAM("ImageBufferUltralightGPUBackend::clearContents",
-            stream << "cleared deferred rendering canvases");
-#endif
-    } else {
-        // Direct GPU rendering path (non-Canvas ImageBuffers)
-        static_cast<GraphicsContextUltralight&>(context()).platformContext()->Clear();
-    }
+    // Invalidate cached native image
+    m_cachedNativeImage = nullptr;
 }
 
 } // namespace WebCore
