@@ -14,7 +14,11 @@
 namespace WebCore {
 
 class TextureMapper;
+class TextureMapperLayer;
+class TextureMapperUltralight;
 class FilterOperation;
+class ReferenceFilterOperation;
+class ImageBuffer;
 
 class WEBCORE_EXPORT BitmapTextureUltralight : public BitmapTexture {
 public:
@@ -80,7 +84,18 @@ public:
     virtual bool isValid() const override { return !!canvas_; }
 
     virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&,
-        const FilterOperations&, bool) override;
+        const FilterOperations&, bool, TextureMapperLayer*) override;
+
+    // Apply a reference filter (SVG filter) to the texture
+    RefPtr<BitmapTexture> applyReferenceFilter(TextureMapperUltralight&,
+        RefPtr<BitmapTexture> sourceSurface,
+        const ReferenceFilterOperation&,
+        TextureMapperLayer*);
+
+    // Helper functions for filter application
+    static RefPtr<ImageBuffer> createImageBufferFromBitmap(
+        ultralight::RefPtr<ultralight::Bitmap> bitmap, const IntSize& size);
+    static void copyImageBufferToTexture(ImageBuffer&, BitmapTextureUltralight&);
     struct FilterInfo {
         RefPtr<FilterOperation> filter;
         unsigned pass;

@@ -725,7 +725,11 @@ void TextureMapperLayer::paintIntoSurface(TextureMapperPaintOptions& options)
     bool hasMask = !!m_state.maskLayer;
     bool hasReplicaMask = options.replicaLayer == this && m_state.replicaLayer->m_state.maskLayer;
     bool defersLastFilter = !hasMask && !hasReplicaMask;
+#if USE(ULTRALIGHT)
+    options.surface = options.surface->applyFilters(options.textureMapper, m_currentFilters, defersLastFilter, this);
+#else
     options.surface = options.surface->applyFilters(options.textureMapper, m_currentFilters, defersLastFilter);
+#endif
     options.textureMapper.bindSurface(options.surface.get());
     if (hasMask)
         m_state.maskLayer->applyMask(options);

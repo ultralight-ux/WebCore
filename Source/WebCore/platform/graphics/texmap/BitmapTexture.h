@@ -39,6 +39,7 @@ class FilterOperations;
 class GraphicsLayer;
 class Image;
 class TextureMapper;
+class TextureMapperLayer;
 
 // A 2D texture that can be the target of software or GL rendering.
 class WEBCORE_EXPORT BitmapTexture : public RefCounted<BitmapTexture> {
@@ -80,7 +81,12 @@ public:
     inline int numberOfBytes() const { return size().width() * size().height() * bpp() >> 3; }
     inline bool isOpaque() const { return !(m_flags & SupportsAlpha); }
 
+#if USE(ULTRALIGHT)
+    // Ultralight: Add TextureMapperLayer* parameter for reference filter resolution
+    virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&, bool, TextureMapperLayer*) { return this; }
+#else
     virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&, bool) { return this; }
+#endif
 
 protected:
     IntSize m_contentSize;

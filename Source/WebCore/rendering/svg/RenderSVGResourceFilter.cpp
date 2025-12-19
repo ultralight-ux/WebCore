@@ -82,8 +82,11 @@ void RenderSVGResourceFilter::removeClientFromCache(RenderElement& client, bool 
 bool RenderSVGResourceFilter::applyResource(RenderElement& renderer, const RenderStyle&, GraphicsContext*& context, OptionSet<RenderSVGResourceMode> resourceMode)
 {
 #if USE(ULTRALIGHT)
-    notImplemented(); // TODO
-    return false;
+    // SVG filters require pixel readback which is not supported on GPU backends.
+    // Skip filter application for GPU-accelerated contexts (will be rendered unfiltered).
+    // GPU filter support will be added in a future implementation via shaders.
+    if (context && context->renderingMode() == RenderingMode::Accelerated)
+        return false;
 #endif
 
     ASSERT(context);

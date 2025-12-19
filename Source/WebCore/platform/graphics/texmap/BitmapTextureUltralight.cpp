@@ -1,11 +1,12 @@
 #include "config.h"
 #include "BitmapTextureUltralight.h"
 
-#if USE(TEXTURE_MAPPER_ULTRALIGHT) 
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
 #include "FilterOperations.h"
 #include "GraphicsContextUltralight.h"
 #include "TextureMapperUltralight.h"
+#include "TextureMapperLayer.h"
 #include "Image.h"
 #include "GraphicsLayer.h"
 #include "TextureMapper.h"
@@ -16,6 +17,17 @@
 #include "FilterResults.h"
 #include "ImageBufferUltralightBackend.h"
 #include "NotImplemented.h"
+
+// For reference filter support
+#include "FilterOperation.h"
+#include "RenderLayerBacking.h"
+#include "ReferencedSVGResources.h"
+#include "SVGFilter.h"
+#include "SVGFilterElement.h"
+#include "SVGLengthContext.h"
+#include "ImageBuffer.h"
+#include "PixelBuffer.h"
+#include "ByteArrayPixelBuffer.h"
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/CanvasProfiler.h>
@@ -286,7 +298,7 @@ inline void CopyBitmaps(ultralight::RefPtr<ultralight::Bitmap> src, ultralight::
 }
 
 RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textureMapper,
-  const FilterOperations& filters, bool defersLastFilter)
+  const FilterOperations& filters, bool defersLastFilter, TextureMapperLayer* layer)
 {
     ProfiledZone;
     CANVAS_TRACE_WITH_STREAM("BitmapTextureUltralight::applyFilters",
@@ -328,6 +340,17 @@ RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper& textu
 
     for (size_t i = 0; i < filters.size(); ++i) {
         RefPtr<FilterOperation> filter = filters.operations()[i];
+
+        // Handle reference filters (SVG filters) - CPU mode only
+        if (filter->type() == FilterOperation::Type::Reference) {
+            // Reference filters require pixel readback, skip for GPU textures
+            if (use_gpu_)
+                continue;
+
+            resultSurface = applyReferenceFilter(texmapUL, resultSurface,
+                downcast<ReferenceFilterOperation>(*filter), layer);
+            continue;
+        }
         ASSERT(filter);
 
         int numPasses = TextureMapperUltralight::getPassesRequiredForFilter(filter, use_gpu());
@@ -429,9 +452,198 @@ void BitmapTextureUltralight::resetCanvas(const IntSize& size) {
     auto bitmapSurfaceFactory = ultralight::GetBitmapSurfaceFactory();
     surface_.reset(bitmapSurfaceFactory->CreateSurface(canvas_size_.width(), canvas_size_.height()));
   }
-    
+
   canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
       canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, surface_.get());
+}
+
+// Helper: Create an ImageBuffer from an Ultralight Bitmap
+RefPtr<ImageBuffer> BitmapTextureUltralight::createImageBufferFromBitmap(
+    ultralight::RefPtr<ultralight::Bitmap> bitmap, const IntSize& size)
+{
+    if (!bitmap)
+        return nullptr;
+
+    // Create ImageBuffer with CPU rendering
+    auto imageBuffer = ImageBuffer::create(size, RenderingPurpose::Unspecified,
+        1.0f, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    if (!imageBuffer)
+        return nullptr;
+
+    // Lock bitmap and copy pixels to ImageBuffer
+    bitmap->LockPixels();
+    const void* pixels = bitmap->raw_pixels();
+    if (!pixels) {
+        bitmap->UnlockPixels();
+        return nullptr;
+    }
+
+    // Create PixelBuffer from bitmap data
+    PixelBufferFormat format {
+        AlphaPremultiplication::Premultiplied,
+        PixelFormat::BGRA8,
+        DestinationColorSpace::SRGB()
+    };
+
+    IntRect srcRect(IntPoint(), size);
+    auto pixelBuffer = ByteArrayPixelBuffer::tryCreate(format, srcRect.size());
+    if (!pixelBuffer) {
+        bitmap->UnlockPixels();
+        return nullptr;
+    }
+
+    // Copy pixel data
+    size_t bytesPerRow = bitmap->row_bytes();
+    size_t totalBytes = bytesPerRow * size.height();
+    if (pixelBuffer->sizeInBytes() >= totalBytes)
+        memcpy(pixelBuffer->bytes(), pixels, totalBytes);
+
+    bitmap->UnlockPixels();
+
+    // Put pixels into ImageBuffer
+    imageBuffer->putPixelBuffer(*pixelBuffer, srcRect);
+
+    return imageBuffer;
+}
+
+// Helper: Copy ImageBuffer result back to BitmapTexture
+void BitmapTextureUltralight::copyImageBufferToTexture(ImageBuffer& imageBuffer, BitmapTextureUltralight& texture)
+{
+    auto canvas = texture.canvas();
+    if (!canvas)
+        return;
+
+    // Get pixels from ImageBuffer
+    PixelBufferFormat format {
+        AlphaPremultiplication::Premultiplied,
+        PixelFormat::BGRA8,
+        DestinationColorSpace::SRGB()
+    };
+
+    IntRect srcRect(IntPoint(), imageBuffer.truncatedLogicalSize());
+    auto pixelBuffer = imageBuffer.getPixelBuffer(format, srcRect);
+    if (!pixelBuffer)
+        return;
+
+    // Create Ultralight bitmap from pixel data
+    auto bitmap = ultralight::Bitmap::Create(
+        srcRect.width(), srcRect.height(),
+        ultralight::BitmapFormat::BGRA8_UNORM_SRGB,
+        srcRect.width() * 4,  // bytes per row
+        pixelBuffer->bytes(),
+        pixelBuffer->sizeInBytes(),
+        nullptr, nullptr);
+
+    if (!bitmap)
+        return;
+
+    // Create image and draw to canvas
+    auto image = ultralight::Image::Create(bitmap);
+    if (!image)
+        return;
+
+    ultralight::Rect fullRect = { 0, 0, (float)srcRect.width(), (float)srcRect.height() };
+    canvas->set_blending_enabled(false);
+    canvas->DrawImage(image, fullRect, fullRect, UltralightColorWHITE);
+    canvas->set_blending_enabled(true);
+}
+
+// Apply a reference filter (SVG filter) to the texture
+RefPtr<BitmapTexture> BitmapTextureUltralight::applyReferenceFilter(
+    TextureMapperUltralight& texmapUL,
+    RefPtr<BitmapTexture> sourceSurface,
+    const ReferenceFilterOperation& refOp,
+    TextureMapperLayer* layer)
+{
+    ProfiledZone;
+
+    // 1. Get RenderElement via owner chain (Ultralight-specific)
+    // In the TextureMapper compositing path, GraphicsLayer's client is always RenderLayerBacking
+    if (!layer || !layer->owner())
+        return sourceSurface;
+
+    auto* graphicsLayer = layer->owner();
+    // GraphicsLayerClient doesn't have type traits for dynamicDowncast, use static_cast
+    // This is safe because in composited layers, the client is always RenderLayerBacking
+    auto& backing = static_cast<RenderLayerBacking&>(graphicsLayer->client());
+    RenderLayerModelObject& renderer = backing.owningLayer().renderer();
+
+    // 2. Resolve reference filter to SVGFilterElement
+    auto& referencedResources = renderer.ensureReferencedSVGResources();
+    auto* filterElement = referencedResources.referencedFilterElement(renderer.document(), refOp);
+    if (!filterElement)
+        return sourceSurface;
+
+    // 3. Extract source bitmap (CPU mode only)
+    auto* sourceTextureUL = toBitmapTextureUL(sourceSurface.get());
+    if (!sourceTextureUL || !sourceTextureUL->canvas())
+        return sourceSurface;
+
+    sourceTextureUL->canvas()->FlushSurface();
+    auto* surface = sourceTextureUL->canvas()->surface();
+    if (!surface)
+        return sourceSurface;
+
+    auto sourceBitmap = static_cast<ultralight::BitmapSurface*>(surface)->bitmap();
+    if (!sourceBitmap)
+        return sourceSurface;
+
+    // 4. Create ImageBuffer from source bitmap
+    IntSize srcSize = sourceTextureUL->contentSize();
+    auto sourceImageBuffer = createImageBufferFromBitmap(sourceBitmap, srcSize);
+    if (!sourceImageBuffer)
+        return sourceSurface;
+
+    // 5. Create GraphicsContext for SVGFilter creation
+    GraphicsContextUltralight context(sourceTextureUL->canvas());
+
+    // 6. Calculate filter region
+    FloatRect targetBoundingBox { FloatPoint(), FloatSize(srcSize) };
+    auto filterRegion = SVGLengthContext::resolveRectangle(
+        filterElement, filterElement->filterUnits(), targetBoundingBox,
+        filterElement->x(), filterElement->y(), filterElement->width(), filterElement->height());
+
+    // 7. Create SVGFilter
+    auto svgFilter = SVGFilter::create(*filterElement,
+        { FilterRenderingMode::Software },
+        FloatSize(texmapUL.scale(), texmapUL.scale()),
+        Filter::ClipOperation::Unite,
+        filterRegion, targetBoundingBox, context);
+    if (!svgFilter)
+        return sourceSurface;
+
+    // 8. Create FilterImage from source ImageBuffer
+    FilterResults results(nullptr);
+    IntRect absoluteImageRect(IntPoint(), srcSize);
+    auto sourceFilterImage = FilterImage::create(
+        filterRegion,
+        FloatRect(absoluteImageRect),
+        absoluteImageRect,
+        sourceImageBuffer.releaseNonNull(),
+        results.allocator());
+    if (!sourceFilterImage)
+        return sourceSurface;
+
+    // 9. Apply SVGFilter
+    RefPtr<FilterImage> resultFilterImage = svgFilter->apply(sourceFilterImage.get(), results);
+    if (!resultFilterImage || !resultFilterImage->imageBuffer())
+        return sourceSurface;
+
+    // 10. Calculate output size (filters may expand bounds)
+    IntOutsets outsets = SVGFilter::calculateOutsets(*filterElement, targetBoundingBox);
+    IntSize expandedSize = srcSize;
+    expandedSize.expand(outsets.left() + outsets.right(),
+                        outsets.top() + outsets.bottom());
+
+    // 11. Create result texture and copy filtered image
+    auto resultTexture = texmapUL.acquireTextureFromPool(expandedSize, BitmapTexture::SupportsAlpha, false);
+    if (!resultTexture)
+        return sourceSurface;
+
+    copyImageBufferToTexture(*resultFilterImage->imageBuffer(),
+                             static_cast<BitmapTextureUltralight&>(*resultTexture));
+
+    return resultTexture;
 }
 
 } // namespace WebCore

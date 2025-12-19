@@ -687,12 +687,19 @@ bool GraphicsLayerTextureMapper::filtersCanBeComposited(const FilterOperations& 
     if (!filters.size())
         return false;
 
+#if USE(ULTRALIGHT)
+    // Ultralight: Allow reference filters to be composited.
+    // The actual GPU check will happen in BitmapTextureUltralight::applyFilters()
+    // where use_gpu_ is available. Reference filters will be skipped for GPU textures.
+    return true;
+#else
     for (const auto& filterOperation : filters.operations()) {
         if (filterOperation->type() == FilterOperation::Type::Reference)
             return false;
     }
 
     return true;
+#endif
 }
 
 bool GraphicsLayerTextureMapper::addAnimation(const KeyframeValueList& valueList, const FloatSize& boxSize, const Animation* anim, const String& keyframesName, double timeOffset)
