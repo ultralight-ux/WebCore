@@ -1,3 +1,10 @@
+# Skip WebKit's ccache/sccache handling if Ultralight's sccache is configured
+# Ultralight uses CMAKE_*_COMPILER_LAUNCHER for unified sccache support
+if(CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER)
+    message(STATUS "ccache/sccache: Skipping WebKit ccache - using CMAKE_*_COMPILER_LAUNCHER instead")
+    return()
+endif()
+
 # Enable ccache by default, if installed. To disable it you can:
 # if using script build-webkit: pass --no-use-ccache
 # if using cmake: set environment variable WK_USE_CCACHE=NO

@@ -38,7 +38,7 @@
 #undef WTF_PLATFORM_WIN
 #undef WTF_PLATFORM_COCOA
 #undef WTF_PLATFORM_WIN_CAIRO
-#if !OS(WINDOWS)
+#if !OS(WINDOWS) || DISABLE_PRECOMPILED_HEADERS
 // Non-windows platforms don't use prefix headers so we have to force include this.
 #include "WebCorePrefix.h"
 #endif

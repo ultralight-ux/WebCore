@@ -2606,10 +2606,22 @@ list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/Namespace.cpp)
 
 WEBKIT_COMPUTE_SOURCES(WebCore)
 
-if (MSVC)
-    WEBKIT_ADD_PRECOMPILED_HEADER("WebCorePrefix.h" "WebCorePrefix.cpp" WebCore_SOURCES)
+# Check if sccache is being used - PCH is incompatible with sccache
+set(WEBCORE_DISABLE_PRECOMPILED_HEADERS OFF)
+if(CMAKE_CXX_COMPILER_LAUNCHER MATCHES "sccache")
+    set(WEBCORE_DISABLE_PRECOMPILED_HEADERS ON)
+    message(STATUS "sccache detected - disabling precompiled headers for WebCore")  
+endif()
+
+if (NOT WEBCORE_DISABLE_PRECOMPILED_HEADERS)
+    if (MSVC)
+        WEBKIT_ADD_PRECOMPILED_HEADER("WebCorePrefix.h" "WebCorePrefix.cpp" WebCore_SOURCES)
+    else ()
+        target_precompile_headers(WebCore PRIVATE WebCorePrefix.h)
+    endif ()
 else ()
-    target_precompile_headers(WebCore PRIVATE WebCorePrefix.h)
+    # When PCH is disabled, config.h needs to explicitly include WebCorePrefix.h    
+    target_compile_definitions(WebCore PRIVATE DISABLE_PRECOMPILED_HEADERS=1)       
 endif ()
 
 WEBKIT_COPY_FILES(WebCore_CopyPrivateHeaders
