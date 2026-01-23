@@ -78,11 +78,9 @@ list(APPEND WTF_SOURCES
 )
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
-  if (MSVC)
     if (NOT UL_ENABLE_STATIC_BUILD)
-        add_compile_options(/GL)
-    endif()
-  endif()
+        list(APPEND WTF_COMPILE_OPTIONS -flto=thin)
+    endif ()
 endif()
 
 #set(WTF_PRE_BUILD_COMMAND "${PROJECT_BINARY_DIR}/DerivedSources/wtf/preBuild.cmd")

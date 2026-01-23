@@ -160,26 +160,9 @@ set(WebCore_OUTPUT_NAME
 )
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
-  if (MSVC)
     if (NOT UL_ENABLE_STATIC_BUILD)
-        list(APPEND WebCore_COMPILE_OPTIONS /GL)
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
-        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
+        list(APPEND WebCore_COMPILE_OPTIONS -flto=thin)
     endif ()
-
-    if (COMPILER_IS_CLANG_CL)
-        add_compile_options(
-            -O3                             # Aggressive optimization.
-            -fvectorize                     # Enable vectorization.
-            -ffast-math                     # Allow "unsafe" floating-point optimizations.
-            /Ob2                            # Inline expansion: any suitable function.
-            /fp:fast                        # Fast floating-point model.
-            /cgthreads8                     # Specify the number of threads for codegen.
-            -funroll-loops                  # Unroll loops where beneficial.
-            -flto=thin
-        )
-    endif ()
-  endif()
 endif()
 
 if (UWP_PLATFORM)
