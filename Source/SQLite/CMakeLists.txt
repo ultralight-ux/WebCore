@@ -11,3 +11,9 @@ add_definitions(-fPIC)
 endif()
 
 add_library(sqlite3 sqlite3.c)
+
+# Suppress warnings for third-party SQLite code
+target_compile_options(sqlite3 PRIVATE
+    $<$<C_COMPILER_ID:Clang,AppleClang,GNU>:-w>
+    $<$<C_COMPILER_ID:MSVC>:/w>
+)
