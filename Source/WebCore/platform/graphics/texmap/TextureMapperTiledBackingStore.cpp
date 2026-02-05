@@ -215,6 +215,10 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(GraphicsLayer*
 
               tile.texture()->reset(IntSize(texSize), hasAlpha ? BitmapTexture::SupportsAlpha : 0);
             }
+
+            // Tile moved to a new position — old m_updateRect is stale and the texture
+            // (if present) was just fully cleared by reset(). Force a full repaint.
+            tile.setNeedsUpdateInRect(enclosingIntRect(rect));
             continue;
         }
 

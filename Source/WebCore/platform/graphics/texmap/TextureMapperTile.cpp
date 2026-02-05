@@ -105,12 +105,17 @@ void TextureMapperTile::updateContentsIfNeeded(TextureMapper& textureMapper, Gra
     if (m_updateRect.isEmpty()) {
         if (!m_wasRecycled)
             return;
-        
+
         // TextureMapperLayer is trying to paint this tile but we previously recycled the texture.
         // Force a full update and recreate the texture.
         m_wasRecycled = false;
         m_updateRect = enclosingIntRect(m_rect);
     }
+
+    // If we need to acquire a new texture, acquireTextureFromPool() calls reset() which
+    // clears the entire canvas. We must repaint the full tile to avoid blank regions.
+    if (!m_texture)
+        m_updateRect = enclosingIntRect(m_rect);
 
     updateContents(textureMapper, sourceLayer, m_updateRect, scale);
     m_updateRect = IntRect();
