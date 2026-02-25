@@ -35,6 +35,33 @@ SET_AND_EXPOSE_TO_BUILD(USE_MEDIA_FOUNDATION OFF)
 SET_AND_EXPOSE_TO_BUILD(USE_INSPECTOR_SOCKET_SERVER ${ENABLE_REMOTE_INSPECTOR})
 SET_AND_EXPOSE_TO_BUILD(ENABLE_GRAPHICS_CONTEXT_GL OFF)
 SET_AND_EXPOSE_TO_BUILD(ENABLE_DEVELOPER_MODE ${DEVELOPER_MODE})
+SET_AND_EXPOSE_TO_BUILD(USE_WOFF2 ON)
+
+# Create WOFF2 imported targets (referenced by WebCore/CMakeLists.txt when USE_WOFF2 is ON)
+if (NOT TARGET WOFF2::common)
+    add_library(WOFF2::common STATIC IMPORTED GLOBAL)
+    if (MSVC)
+        set_target_properties(WOFF2::common PROPERTIES
+            IMPORTED_LOCATION "${WEBKIT_LIBRARIES_DIR}/lib/woff2common.lib")
+    else ()
+        set_target_properties(WOFF2::common PROPERTIES
+            IMPORTED_LOCATION "${WEBKIT_LIBRARIES_DIR}/lib/libwoff2common.a")
+    endif ()
+endif ()
+
+if (NOT TARGET WOFF2::dec)
+    add_library(WOFF2::dec STATIC IMPORTED GLOBAL)
+    if (MSVC)
+        set_target_properties(WOFF2::dec PROPERTIES
+            IMPORTED_LOCATION "${WEBKIT_LIBRARIES_DIR}/lib/woff2dec.lib")
+    else ()
+        set_target_properties(WOFF2::dec PROPERTIES
+            IMPORTED_LOCATION "${WEBKIT_LIBRARIES_DIR}/lib/libwoff2dec.a")
+    endif ()
+    set_target_properties(WOFF2::dec PROPERTIES
+        INTERFACE_LINK_LIBRARIES WOFF2::common
+        INTERFACE_INCLUDE_DIRECTORIES "${WEBKIT_LIBRARIES_DIR}/include")
+endif ()
 
 add_definitions(-DWTF_PLATFORM_ULTRALIGHT=1)
 

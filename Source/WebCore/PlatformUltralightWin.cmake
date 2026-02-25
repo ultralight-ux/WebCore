@@ -95,6 +95,8 @@ list(APPEND WebCore_PRIVATE_LIBRARIES
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebp.lib"
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebpdecoder.lib"
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebpdemux.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/woff2dec.lib"
+    "${WEBKIT_LIBRARIES_DIR}/lib/woff2common.lib"
     sqlite3
 )
 

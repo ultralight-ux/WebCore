@@ -167,6 +167,8 @@ list(APPEND WebCore_PRIVATE_LIBRARIES
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebp.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebpdecoder.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libwebpdemux.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libwoff2dec.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libwoff2common.a"
     sqlite3
     bz2 # TODO: needed by freetype?
     # gcrypt
