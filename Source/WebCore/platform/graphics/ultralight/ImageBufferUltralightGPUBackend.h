@@ -6,6 +6,8 @@
 
 #include "ImageBufferBackend.h"
 #include <wtf/IsoMalloc.h>
+#include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 
 namespace WebCore {
 
@@ -19,6 +21,10 @@ public:
     static constexpr bool isOriginAtBottomLeftCorner = false;
 
     virtual ~ImageBufferUltralightGPUBackend();
+
+    // Static instance registry for memory reporting
+    static size_t totalCount();
+    static size_t totalMemoryUsage();
 
     static size_t calculateMemoryCost(const Parameters&);
     static size_t calculateExternalMemoryCost(const Parameters&);
@@ -48,6 +54,9 @@ protected:
     std::unique_ptr<GraphicsContext> m_context;
     mutable RefPtr<NativeImage> m_cachedNativeImage;
     IntSize m_backendSize;
+
+    static Lock s_instanceLock;
+    static HashSet<ImageBufferUltralightGPUBackend*> s_instances;
 };
 
 }  // namespace WebCore

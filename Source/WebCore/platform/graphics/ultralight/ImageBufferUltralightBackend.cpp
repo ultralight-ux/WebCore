@@ -21,6 +21,25 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferUltralightBackend);
 
+// Static instance registry
+Lock ImageBufferUltralightBackend::s_instanceLock;
+HashSet<ImageBufferUltralightBackend*> ImageBufferUltralightBackend::s_instances;
+
+size_t ImageBufferUltralightBackend::totalCount()
+{
+    Locker locker { s_instanceLock };
+    return s_instances.size();
+}
+
+size_t ImageBufferUltralightBackend::totalMemoryUsage()
+{
+    Locker locker { s_instanceLock };
+    size_t total = 0;
+    for (auto* instance : s_instances)
+        total += static_cast<size_t>(instance->backendSize().area()) * 4;
+    return total;
+}
+
 std::unique_ptr<ImageBufferUltralightBackend> ImageBufferUltralightBackend::create(const Parameters& parameters, const ImageBufferCreationContext&)
 {
     ProfiledZone;
@@ -80,9 +99,15 @@ ImageBufferUltralightBackend::ImageBufferUltralightBackend(const Parameters& par
     , m_surface(WTFMove(surface))
     , m_bitmap(WTFMove(bitmap))
 {
+    Locker locker { s_instanceLock };
+    s_instances.add(this);
 }
 
 ImageBufferUltralightBackend::~ImageBufferUltralightBackend() {
+    {
+        Locker locker { s_instanceLock };
+        s_instances.remove(this);
+    }
     m_context = nullptr;
     m_bitmap = nullptr;
     if (m_surface) {

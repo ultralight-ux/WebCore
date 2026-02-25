@@ -27,6 +27,7 @@
 
 #include "IntSize.h"
 #include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 #include <wtf/TypeCasts.h>
 #include <wtf/WeakHashSet.h>
 
@@ -120,6 +121,11 @@ public:
     WEBCORE_EXPORT static void setMaxPixelMemoryForTesting(std::optional<size_t>);
     WEBCORE_EXPORT static void setMaxCanvasAreaForTesting(std::optional<size_t>);
 
+    // Static instance registry for memory reporting
+    static size_t totalCount();
+    static size_t acceleratedCount();
+    static size_t unacceleratedCount();
+
 protected:
     explicit CanvasBase(IntSize);
 
@@ -150,6 +156,9 @@ private:
 #endif
     WeakHashSet<CanvasObserver> m_observers;
     WeakHashSet<CanvasDisplayBufferObserver> m_displayBufferObservers;
+
+    static Lock s_instanceLock;
+    static HashSet<CanvasBase*> s_instances;
 };
 
 WebCoreOpaqueRoot root(CanvasBase*);

@@ -66,13 +66,58 @@ const InterpolationQuality defaultInterpolationQuality = InterpolationQuality::D
 static std::optional<size_t> maxCanvasAreaForTesting;
 static std::optional<size_t> maxActivePixelMemoryForTesting;
 
+// Static instance registry
+Lock CanvasBase::s_instanceLock;
+HashSet<CanvasBase*> CanvasBase::s_instances;
+
+size_t CanvasBase::totalCount()
+{
+    Locker locker { s_instanceLock };
+    return s_instances.size();
+}
+
+size_t CanvasBase::acceleratedCount()
+{
+    Locker locker { s_instanceLock };
+    size_t count = 0;
+    for (auto* instance : s_instances) {
+        // TODO: Fix renderingMode() for GPUDeferred so we can use isAccelerated() here instead.
+        if (instance->hasCreatedImageBuffer()) {
+            auto* buf = instance->m_imageBuffer.get();
+            if (buf && buf->renderingMode() == RenderingMode::Accelerated)
+                ++count;
+        }
+    }
+    return count;
+}
+
+size_t CanvasBase::unacceleratedCount()
+{
+    Locker locker { s_instanceLock };
+    size_t count = 0;
+    for (auto* instance : s_instances) {
+        if (instance->hasCreatedImageBuffer()) {
+            auto* buf = instance->m_imageBuffer.get();
+            if (buf && buf->renderingMode() != RenderingMode::Accelerated)
+                ++count;
+        }
+    }
+    return count;
+}
+
 CanvasBase::CanvasBase(IntSize size)
     : m_size(size)
 {
+    Locker locker { s_instanceLock };
+    s_instances.add(this);
 }
 
 CanvasBase::~CanvasBase()
 {
+    {
+        Locker locker { s_instanceLock };
+        s_instances.remove(this);
+    }
     ASSERT(m_didNotifyObserversCanvasDestroyed);
     ASSERT(m_observers.isEmptyIgnoringNullReferences());
     ASSERT(!m_imageBuffer);

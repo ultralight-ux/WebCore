@@ -45,11 +45,17 @@ static const Seconds releaseUnusedSecondsTolerance { 2_s };
 static const Seconds releaseUnusedTexturesTimerInterval { 300_ms };
 static const size_t maxMemoryUsage = 150 * 1024 * 1024; // 150 MB
 
+// Static instance registry
+Lock BitmapTexturePool::s_instanceLock;
+HashSet<BitmapTexturePool*> BitmapTexturePool::s_instances;
+
 #if USE(TEXTURE_MAPPER_GL)
 BitmapTexturePool::BitmapTexturePool(const TextureMapperContextAttributes& contextAttributes)
     : m_contextAttributes(contextAttributes)
     , m_releaseUnusedTexturesTimer(RunLoop::current(), this, &BitmapTexturePool::releaseUnusedTexturesTimerFired)
 {
+    Locker locker { s_instanceLock };
+    s_instances.add(this);
 }
 #endif
 
@@ -59,8 +65,16 @@ BitmapTexturePool::BitmapTexturePool(bool useGpu, TextureMapper* textureMapper)
     , m_textureMapper(textureMapper)
     , m_releaseUnusedTexturesTimer(RunLoop::current(), this, &BitmapTexturePool::releaseUnusedTexturesTimerFired)
 {
+    Locker locker { s_instanceLock };
+    s_instances.add(this);
 }
 #endif
+
+BitmapTexturePool::~BitmapTexturePool()
+{
+    Locker locker { s_instanceLock };
+    s_instances.remove(this);
+}
 
 RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, const BitmapTexture::Flags flags, bool needsExactSize)
 {
@@ -150,19 +164,12 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
         }
     }
 
-        // Calculate current memory usage.
-    size_t currentMemoryUsage = 0;
-    for (const auto& entry : m_textures) {
-        if (entry.m_texture)
-            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
-    }
-
     // Otherwise, we need to create a new texture.
     if (!selectedEntry || selectedEntry == m_textures.end()) {
         m_textures.append(Entry(createTexture(paddedSize, size, flags)));
         selectedEntry = &m_textures.last();
 #ifdef DEBUG_LOG
-        printf("BitmapTexturePool: [%zu MB] + texture with size %dx%d\n", currentMemoryUsage / (1024 * 1024), paddedSize.width(), paddedSize.height());
+        printf("BitmapTexturePool: [%zu MB] + texture with size %dx%d\n", currentMemoryUsage() / (1024 * 1024), paddedSize.width(), paddedSize.height());
 #endif
     }
 
@@ -203,14 +210,7 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
     if (m_textures.isEmpty())
         return;
 
-    // Calculate current memory usage.
-    size_t currentMemoryUsage = 0;
-    for (const auto& entry : m_textures) {
-        if (entry.m_texture)
-            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
-    }
-
-    bool atMemoryPressure = currentMemoryUsage > maxMemoryUsage;
+    bool atMemoryPressure = currentMemoryUsage() > maxMemoryUsage;
 
     // Delete entries, which have been unused in releaseUnusedSecondsTolerance.
     MonotonicTime minUsedTime = MonotonicTime::now() - releaseUnusedSecondsTolerance;
@@ -219,15 +219,9 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
         return entry.canBeReleased(minUsedTime, atMemoryPressure);
     });
 
-    currentMemoryUsage = 0;
-    for (const auto& entry : m_textures) {
-        if (entry.m_texture)
-            currentMemoryUsage += entry.m_texture->size().area() * 4; // Assuming 4 bytes per pixel.
-    }
-
 #ifdef DEBUG_LOG
     if (numRemoved)
-        printf("BitmapTexturePool: [%zu MB] - %zu textures, B\n", currentMemoryUsage / (1024 * 1024), (size_t)numRemoved);
+        printf("BitmapTexturePool: [%zu MB] - %zu textures\n", currentMemoryUsage() / (1024 * 1024), (size_t)numRemoved);
 #endif
 
     if (!m_textures.isEmpty())
@@ -252,5 +246,33 @@ RefPtr<BitmapTexture> BitmapTexturePool::createTexture(const IntSize& paddedSize
     return BitmapTextureUltralight::create(m_textureMapper, paddedSize, contentSize, m_useGpu, flags);
 }
 #endif
+
+size_t BitmapTexturePool::currentMemoryUsage() const
+{
+    size_t total = 0;
+    for (const auto& entry : m_textures) {
+        if (entry.m_texture)
+            total += entry.m_texture->size().area() * 4;
+    }
+    return total;
+}
+
+size_t BitmapTexturePool::totalMemoryUsage()
+{
+    Locker locker { s_instanceLock };
+    size_t total = 0;
+    for (auto* pool : s_instances)
+        total += pool->currentMemoryUsage();
+    return total;
+}
+
+size_t BitmapTexturePool::totalTextureCount()
+{
+    Locker locker { s_instanceLock };
+    size_t total = 0;
+    for (auto* pool : s_instances)
+        total += pool->m_textures.size();
+    return total;
+}
 
 } // namespace WebCore

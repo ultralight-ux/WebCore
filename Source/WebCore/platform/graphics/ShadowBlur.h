@@ -127,4 +127,8 @@ private:
     bool m_shadowsIgnoreTransforms { false };
 };
 
+// Query functions for ShadowBufferPool memory reporting.
+WEBCORE_EXPORT size_t shadowBufferPoolMemoryUsage();
+WEBCORE_EXPORT size_t shadowBufferPoolBufferCount();
+
 } // namespace WebCore

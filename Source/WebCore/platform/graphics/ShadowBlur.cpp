@@ -433,7 +433,26 @@ private:
     Vector<Entry> m_buffers;
     RunLoop::Timer m_releaseUnusedBuffersTimer;
     static constexpr size_t m_maxMemoryBytes = 50 * 1024 * 1024; // 50MB
+
+    friend size_t shadowBufferPoolMemoryUsage();
+    friend size_t shadowBufferPoolBufferCount();
 };
+
+size_t shadowBufferPoolMemoryUsage()
+{
+    auto& pool = ShadowBufferPool::singleton();
+    size_t total = 0;
+    for (const auto& entry : pool.m_buffers) {
+        if (entry.m_buffer)
+            total += entry.m_buffer->truncatedLogicalSize().area() * 4;
+    }
+    return total;
+}
+
+size_t shadowBufferPoolBufferCount()
+{
+    return ShadowBufferPool::singleton().m_buffers.size();
+}
 
 class ShadowCache {
     WTF_MAKE_FAST_ALLOCATED;

@@ -29,6 +29,8 @@
 
 #include "BitmapTexture.h"
 #include "TextureMapperContextAttributes.h"
+#include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 #include <wtf/RunLoop.h>
 
 namespace WebCore {
@@ -47,9 +49,16 @@ public:
     explicit BitmapTexturePool(bool useGpu, TextureMapper* textureMapper = nullptr);
 #endif
 
+    ~BitmapTexturePool();
+
     RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags, bool needsExactSize = false);
 
+    // Static query API for memory reporting across all pool instances.
+    static size_t totalMemoryUsage();
+    static size_t totalTextureCount();
+
 private:
+    size_t currentMemoryUsage() const;
     struct Entry {
         explicit Entry(RefPtr<BitmapTexture>&& texture)
             : m_texture(WTFMove(texture))
@@ -84,6 +93,10 @@ private:
 
     Vector<Entry> m_textures;
     RunLoop::Timer m_releaseUnusedTexturesTimer;
+
+    // Static instance registry for cross-pool memory queries.
+    static Lock s_instanceLock;
+    static HashSet<BitmapTexturePool*> s_instances;
 };
 
 } // namespace WebCore

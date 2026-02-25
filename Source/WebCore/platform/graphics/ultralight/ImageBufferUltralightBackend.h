@@ -6,6 +6,8 @@
 
 #include "ImageBufferBackend.h"
 #include <wtf/IsoMalloc.h>
+#include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Surface.h>
 #include <Ultralight/Bitmap.h>
@@ -17,6 +19,10 @@ class ImageBufferUltralightBackend : public ImageBufferBackend {
     WTF_MAKE_NONCOPYABLE(ImageBufferUltralightBackend);
 public:
     virtual ~ImageBufferUltralightBackend();
+
+    // Static instance registry for memory reporting
+    static size_t totalCount();
+    static size_t totalMemoryUsage();
 
     static size_t calculateMemoryCost(const Parameters&);
 
@@ -52,6 +58,9 @@ protected:
     std::unique_ptr<GraphicsContext> m_context;
     ultralight::RefPtr<ultralight::Bitmap> m_bitmap;
     RefPtr<NativeImage> m_cachedNativeImage;
+
+    static Lock s_instanceLock;
+    static HashSet<ImageBufferUltralightBackend*> s_instances;
 };
 
 }  // namespace WebCore
