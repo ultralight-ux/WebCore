@@ -1,6 +1,7 @@
 #include "config.h"
 #include "MemoryUtils.h"
-#include "ResourceUsageThread.h"
+#include "CommonVM.h"
+#include "Document.h"
 #include "MemoryCache.h"
 #include "FontCache.h"
 #include "ShadowBlur.h"
@@ -8,82 +9,35 @@
 #include "CanvasBase.h"
 #include "ImageBufferUltralightGPUBackend.h"
 #include "ImageBufferUltralightBackend.h"
-#include <wtf/MemoryPressureHandler.h>
-#include <Ultralight/private/util/Debug.h>
-#include <Ultralight/private/util/FormatUtils.h>
-#include <sstream>
-#include <string>
-#if !OS(DARWIN)
-#include "CommonVM.h"
 #include <JavaScriptCore/VM.h>
-#endif
+#include <JavaScriptCore/MemoryStatistics.h>
+#include <wtf/MemoryPressureHandler.h>
 
 namespace WebCore {
 
-using ultralight::fmtBytes;
+MemoryUtils::MemoryUtils() { }
 
-#if OS(DARWIN)
-#if ENABLE(RESOURCE_USAGE)
-static ResourceUsageData gData;
-#endif
-#endif
-
-MemoryUtils::MemoryUtils() {
-#if OS(DARWIN)
-#if ENABLE(RESOURCE_USAGE)
-  ResourceUsageThread::addObserver(this, Memory, [this](const ResourceUsageData& data) {
-    gData = data;
-  });
-#endif
-#endif
-}
-
-MemoryUtils::~MemoryUtils() {
-#if OS(DARWIN)
-#if ENABLE(RESOURCE_USAGE)
-  ResourceUsageThread::removeObserver(this);
-#endif
-#endif
-}
-
-#define PRINT_STATS(str, obj) \
-  stream << str << fmtBytes(obj) << std::endl;
-
-void MemoryUtils::logMemoryStatistics() {
-#if ENABLE(RESOURCE_USAGE)
-  std::ostringstream stream;
-  stream << "Memory Usage (WebCore): " << std::endl;
-#if OS(DARWIN)
-  PRINT_STATS("    JavaScript:          ", gData.categories[MemoryCategory::GCHeap].totalSize() + gData.categories[MemoryCategory::GCOwned].totalSize());
-  // These statistics are only available on macOS at this time because of the ability to tag memory pages
-  PRINT_STATS("    JavaScript JIT:      ", gData.categories[MemoryCategory::JSJIT].totalSize());
-  PRINT_STATS("    Images:              ", gData.categories[MemoryCategory::Images].totalSize());
-  PRINT_STATS("    Layers:              ", gData.categories[MemoryCategory::Layers].totalSize());
-  PRINT_STATS("    Page:                ", gData.categories[MemoryCategory::bmalloc].totalSize() + gData.categories[MemoryCategory::LibcMalloc].totalSize());
-  //PRINT_STATS("    Other:               ", Other);
-#else
-  JSC::VM* vm = &commonVM();
-  size_t currentGCHeapCapacity = vm->heap.blockBytesAllocated();
-  size_t currentGCOwnedExtra = vm->heap.extraMemorySize();
-  PRINT_STATS("    JavaScript:          ", currentGCHeapCapacity + currentGCOwnedExtra);
-#endif
-  UL_LOG_INFO(stream.str().c_str());
-#endif
-}
+MemoryUtils::~MemoryUtils() { }
 
 WebCoreMemoryStatistics MemoryUtils::getMemoryStatistics() {
   WebCoreMemoryStatistics stats;
 
-  // JavaScript heap
-#if OS(DARWIN)
-#if ENABLE(RESOURCE_USAGE)
-  stats.javascript_bytes = gData.categories[MemoryCategory::GCHeap].totalSize()
-                         + gData.categories[MemoryCategory::GCOwned].totalSize();
-#endif
-#else
+  // JavaScript GC heap
   JSC::VM* vm = &commonVM();
-  stats.javascript_bytes = vm->heap.blockBytesAllocated() + vm->heap.extraMemorySize();
-#endif
+  auto& heap = vm->heap;
+
+  size_t extraMem = heap.extraMemorySize();
+  stats.js_gc_object_space_live = heap.size() - extraMem;
+  stats.js_gc_object_space_capacity = heap.capacity() - extraMem;
+  stats.js_extra_memory = extraMem;
+  stats.js_object_count = heap.objectCount();
+  stats.js_protected_object_count = heap.protectedObjectCount();
+  stats.js_global_object_count = heap.globalObjectCount();
+
+  auto globalStats = JSC::globalMemoryStatistics();
+  stats.js_jit_bytes = globalStats.JITBytes;
+
+  stats.js_document_count = static_cast<uint32_t>(Document::allDocumentsMap().size());
 
   // MemoryCache (resource cache)
   auto cacheStats = MemoryCache::singleton().getStatistics();

@@ -6,7 +6,15 @@ namespace WebCore {
 
 // Internal-only structured memory statistics from WebCore subsystems.
 struct WebCoreMemoryStatistics {
-  uint64_t javascript_bytes = 0;
+  // JavaScript GC heap
+  uint64_t js_gc_object_space_live = 0;     // MarkedSpace::size() - bytes in live cells
+  uint64_t js_gc_object_space_capacity = 0; // MarkedSpace::capacity() - committed block memory (16KB blocks)
+  uint64_t js_extra_memory = 0;             // heap.extraMemorySize() - string buffers, ArrayBuffers, butterfly storage
+  uint64_t js_object_count = 0;             // heap.objectCount() - total live GC objects
+  uint64_t js_protected_object_count = 0;   // heap.protectedObjectCount() - C API protected refs
+  uint64_t js_global_object_count = 0;      // heap.globalObjectCount() - JSGlobalObject instances
+  uint64_t js_jit_bytes = 0;               // ExecutableAllocator::committedByteCount() - compiled code memory
+  uint32_t js_document_count = 0;           // Document::allDocumentsMap().size() - live DOM trees
   // MemoryCache (resource cache)
   uint64_t cache_images_size = 0;
   uint64_t cache_images_decoded_size = 0;
@@ -36,8 +44,6 @@ class WEBCORE_EXPORT MemoryUtils {
 public:
   MemoryUtils();
   ~MemoryUtils();
-
-  void logMemoryStatistics();
 
   WebCoreMemoryStatistics getMemoryStatistics();
 
