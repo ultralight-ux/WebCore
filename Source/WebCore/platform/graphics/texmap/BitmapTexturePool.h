@@ -33,6 +33,13 @@
 #include <wtf/Lock.h>
 #include <wtf/RunLoop.h>
 
+// Enable periodic stats logging to stdout for memory analysis.
+// Set to 1 to enable, 0 to disable.
+#define TEXTURE_POOL_STATS_LOG 0
+
+// Interval between stats dumps (in seconds).
+#define TEXTURE_POOL_STATS_INTERVAL_S 5
+
 namespace WebCore {
 
 class IntSize;
@@ -54,8 +61,8 @@ public:
     RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags, bool needsExactSize = false);
 
     // Static query API for memory reporting across all pool instances.
-    static size_t totalMemoryUsage();
-    static size_t totalTextureCount();
+    WEBCORE_EXPORT static size_t totalMemoryUsage();
+    WEBCORE_EXPORT static size_t totalTextureCount();
 
 private:
     size_t currentMemoryUsage() const;
@@ -77,6 +84,20 @@ private:
     void scheduleReleaseUnusedTextures();
     void releaseUnusedTexturesTimerFired();
     RefPtr<BitmapTexture> createTexture(const BitmapTexture::Flags);
+
+#if TEXTURE_POOL_STATS_LOG
+    void maybeLogStats();
+    MonotonicTime m_lastStatsLogTime;
+    uint32_t m_acquireCount { 0 };
+    uint32_t m_reuseCount { 0 };
+    uint32_t m_createCount { 0 };
+    uint32_t m_evictCount { 0 };
+    uint32_t m_lastIntervalAcquireCount { 0 };
+    uint32_t m_lastIntervalReuseCount { 0 };
+    uint32_t m_lastIntervalCreateCount { 0 };
+    uint32_t m_lastIntervalEvictCount { 0 };
+    size_t m_peakMemoryUsage { 0 };
+#endif
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
     RefPtr<BitmapTexture> createTexture(const IntSize&, const IntSize&, const BitmapTexture::Flags);

@@ -42,11 +42,98 @@
 
 //#define DEBUG_LOG
 
+#include <cstdio>
+
 namespace WebCore {
 
 static const Seconds releaseUnusedSecondsTolerance { 2_s };
 static const Seconds releaseUnusedTexturesTimerInterval { 300_ms };
 static const size_t maxMemoryUsage = 150 * 1024 * 1024; // 150 MB
+
+#if TEXTURE_POOL_STATS_LOG
+void BitmapTexturePool::maybeLogStats()
+{
+    auto now = MonotonicTime::now();
+    if ((now - m_lastStatsLogTime) < Seconds(TEXTURE_POOL_STATS_INTERVAL_S))
+        return;
+    m_lastStatsLogTime = now;
+
+    size_t mem = currentMemoryUsage();
+    if (mem > m_peakMemoryUsage)
+        m_peakMemoryUsage = mem;
+
+    // Count in-use vs idle
+    unsigned inUse = 0, idle = 0;
+    for (auto& entry : m_textures) {
+        if (entry.m_texture->refCount() > 1)
+            inUse++;
+        else
+            idle++;
+    }
+
+    // Build size histogram
+    struct SizeBucket {
+        IntSize size;
+        unsigned count { 0 };
+        unsigned inUseCount { 0 };
+        size_t totalBytes { 0 };
+    };
+    Vector<SizeBucket> buckets;
+    for (auto& entry : m_textures) {
+        if (!entry.m_texture) continue;
+        auto texSize = entry.m_texture->size();
+        bool found = false;
+        for (auto& b : buckets) {
+            if (b.size == texSize) {
+                b.count++;
+                b.totalBytes += texSize.area() * 4;
+                if (entry.m_texture->refCount() > 1) b.inUseCount++;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            SizeBucket b;
+            b.size = texSize;
+            b.count = 1;
+            b.totalBytes = texSize.area() * 4;
+            b.inUseCount = (entry.m_texture->refCount() > 1) ? 1 : 0;
+            buckets.append(b);
+        }
+    }
+    std::sort(buckets.begin(), buckets.end(), [](auto& a, auto& b) {
+        return a.totalBytes > b.totalBytes;
+    });
+
+    // Compute interval rates
+    uint32_t intervalAcquires = m_acquireCount - m_lastIntervalAcquireCount;
+    uint32_t intervalReuses = m_reuseCount - m_lastIntervalReuseCount;
+    uint32_t intervalCreates = m_createCount - m_lastIntervalCreateCount;
+    uint32_t intervalEvicts = m_evictCount - m_lastIntervalEvictCount;
+    m_lastIntervalAcquireCount = m_acquireCount;
+    m_lastIntervalReuseCount = m_reuseCount;
+    m_lastIntervalCreateCount = m_createCount;
+    m_lastIntervalEvictCount = m_evictCount;
+
+    printf("[TexPool %p|%s] %zu tex (inUse=%u idle=%u) %.1f/%.1f MB (cur/peak) | interval: acq=%u reuse=%u create=%u evict=%u | lifetime: acq=%u reuse=%u(%.0f%%) create=%u evict=%u\n",
+        this, m_useGpu ? "GPU" : "CPU",
+        m_textures.size(), inUse, idle,
+        mem / (1024.0 * 1024.0), m_peakMemoryUsage / (1024.0 * 1024.0),
+        intervalAcquires, intervalReuses, intervalCreates, intervalEvicts,
+        m_acquireCount, m_reuseCount,
+        m_acquireCount ? (100.0 * m_reuseCount / m_acquireCount) : 0.0,
+        m_createCount, m_evictCount);
+    if (!buckets.isEmpty()) {
+        printf("  sizes: ");
+        for (unsigned i = 0; i < std::min((unsigned)buckets.size(), 8u); i++) {
+            auto& b = buckets[i];
+            printf("%dx%d:%u(%u) ", b.size.width(), b.size.height(), b.count, b.inUseCount);
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+}
+#endif
 
 // Static instance registry
 Lock BitmapTexturePool::s_instanceLock;
@@ -172,9 +259,11 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
     }
 
     // Otherwise, we need to create a new texture.
+    bool wasReused = true;
     if (!selectedEntry || selectedEntry == m_textures.end()) {
         m_textures.append(Entry(createTexture(paddedSize, size, flags)));
         selectedEntry = &m_textures.last();
+        wasReused = false;
 #ifdef DEBUG_LOG
         printf("BitmapTexturePool: [%zu MB] + texture with size %dx%d\n", currentMemoryUsage() / (1024 * 1024), paddedSize.width(), paddedSize.height());
 #endif
@@ -184,6 +273,13 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
     selectedEntry->markIsInUse();
     selectedEntry->m_lastPaintId = currentPaintId;
     selectedEntry->m_texture->reset(size, flags);
+
+#if TEXTURE_POOL_STATS_LOG
+    m_acquireCount++;
+    if (wasReused) m_reuseCount++; else m_createCount++;
+    maybeLogStats();
+#endif
+
     return selectedEntry->m_texture.copyRef();
 #else
     Entry* selectedEntry = std::find_if(m_textures.begin(), m_textures.end(),
@@ -229,6 +325,11 @@ void BitmapTexturePool::releaseUnusedTexturesTimerFired()
 #ifdef DEBUG_LOG
     if (numRemoved)
         printf("BitmapTexturePool: [%zu MB] - %zu textures\n", currentMemoryUsage() / (1024 * 1024), (size_t)numRemoved);
+#endif
+
+#if TEXTURE_POOL_STATS_LOG
+    m_evictCount += numRemoved;
+    maybeLogStats();
 #endif
 
     if (!m_textures.isEmpty())

@@ -312,4 +312,23 @@ void TextureMapperTiledBackingStore::recycleTexturesIfNeeded(TextureMapper& text
 }
 #endif
 
+TextureMapperTiledBackingStore::TileStats TextureMapperTiledBackingStore::tileStats() const
+{
+    TileStats stats;
+    stats.totalTiles = m_tiles.size();
+    for (auto& tile : m_tiles) {
+        if (tile.texture()) {
+            stats.tilesWithTexture++;
+            stats.textureMemory += tile.texture()->size().area() * 4;
+        } else {
+            stats.tilesWithoutTexture++;
+        }
+#if USE(ULTRALIGHT)
+        if (tile.contentsIsImage())
+            stats.imageTiles++;
+#endif
+    }
+    return stats;
+}
+
 } // namespace WebCore

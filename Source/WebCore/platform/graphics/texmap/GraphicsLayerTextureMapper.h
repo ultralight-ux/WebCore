@@ -90,6 +90,7 @@ public:
     void flushCompositingState(const FloatRect&) override;
     void flushCompositingStateForThisLayerOnly() override;
     bool backingStoreAttached() const override { return m_backingStore != nullptr; }
+    TextureMapperTiledBackingStore* backingStore() const { return m_backingStore.get(); }
 
     void updateBackingStoreIncludingSubLayers(TextureMapper&);
 

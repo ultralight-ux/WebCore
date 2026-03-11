@@ -55,6 +55,16 @@ public:
 
     void setContentsToImage(Image* image) { m_image = image; }
 
+    // Stats query for debugging
+    struct TileStats {
+        unsigned totalTiles { 0 };
+        unsigned tilesWithTexture { 0 };
+        unsigned tilesWithoutTexture { 0 };
+        unsigned imageTiles { 0 };
+        size_t textureMemory { 0 }; // bytes
+    };
+    WEBCORE_EXPORT TileStats tileStats() const;
+
 private:
     TextureMapperTiledBackingStore() = default;
 
