@@ -28,6 +28,9 @@
 #include "config.h"
 #include "BitmapTexturePool.h"
 
+// When enabled, prevents reusing BitmapTextures within the same frame (paint ID) on GPU.
+#define DISABLE_SAME_FRAME_TEXTURE_REUSE 0
+
 #if USE(TEXTURE_MAPPER_GL)
 #include "BitmapTextureGL.h"
 #endif
@@ -112,8 +115,10 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
                     || entry.m_texture->flags() != flags)
                     return false;
                 // In GPU mode, skip textures used this frame (deferred commands may still reference them)
+#if DISABLE_SAME_FRAME_TEXTURE_REUSE
                 if (m_useGpu && entry.m_lastPaintId == currentPaintId)
                     return false;
+#endif
                 return true;
             });
     } else {
@@ -132,8 +137,10 @@ RefPtr<BitmapTexture> BitmapTexturePool::acquireTexture(const IntSize& size, con
                 && entry.m_texture->size().height() >= size.height()
                 && entry.m_texture->flags() == flags) {
                 // In GPU mode, skip textures used this frame (deferred commands may still reference them)
+#if DISABLE_SAME_FRAME_TEXTURE_REUSE
                 if (m_useGpu && entry.m_lastPaintId == currentPaintId)
                     continue;
+#endif
                 candidates.append(&entry);
             }
         }

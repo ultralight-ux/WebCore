@@ -102,6 +102,7 @@ void BitmapTextureUltralight::didReset() {
       canvas_->Resize(canvas_size_.width(), canvas_size_.height());
     }
       
+    canvas_->Reset();
     canvas_->Clear();
     //canvas_->RecycleRenderTexture();
     return;
