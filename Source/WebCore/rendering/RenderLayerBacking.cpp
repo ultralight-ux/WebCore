@@ -1798,6 +1798,20 @@ void RenderLayerBacking::updateDrawsContent(PaintedContentsInfo& contentsInfo)
 
     bool hasPaintedContent = containsPaintedContent(contentsInfo);
 
+#if USE(ULTRALIGHT)
+    // When the document element has its own composited layer (forced by requiresCompositingForFrame),
+    // the RenderView layer doesn't need to paint — the HTML element's layer handles all content
+    // including the viewport background via CSS background propagation.
+    if (hasPaintedContent && m_owningLayer.isRenderViewLayer()) {
+        auto* docElement = renderer().document().documentElement();
+        if (docElement && docElement->renderer()) {
+            auto* docLayer = docElement->renderer()->enclosingLayer();
+            if (docLayer && docLayer->isComposited())
+                hasPaintedContent = false;
+        }
+    }
+#endif
+
     // FIXME: we could refine this to only allocate backing for one of these layers if possible.
     m_graphicsLayer->setDrawsContent(hasPaintedContent);
     if (m_foregroundLayer)
