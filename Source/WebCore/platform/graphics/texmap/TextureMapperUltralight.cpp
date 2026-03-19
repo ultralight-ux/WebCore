@@ -544,7 +544,7 @@ void TextureMapperUltralight::endPainting() {
 IntSize TextureMapperUltralight::maxTextureSize() const
 {
     // Match native WebKit's threshold for when to start tiling
-    return IntSize(2048, 2048);
+    return IntSize(4096, 4096);
 }
 
 RefPtr<BitmapTexture> TextureMapperUltralight::acquireTextureFromPool(const IntSize& size, const BitmapTexture::Flags flags)

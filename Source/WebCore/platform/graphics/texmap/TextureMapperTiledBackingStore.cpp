@@ -115,7 +115,7 @@ bool TextureMapperTiledBackingStore::shouldUseTiling(GraphicsLayer* layer, const
 
     // For normal layers, check if they exceed the maximum texture size
     float scale = layer->pageScaleFactor() * layer->deviceScaleFactor();
-    IntSize maxSize = textureMapper.maxTextureSize(); // Now 2048x2048
+    IntSize maxSize = textureMapper.maxTextureSize();
 
     return (size.width() * scale > maxSize.width() ||
             size.height() * scale > maxSize.height());
