@@ -3826,6 +3826,12 @@ void RenderBlockFlow::layoutModernLines(bool relayoutChildren, LayoutUnit& repai
 
     auto updateRepaintTopAndBottomIfNeeded = [&] {
         auto isFullLayout = selfNeedsLayout() || relayoutChildren;
+        // ULTRALIGHT MODIFICATION: The original code skips inline repaint rect computation
+        // during full layouts, relying on LayoutRepainter::repaintAfterLayout() to handle it.
+        // But that only repaints when the block's overflow bounds change. When inline content
+        // changes without changing block dimensions (e.g. text update in a fixed-width element),
+        // the text goes unrepainted. We fall through to compute repaint bounds from line boxes.
+#if !USE(ULTRALIGHT)
         if (isFullLayout) {
             // Let's trigger full repaint instead for now (matching legacy line layout).
             // FIXME: We should revisit this behavior and run repaints strictly on visual overflow.
@@ -3833,6 +3839,9 @@ void RenderBlockFlow::layoutModernLines(bool relayoutChildren, LayoutUnit& repai
             repaintLogicalBottom = { };
             return;
         }
+#else
+        UNUSED_PARAM(isFullLayout);
+#endif
 
         auto firstLineBox = InlineIterator::firstLineBoxFor(*this);
         auto lastLineBox = InlineIterator::lastLineBoxFor(*this);
