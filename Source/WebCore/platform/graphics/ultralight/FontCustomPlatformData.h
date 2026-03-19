@@ -6,7 +6,7 @@
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
-#include <Ultralight/private/Vector.h>
+#include <Ultralight/Vector.h>
 #include <Ultralight/Buffer.h>
 #include "RefPtrFreeTypeFace.h"
 #include "FontPlatformData.h"

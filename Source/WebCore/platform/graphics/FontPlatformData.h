@@ -73,7 +73,7 @@ interface IDWriteFontFace;
 #include <Ultralight/Buffer.h>
 #include <Ultralight/private/Font.h>
 #include <Ultralight/private/Canvas.h>
-#include <Ultralight/private/Vector.h>
+#include <Ultralight/Vector.h>
 #include <Ultralight/platform/FontLoader.h>
 #include <wtf/Vector.h>
 #include "Glyph.h"
