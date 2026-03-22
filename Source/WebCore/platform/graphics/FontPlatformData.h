@@ -79,7 +79,7 @@ interface IDWriteFontFace;
 #include "Glyph.h"
 #include "FloatRect.h"
 #include "HbUniquePtr.h"
-#include "RefPtrFreeTypeFace.h"
+#include "FreeTypeFace.h"
 #include <chrono>
 #endif
 
@@ -95,10 +95,10 @@ namespace ultralight {
 
 class FontFace : public RefCounted {
 public:
-  static RefPtr<FontFace> Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file);
+  static RefPtr<FontFace> Create(WTF::RefPtr<WebCore::FreeTypeFace> face, RefPtr<FontFile> font_file);
 
-  // Get the underling FreeType FT_Face object
-  virtual WTF::RefPtr<FT_FaceRec_> face() const = 0;
+  // Get the underling FreeType face wrapper
+  virtual WTF::RefPtr<WebCore::FreeTypeFace> face() const = 0;
 
   // Get the underlying font file
   virtual RefPtr<FontFile> font_file() const = 0;
@@ -120,6 +120,15 @@ protected:
 #endif
 
 namespace WebCore {
+
+#if USE(ULTRALIGHT)
+// Data passed through void* platform_data to PlatformFontFreeType factory.
+struct FontPlatformCreateData {
+    ultralight::RefPtr<ultralight::FontFace>* face;
+    WTF::Vector<FT_Fixed>* designCoordinates;
+    ultralight::RefPtr<ultralight::FontFile>* fontFile;
+};
+#endif
 
 class FontDescription;
 
@@ -177,7 +186,8 @@ public:
 #endif
 
 #if USE(ULTRALIGHT)
-    FontPlatformData(ultralight::RefPtr<ultralight::FontFace>, const FontDescription&, int weight, bool italic);
+    // ownFace must be a pre-validated, per-instance FreeTypeFace created by the caller.
+    FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, RefPtr<FreeTypeFace> ownFace, const FontDescription&, int weight, bool italic);
     FontPlatformData(const FontPlatformData&);
     FontPlatformData(FontPlatformData&&) = default;
     FontPlatformData& operator=(const FontPlatformData&);
@@ -342,7 +352,10 @@ private:
     RefPtr<FcPattern> m_pattern;
 #endif
 #if USE(ULTRALIGHT)
+    // m_face keeps the FontFace (and its FontFile) alive for hash identity.
+    // m_ownFace is this instance's independent FreeTypeFace (holds its own buffer for in-memory fonts).
     ultralight::RefPtr<ultralight::FontFace> m_face;
+    RefPtr<FreeTypeFace> m_ownFace;
     ultralight::RefPtr<ultralight::Font> m_font;
     Vector<ultralight::Glyph> m_glyphBuffer;
     bool m_distanceField; // Whether or not this font is rendered via SDF

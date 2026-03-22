@@ -5,6 +5,8 @@
 #include "NotImplemented.h"
 #include <wtf/text/WTFString.h>
 #include "FreeTypeLib.h"
+#include "FreeTypeFace.h"
+#include "StringUltralight.h"
 #include <Ultralight/Buffer.h>
 
 namespace WebCore {
@@ -41,7 +43,19 @@ FontPlatformData FontCustomPlatformData::fontPlatformData(
   int font_weight = ToRawWeight(description.weight());
   bool font_italic = !!description.italic();
 
-  return FontPlatformData(m_face, description, font_weight, font_italic);
+  auto font_file = m_face->font_file();
+  if (!font_file)
+    return FontPlatformData();
+
+  auto buffer = font_file->buffer();
+  if (!buffer)
+    return FontPlatformData();
+
+  auto own_face = FreeTypeFace::createFromBuffer(buffer);
+  if (!own_face)
+    return FontPlatformData();
+
+  return FontPlatformData(m_face, own_face, description, font_weight, font_italic);
 }
 
 FontCustomPlatformData& FontCustomPlatformData::operator=(const FontCustomPlatformData& other) {
@@ -68,30 +82,18 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
   SharedBuffer& buffer, const String&)
 {
   ProfiledMemoryZone(MemoryTag::Font);
-  FT_Library freetype = GetFreeTypeLib();
-  if (!freetype)
-    return nullptr;
 
   if (buffer.isEmpty())
     return nullptr;
 
   ultralight::RefPtr<ultralight::Buffer> fontData = ultralight::Buffer::CreateFromCopy(buffer.data(), buffer.size());
-
   ultralight::RefPtr<ultralight::FontFile> fontFile = ultralight::FontFile::Create(fontData);
 
-  FT_Face face = nullptr;
-  FT_Error error = 0;
-  error = FT_New_Memory_Face(freetype,
-    (const FT_Byte*)fontData->data(), /* first byte in memory */
-    fontData->size(),                 /* size in bytes        */
-    0,                                /* face_index           */
-    &face                             /* face result          */);
-  assert(error == 0);
-
-  if (error)
+  RefPtr<FreeTypeFace> ft_face = FreeTypeFace::createFromBuffer(fontData);
+  if (!ft_face)
     return nullptr;
 
-  ultralight::RefPtr<ultralight::FontFace> fontFace = ultralight::FontFace::Create(adoptRef(face), fontFile);
+  ultralight::RefPtr<ultralight::FontFace> fontFace = ultralight::FontFace::Create(ft_face, fontFile);
 
   return std::make_unique<FontCustomPlatformData>(fontFace);
 }

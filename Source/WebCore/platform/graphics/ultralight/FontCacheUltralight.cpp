@@ -3,8 +3,10 @@
 #include "Font.h"
 #include "NotImplemented.h"
 #include "FreeTypeLib.h"
+#include "FreeTypeFace.h"
 #include "PlatformFontFreeType.h"
 #include <wtf/text/CString.h>
+#include <wtf/Lock.h>
 #include <Ultralight/platform/FontLoader.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/private/Painter.h>
@@ -16,6 +18,7 @@
 #include <wtf/Shutdown.h>
 #include "StringUltralight.h"
 #include <map>
+#include <mutex>
 
 namespace ultralight {
 
@@ -26,24 +29,24 @@ public:
   virtual void Release() const override { return RefCountedImpl<FontFaceImpl>::Release(); }
   virtual int ref_count() const override { return RefCountedImpl<FontFaceImpl>::ref_count(); }
 
-  virtual WTF::RefPtr<FT_FaceRec_> face() const override { return face_; }
+  virtual WTF::RefPtr<WebCore::FreeTypeFace> face() const override { return face_; }
 
-  virtual RefPtr<FontFile> font_file() const { return font_file_; }
+  virtual RefPtr<FontFile> font_file() const override { return font_file_; }
 
   virtual void update_access() override {
     last_access_ = std::chrono::steady_clock::now();
   }
 
-  virtual std::chrono::steady_clock::time_point last_access() const { return last_access_; }
+  virtual std::chrono::steady_clock::time_point last_access() const override { return last_access_; }
 
 protected:
-  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) : face_(face), font_file_(font_file) {
+  FontFaceImpl(WTF::RefPtr<WebCore::FreeTypeFace> face, RefPtr<FontFile> font_file) : face_(face), font_file_(font_file) {
     last_access_ = std::chrono::steady_clock::now();
   }
 
   ~FontFaceImpl() {}
 
-  WTF::RefPtr<FT_FaceRec_> face_;
+  WTF::RefPtr<WebCore::FreeTypeFace> face_;
   RefPtr<FontFile> font_file_;
   std::chrono::steady_clock::time_point last_access_;
 
@@ -54,7 +57,7 @@ protected:
 FontFace::FontFace() {}
 FontFace::~FontFace() {}
 
-RefPtr<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) {
+RefPtr<FontFace> FontFace::Create(WTF::RefPtr<WebCore::FreeTypeFace> face, RefPtr<FontFile> font_file) {
   return AdoptRef(*new FontFaceImpl(face, font_file));
 }
 
@@ -62,15 +65,15 @@ class FontDatabase {
 public:
   static FontDatabase& instance() {
     static FontDatabase* g_instance = nullptr;
+    static std::once_flag once;
 
-    if (!g_instance)
-    {
+    std::call_once(once, []() {
         g_instance = new FontDatabase();
         WTF::CallOnShutdown([]() mutable {
             delete g_instance;
             g_instance = nullptr;
         });
-    }
+    });
 
     return *g_instance;
   }
@@ -79,12 +82,14 @@ public:
   RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {
     ProfiledZone;
     ProfiledMemoryZone(MemoryTag::Font);
+
+    Locker locker { mutex_ };
+
     ultralight::String8 family8 = family.utf8();
     unsigned int family_hash = StringHasher::computeHash(family8.data(), (unsigned int)family8.sizeBytes());
     unsigned int request_hash = family_hash;
     request_hash = request_hash * 31 + weight;
     request_hash = request_hash * 31 + (italic ? 1 : 0);
-
 
     auto i = font_db_.find(request_hash);
     if (i != font_db_.end()) {
@@ -93,63 +98,62 @@ public:
       return i->second;
     }
 
-    // Doesn't exist in database, need to load and create new
+    // Doesn't exist in database, need to load and create new.
+    // Lock is held during Load() — font loading is rare (cache-miss only) and
+    // serialization avoids thread-safety burden on user-provided FontLoader.
     auto& platform = ultralight::Platform::instance();
     auto font_loader = platform.font_loader();
     UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
     if (!font_loader)
       return nullptr;
 
-    FT_Library freetype = WebCore::GetFreeTypeLib();
-    if (!freetype)
-      return nullptr;
-
     RefPtr<FontFile> file = font_loader->Load(family, weight, italic);
     RefPtr<FontFace> font_face;
     if (file) {
+      // Always load font data into a Buffer so per-instance FreeTypeFaces can
+      // reuse the same shared buffer via createFromBuffer (no file re-opening).
+      ultralight::RefPtr<ultralight::Buffer> font_data;
       if (file->is_in_memory()) {
-        ultralight::RefPtr<ultralight::Buffer> font_file_buffer = file->buffer();
-        if (!font_file_buffer)
-          return nullptr;
-
-        size_t font_size = font_file_buffer->size();
-
-        if (font_size) {
-          FT_Face face;
-          FT_Error error;
-          error = FT_New_Memory_Face(freetype,
-            (const FT_Byte*)font_file_buffer->data(), /* first byte in memory */
-            font_file_buffer->size(),                 /* size in bytes        */
-            0,                                        /* face_index           */
-            &face                                     /* face result          */);
-          assert(error == 0);
-          if (error != 0)
-            return nullptr;
-
-          assert(error == 0);
-
-          font_face = FontFace::Create(adoptRef(face), file);
-        }
-      }
-      else {
+        font_data = file->buffer();
+      } else {
         ultralight::String font_file_path = file->filepath();
-        if (font_file_path.empty())
-          return nullptr;
-
-        FT_Face face;
-        FT_Error error;
-        CString path8 = Convert(font_file_path).utf8();
-        error = FT_New_Face(freetype, path8.data(), 0, &face);
-        assert(error == 0);
-        if (error != 0)
-          return nullptr;
-
-        assert(error == 0);
-
-        font_face = FontFace::Create(adoptRef(face), file);
+        if (!font_file_path.empty()) {
+          CString path8 = Convert(font_file_path).utf8();
+          FILE* f = fopen(path8.data(), "rb");
+          if (f) {
+            fseek(f, 0, SEEK_END);
+            long fileSize = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            if (fileSize > 0) {
+              // Single allocation: read directly into a malloc'd buffer, wrap with
+              // Buffer::Create + free callback. No copies.
+              void* raw = malloc(fileSize);
+              if (raw) {
+                size_t bytesRead = fread(raw, 1, fileSize, f);
+                if (bytesRead == static_cast<size_t>(fileSize)) {
+                  font_data = ultralight::Buffer::Create(raw, fileSize, nullptr,
+                      [](void*, void* data) { free(data); });
+                } else {
+                  free(raw);
+                }
+              }
+            }
+            fclose(f);
+          }
+        }
+        // Re-wrap as an in-memory FontFile so font_file() returns the buffer.
+        if (font_data)
+          file = ultralight::FontFile::Create(font_data);
       }
+
+      WTF::RefPtr<WebCore::FreeTypeFace> ft_face;
+      if (font_data)
+        ft_face = WebCore::FreeTypeFace::createFromBuffer(font_data);
+
+      if (ft_face)
+        font_face = FontFace::Create(ft_face, file);
     }
-    
+
     // font_face may still be null here, that's okay-- we want to cache a request that resulted in a null load
     font_db_.insert({ request_hash, font_face });
 
@@ -162,6 +166,7 @@ public:
 
   void Recycle() {
     ProfiledZone;
+    Locker locker { mutex_ };
     for (auto i = font_db_.begin(); i != font_db_.end();) {
       // Evict the entry if we are the only ones holding the reference
       if (i->second && i->second->ref_count() <= 1) {
@@ -174,7 +179,7 @@ public:
           continue;
         }
       }
-      
+
       i++;
     }
   }
@@ -185,6 +190,7 @@ protected:
 
   typedef std::map<unsigned int, RefPtr<FontFace>> FontFaceMap;
   FontFaceMap font_db_;
+  mutable WTF::Lock mutex_;
 
   // How long to keep an entry alive after it has been accessed and has no lingering references.
   // Defaults to 7 seconds
@@ -270,7 +276,9 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
   WTF::String fallback;
   if (font_loader)
     fallback = Convert(font_loader->fallback_font());
-  return *fontForFamily(fontDescription, fallback);
+  auto result = fontForFamily(fontDescription, fallback);
+  UL_CHECK(result, "Error, lastResortFallbackFont failed to create font for fallback family.");
+  return *result;
 }
 
 /*
@@ -290,11 +298,6 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   ProfiledZone;
   ProfiledMemoryZone(MemoryTag::Font);
   platformInit();
-
-  int error = 0;
-  FT_Library freetype = GetFreeTypeLib();
-  if (!freetype)
-    return nullptr;
 
   auto& platform = ultralight::Platform::instance();
   auto font_loader = platform.font_loader();
@@ -317,7 +320,23 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   if (!font_face)
     return nullptr;
 
-  return std::make_unique<FontPlatformData>(font_face, fontDescription, font_weight, font_italic);
+  // Create a per-instance FreeTypeFace from the cached FontFace's shared font data buffer.
+  // LookupFont always stores font data as an in-memory buffer (even for file-path fonts),
+  // so per-instance faces reuse the same shared buffer via createFromBuffer.
+  // This avoids re-opening files from disk (which fails on Windows when the file is already open).
+  auto font_file = font_face->font_file();
+  if (!font_file)
+    return nullptr;
+
+  auto font_buffer = font_file->buffer();
+  if (!font_buffer)
+    return nullptr;
+
+  auto own_face = FreeTypeFace::createFromBuffer(font_buffer);
+  if (!own_face)
+    return nullptr;
+
+  return std::make_unique<FontPlatformData>(font_face, own_face, fontDescription, font_weight, font_italic);
 }
 
 std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&)

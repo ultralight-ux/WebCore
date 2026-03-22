@@ -70,8 +70,8 @@ platform/graphics/ultralight/NativeImageUltralight.cpp
 platform/graphics/ultralight/PathUltralight.cpp
 platform/graphics/ultralight/PlatformFontFreeType.cpp
 platform/graphics/ultralight/PlatformFontFreeType.h
-platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
-platform/graphics/ultralight/RefPtrFreeTypeFace.h
+platform/graphics/ultralight/FreeTypeFace.cpp
+platform/graphics/ultralight/FreeTypeFace.h
 platform/graphics/ultralight/RefPtrUltralight.cpp
 platform/graphics/ultralight/RefPtrUltralight.h
 platform/graphics/ultralight/TransformationMatrixUltralight.cpp

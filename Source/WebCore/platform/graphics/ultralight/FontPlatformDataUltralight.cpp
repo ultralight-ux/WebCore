@@ -6,13 +6,17 @@
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/private/FontCache.h>
+#include <Ultralight/private/Font.h>
 #include "Glyph.h"
 #include "FloatRect.h"
+#include "FreeTypeLib.h"
+#include "StringUltralight.h"
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
 #include <hb-ft.h>
 #include <hb-ot.h>
+#include <wtf/Threading.h>
 
 static int TwentySixDotSix2Pixel(const int i)
 {
@@ -82,27 +86,37 @@ WTF::Vector<FT_Fixed> CalculateDesignCoordinates(FT_Face ft_face, int weight, bo
   return coords;
 }
 
-FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description, int weight, bool italic)
-  : m_face(face) {
+FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face,
+    RefPtr<FreeTypeFace> ownFace, const FontDescription& description, int weight, bool italic)
+  : m_face(face), m_ownFace(ownFace) {
   ProfiledMemoryZone(MemoryTag::Font);
-  m_fixedWidth = m_face->face()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
-  auto config = ultralight::Platform::instance().config();
+
+  FT_Face ft_face = m_ownFace->face();
+
+  m_fixedWidth = ft_face->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
 
   m_size = description.computedPixelSize();
 
-  m_designCoordinates = CalculateDesignCoordinates(m_face->face().get(), weight, italic);
+  m_designCoordinates = CalculateDesignCoordinates(ft_face, weight, italic);
   if (m_designCoordinates.size()) {
-    FT_Set_Var_Design_Coordinates(m_face->face().get(), m_designCoordinates.size(), m_designCoordinates.data());
+    FT_Set_Var_Design_Coordinates(ft_face, m_designCoordinates.size(), m_designCoordinates.data());
   }
 
 #if ENABLE_DISTANCE_FIELD_FONTS
-  m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
+  m_distanceField = ft_face->face_flags & FT_FACE_FLAG_SCALABLE;
 #else
   m_distanceField = false;
 #endif
 
-  auto font_cache = ultralight::FontCache::instance();
-  m_font = font_cache->GetFont(&face, (uint64_t)hash(), m_size);
+  auto font_file = face->font_file();
+  FontPlatformCreateData createData { &face, &m_designCoordinates, &font_file };
+
+  if (isMainThread()) {
+    auto font_cache = ultralight::FontCache::instance();
+    m_font = font_cache->GetFont(&createData, (uint64_t)hash(), m_size);
+  } else {
+    m_font = ultralight::Font::CreateMetricsOnly(&createData, (uint64_t)hash(), m_size);
+  }
   m_font->set_device_scale_hint(description.deviceScale());
 }
 
@@ -128,6 +142,9 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
   m_isSystemFont = other.m_isSystemFont;
   m_fixedWidth = other.m_fixedWidth;
   m_face = other.m_face;
+  // m_ownFace sharing via RefPtr copy is intentional for same-thread copies.
+  // Copies always have the same m_size, and face() re-sets pixel sizes idempotently.
+  m_ownFace = other.m_ownFace;
   m_font = other.m_font;
   m_designCoordinates = other.m_designCoordinates;
 
@@ -135,13 +152,14 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
 }
 
 FontPlatformData::~FontPlatformData() {
+  // FreeTypeFace holds its own buffer, so destruction order is no longer critical.
+  m_ownFace = nullptr;
   m_face = nullptr;
   m_font = nullptr;
 }
 
 FT_Face FontPlatformData::face() const {
-  // We always set the current font-size before accessing the underlying FT_Face
-  FT_Face ft_face = m_face->face().get();
+  FT_Face ft_face = m_ownFace->face();
   FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)m_size);
   return ft_face;
 }

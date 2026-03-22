@@ -5,12 +5,15 @@
 #include <Ultralight/private/tracy/Tracy.hpp>
 #include "FontPlatformData.h"
 #include "FreeTypeLib.h"
+#include "StringUltralight.h"
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 #include FT_BITMAP_H
 #include FT_STROKER_H
 #include FT_GLYPH_H
+#include FT_MULTIPLE_MASTERS_H
+#include <mutex>
 
 struct RenderContext {
   ultralight::RefPtr<ultralight::Path> path;
@@ -53,14 +56,27 @@ namespace ultralight {
 
 class PlatformFontFreeType : public PlatformFont {
 public:
-  PlatformFontFreeType(ultralight::RefPtr<ultralight::FontFace>* face) : font_face_(*face) {
+  PlatformFontFreeType(WebCore::FontPlatformCreateData* data) {
+    // Create our own FreeTypeFace from the shared in-memory font data buffer.
+    // LookupFont ensures all font data is stored as in-memory buffers.
+    auto font_file = *data->fontFile;
+    if (font_file) {
+      auto buffer = font_file->buffer();
+      if (buffer)
+        own_face_ = WebCore::FreeTypeFace::createFromBuffer(buffer);
+    }
+
+    // Apply design coordinates for variable fonts.
+    if (own_face_ && data->designCoordinates && data->designCoordinates->size()) {
+      FT_Set_Var_Design_Coordinates(own_face_->face(), data->designCoordinates->size(), data->designCoordinates->data());
+    }
   }
 
   virtual ~PlatformFontFreeType() {
   }
 
   inline FT_Face face() const {
-    return font_face_->face().get();
+    return own_face_ ? own_face_->face() : nullptr;
   }
 
   virtual void SetFontSize(float font_size) override {
@@ -288,7 +304,9 @@ public:
   }
 
 protected:
-  ultralight::RefPtr<ultralight::FontFace> font_face_;
+  // FreeTypeFace holds its own buffer reference for in-memory fonts,
+  // so no separate font_file_ member is needed.
+  WTF::RefPtr<WebCore::FreeTypeFace> own_face_;
 };
 
 class PlatformFontFreeTypeFactory : public PlatformFontFactory {
@@ -301,7 +319,7 @@ public:
   }
 
   virtual PlatformFont* CreatePlatformFont(void* data) override {
-    return new PlatformFontFreeType(static_cast<ultralight::RefPtr<ultralight::FontFace>*>(data));
+    return new PlatformFontFreeType(static_cast<WebCore::FontPlatformCreateData*>(data));
   }
 
   virtual void DestroyPlatformFont(PlatformFont* platform_font) override {
@@ -310,10 +328,11 @@ public:
 };
 
 void EnsurePlatformFontFactory() {
-  static PlatformFontFreeTypeFactory g_platform_font_freetype_factory;
-
-  if (!platform_font_factory())
+  static std::once_flag once;
+  std::call_once(once, []() {
+    static PlatformFontFreeTypeFactory g_platform_font_freetype_factory;
     set_platform_font_factory(&g_platform_font_freetype_factory);
+  });
 }
 
 }  // namespace ultralight
