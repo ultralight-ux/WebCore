@@ -474,7 +474,7 @@ void releaseFastMallocFreeMemory() {
 #if USE(ULTRALIGHT)
     ProfiledZone;
 #endif
-    ul_zone_alloc_collect(UL_ZONE_WEBCORE, 1);
+    ul_zone_alloc_collect(UL_ZONE_WEBCORE, 0);
 }
 
 void releaseFastMallocFreeMemoryForThisThread() {
